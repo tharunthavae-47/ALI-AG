@@ -52,6 +52,23 @@ export function BookingsManager({ initialBookings }: { initialBookings: Booking[
     })
   }
 
+<label className="block mt-6">
+  <span className="font-display text-xs uppercase tracking-widest">
+    Bilder hinzufügen <span className="opacity-50">(optional)</span>
+  </span>
+
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    className="mt-2 w-full"
+  />
+
+  <p className="mt-2 text-xs text-muted-foreground">
+    Du kannst mehrere Bilder auswählen.
+  </p>
+</label>
+
   return (
     <div>
       <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
