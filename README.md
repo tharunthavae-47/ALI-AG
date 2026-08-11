@@ -1,0 +1,2 @@
+ALTER TABLE bookings
+ADD COLUMN image_url text;
