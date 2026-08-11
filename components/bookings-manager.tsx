@@ -1,0 +1,150 @@
+"use client"
+
+import { useState, useTransition } from "react"
+import { Check, X, Phone, Car, Calendar, Clock } from "lucide-react"
+import { updateBookingStatus, type Booking, type BookingStatus } from "@/app/actions"
+
+const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
+  { key: "pending", label: "Offen" },
+  { key: "confirmed", label: "Bestätigt" },
+  { key: "rejected", label: "Abgelehnt" },
+  { key: "all", label: "Alle" },
+]
+
+const statusStyles: Record<BookingStatus, string> = {
+  pending: "text-[var(--warn)] border-[var(--warn)]",
+  confirmed: "text-[var(--ok)] border-[var(--ok)]",
+  rejected: "text-[var(--bad)] border-[var(--bad)]",
+}
+
+const statusLabels: Record<BookingStatus, string> = {
+  pending: "Offen",
+  confirmed: "Bestätigt",
+  rejected: "Abgelehnt",
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso + "T00:00:00")
+  return d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+export function BookingsManager({ initialBookings }: { initialBookings: Booking[] }) {
+  const [bookings, setBookings] = useState(initialBookings)
+  const [filter, setFilter] = useState<BookingStatus | "all">("pending")
+  const [isPending, startTransition] = useTransition()
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const visible = bookings.filter((b) => (filter === "all" ? true : b.status === filter))
+  const counts = {
+    pending: bookings.filter((b) => b.status === "pending").length,
+    confirmed: bookings.filter((b) => b.status === "confirmed").length,
+    rejected: bookings.filter((b) => b.status === "rejected").length,
+  }
+
+  function handleUpdate(id: string, status: Exclude<BookingStatus, "pending">) {
+    setBusyId(id)
+    startTransition(async () => {
+      const res = await updateBookingStatus(id, status)
+      if (res.ok) {
+        setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b)))
+      }
+      setBusyId(null)
+    })
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--warn)]">{counts.pending}</div>
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">Offen</div>
+        </div>
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--ok)]">{counts.confirmed}</div>
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">Bestätigt</div>
+        </div>
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--bad)]">{counts.rejected}</div>
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">Abgelehnt</div>
+        </div>
+      </div>
+
+      <div className="mt-8 flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={[
+              "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
+              filter === f.key
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
+            ].join(" ")}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6 space-y-px">
+        {visible.length === 0 && (
+          <p className="border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+            Keine Einträge in dieser Ansicht.
+          </p>
+        )}
+        {visible.map((b) => (
+          <article key={b.id} className="border border-border bg-card p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
+                    {b.name}
+                  </h3>
+                  <span
+                    className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[b.status]}`}
+                  >
+                    {statusLabels[b.status]}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" strokeWidth={1.5} /> {formatDate(b.booking_date)}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" strokeWidth={1.5} /> {b.booking_time}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" strokeWidth={1.5} /> {b.contact}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Car className="h-4 w-4" strokeWidth={1.5} /> {b.car}
+                  </span>
+                </div>
+                <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">{b.problem}</p>
+              </div>
+
+              {b.status === "pending" && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleUpdate(b.id, "confirmed")}
+                    disabled={isPending && busyId === b.id}
+                    className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" /> Bestätigen
+                  </button>
+                  <button
+                    onClick={() => handleUpdate(b.id, "rejected")}
+                    disabled={isPending && busyId === b.id}
+                    className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" /> Ablehnen
+                  </button>
+                </div>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  )
+}
