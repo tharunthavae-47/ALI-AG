@@ -154,7 +154,24 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
         />
       </label>
 
-      {error && <p className="mt-4 text-sm text-[var(--bad)]">{error}</p>}
+<label className="mt-6 block">
+  <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+    Bilder hinzufügen <span className="opacity-50">(optional)</span>
+  </span>
+
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground file:mr-4 file:border-0 file:bg-primary file:px-4 file:py-2 file:text-primary-foreground"
+  />
+
+  <p className="mt-2 text-xs text-muted-foreground">
+    Du kannst mehrere Bilder hochladen, z. B. Fotos vom Schaden.
+  </p>
+</label>
+
+{error && <p className="mt-4 text-sm text-[var(--bad)]">{error}</p>}
 
       <button
         type="submit"
