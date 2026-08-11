@@ -30,7 +30,7 @@ export type Booking = {
   created_at: string
 }
 
-const OPEN_HOUR = 8
+const OPEN_HOUR = 15
 const CLOSE_HOUR = 22
 
 function isValidDate(value: string) {
