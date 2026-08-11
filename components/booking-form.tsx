@@ -166,3 +166,5 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
     </form>
   )
 }
+ALTER TABLE appointments
+ADD COLUMN images text[] DEFAULT '{}';
