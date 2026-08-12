@@ -41,6 +41,8 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
   contact,
   car,
   problem,
+ createBooking({
+  ...
   images,
 })
     setPending(false)
