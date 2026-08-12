@@ -136,7 +136,7 @@ export function BookingForm({
           const filePath = `${bookingId}/${fileName}`
 
           const { error: uploadError } = await supabase.storage
-            .from("kunden-bilder")
+            .from("Kunden-Bilder")
             .upload(filePath, image, {
               cacheControl: "3600",
               upsert: false,
