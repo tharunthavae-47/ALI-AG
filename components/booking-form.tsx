@@ -31,7 +31,9 @@ export function BookingForm({
   const [contact, setContact] = useState("")
   const [car, setCar] = useState("")
   const [problem, setProblem] = useState("")
+
   const [images, setImages] = useState<File[]>([])
+
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [done, setDone] = useState(false)
@@ -44,22 +46,34 @@ export function BookingForm({
     )
   }, [bookedSlots, date])
 
-  function handleImages(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files ?? [])
+  function handleImages(
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const selected = Array.from(
+      e.target.files ?? [],
+    )
 
-    const validImages = selected.filter((file) => {
-      if (!file.type.startsWith("image/")) {
-        return false
-      }
+    const validImages = selected.filter(
+      (file) => {
+        if (!file.type.startsWith("image/")) {
+          return false
+        }
 
-      if (file.size > 10 * 1024 * 1024) {
-        return false
-      }
+        if (
+          file.size >
+          10 * 1024 * 1024
+        ) {
+          return false
+        }
 
-      return true
-    })
+        return true
+      },
+    )
 
-    if (validImages.length !== selected.length) {
+    if (
+      validImages.length !==
+      selected.length
+    ) {
       setError(
         "Einige Dateien wurden entfernt. Nur Bilder bis maximal 10 MB sind erlaubt.",
       )
@@ -67,32 +81,50 @@ export function BookingForm({
       setError(null)
     }
 
-    setImages(validImages.slice(0, 5))
+    setImages(
+      validImages.slice(0, 5),
+    )
   }
 
   function removeImage(index: number) {
     setImages((previous) =>
-      previous.filter((_, currentIndex) => currentIndex !== index),
+      previous.filter(
+        (_, currentIndex) =>
+          currentIndex !== index,
+      ),
     )
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: React.FormEvent<HTMLFormElement>,
+  ) {
     e.preventDefault()
 
     setError(null)
 
     if (!date || !time) {
-      setError("Bitte wählen Sie Datum und Uhrzeit.")
+      setError(
+        "Bitte wählen Sie Datum und Uhrzeit.",
+      )
       return
     }
 
-    if (!name || !contact || !car || !problem) {
-      setError("Bitte füllen Sie alle Felder aus.")
+    if (
+      !name ||
+      !contact ||
+      !car ||
+      !problem
+    ) {
+      setError(
+        "Bitte füllen Sie alle Felder aus.",
+      )
       return
     }
 
     if (takenForDate.has(time)) {
-      setError("Dieser Termin ist leider bereits vergeben.")
+      setError(
+        "Dieser Termin ist leider bereits vergeben.",
+      )
       return
     }
 
@@ -100,109 +132,197 @@ export function BookingForm({
 
     try {
       /*
-       * 1. Termin erstellen
+       * ==========================================
+       * 1. TERMIN ERSTELLEN
+       * ==========================================
        */
-      const result = await createBooking({
-        booking_date: date,
-        booking_time: time,
-        name,
-        contact,
-        car,
-        problem,
-      })
 
-      if (!result.ok || !result.bookingId) {
+      const result =
+        await createBooking({
+          booking_date: date,
+          booking_time: time,
+          name,
+          contact,
+          car,
+          problem,
+        })
+
+      if (
+        !result.ok ||
+        !result.bookingId
+      ) {
         setError(
-          result.error ?? "Der Termin konnte nicht erstellt werden.",
+          result.error ??
+            "Der Termin konnte nicht erstellt werden.",
         )
+
         setPending(false)
         return
       }
 
-      const bookingId = result.bookingId
-
-      console.log("BOOKING ID:", bookingId)
-      console.log("ANZAHL BILDER:", images.length)
+      const bookingId =
+        result.bookingId
 
       /*
-       * 2. Bilder hochladen
+       * ==========================================
+       * 2. BILDER HOCHLADEN
+       * ==========================================
        */
+
       if (images.length > 0) {
-        const supabase = createClient()
-        const uploadedImages: string[] = []
+        const supabase =
+          createClient()
+
+        const uploadedImages: string[] =
+          []
 
         for (const image of images) {
           const extension =
-            image.name.split(".").pop()?.toLowerCase() || "jpg"
+            image.name
+              .split(".")
+              .pop()
+              ?.toLowerCase() ||
+            "jpg"
 
           const fileName = `${crypto.randomUUID()}.${extension}`
+
+          /*
+           * Der Pfad im Bucket:
+           *
+           * bookingId/datei.jpg
+           *
+           * Beispiel:
+           * 123-456/bild.jpg
+           */
           const filePath = `${bookingId}/${fileName}`
 
-          console.log("UPLOAD:", filePath)
+          console.log(
+            "Bild wird hochgeladen:",
+            filePath,
+          )
 
-          const { error: uploadError } = await supabase.storage
+          const {
+            error: uploadError,
+          } = await supabase.storage
             .from("Kunden-Bilder")
-            .upload(filePath, image, {
-              cacheControl: "3600",
-              upsert: false,
-              contentType: image.type,
-            })
+            .upload(
+              filePath,
+              image,
+              {
+                cacheControl:
+                  "3600",
+                upsert: false,
+                contentType:
+                  image.type,
+              },
+            )
 
           if (uploadError) {
-            console.error("BILD UPLOAD FEHLER:", uploadError)
+            console.error(
+              "Bild Upload Fehler:",
+              uploadError,
+            )
 
             setError(
-              "Der Termin wurde erstellt, aber das Bild konnte nicht hochgeladen werden.",
+              "Der Termin wurde erstellt, aber mindestens ein Bild konnte nicht hochgeladen werden.",
             )
 
             setPending(false)
             return
           }
 
-          uploadedImages.push(filePath)
-
-          console.log("BILD ERFOLGREICH HOCHGELADEN:", filePath)
+          /*
+           * Nur den Pfad speichern.
+           */
+          uploadedImages.push(
+            filePath,
+          )
         }
 
-        console.log("HOCHGELADENE BILDER:", uploadedImages)
-
         /*
-         * 3. Bildpfade in bookings speichern
+         * ==========================================
+         * 3. BILDPFADE IN BOOKINGS SPEICHERN
+         * ==========================================
+         *
+         * WICHTIG:
+         *
+         * image_urls ist bei dir TEXT.
+         *
+         * Deshalb:
+         *
+         * JSON.stringify(uploadedImages)
+         *
+         * und NICHT:
+         *
+         * uploadedImages
          */
-       const { error: updateError } = await supabase
-  .from("bookings")
-  .update({
-    image_urls: uploadedImages,
-  })
-  .eq("id", bookingId)
 
-console.log("HOCHGELADENE BILDER:", uploadedImages)
-console.log("UPDATE FEHLER:", updateError)
+        console.log(
+          "Bildpfade:",
+          uploadedImages,
+        )
 
-        console.log("UPDATE FEHLER:", updateError)
+        const {
+          error: updateError,
+        } = await supabase
+          .from("bookings")
+          .update({
+            image_urls:
+              JSON.stringify(
+                uploadedImages,
+              ),
+          })
+          .eq(
+            "id",
+            bookingId,
+          )
 
         if (updateError) {
+          console.error(
+            "Bildpfade speichern:",
+            updateError,
+          )
+
           setError(
-            `Bilder wurden hochgeladen, konnten aber nicht gespeichert werden: ${updateError.message}`,
+            "Die Bilder wurden hochgeladen, konnten aber nicht mit dem Termin verbunden werden.",
           )
 
           setPending(false)
           return
         }
 
+        console.log(
+          "Bildpfade erfolgreich gespeichert.",
+        )
       }
+
+      /*
+       * ==========================================
+       * 4. FERTIG
+       * ==========================================
+       */
 
       setPending(false)
       setDone(true)
     } catch (err) {
-      console.error("FEHLER BEIM TERMIN:", err)
+      console.error(
+        "Fehler beim Erstellen des Termins:",
+        err,
+      )
 
       setPending(false)
+
       setError(
         "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
       )
     }
   }
+
+  /*
+   * ==========================================
+   * ERFOLGSMELDUNG
+   * ==========================================
+   */
 
   if (done) {
     return (
@@ -217,19 +337,33 @@ console.log("UPDATE FEHLER:", updateError)
         </h3>
 
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Vielen Dank, {name || "geschätzter Kunde"}. Ihre Terminanfrage
-          ist bei uns eingegangen. Wir melden uns zur Bestätigung über{" "}
-          {contact || "Ihre angegebene Kontaktmöglichkeit"}.
+          Vielen Dank,{" "}
+          {name ||
+            "geschätzter Kunde"}
+          . Ihre Terminanfrage ist
+          bei uns eingegangen. Wir
+          melden uns zur Bestätigung
+          über{" "}
+          {contact ||
+            "Ihre angegebene Kontaktmöglichkeit"}
+          .
         </p>
       </div>
     )
   }
+
+  /*
+   * ==========================================
+   * FORMULAR
+   * ==========================================
+   */
 
   return (
     <form
       onSubmit={handleSubmit}
       className="border border-border bg-card p-6 md:p-10"
     >
+      {/* DATUM + NAME */}
       <div className="grid gap-6 md:grid-cols-2">
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
@@ -241,7 +375,9 @@ console.log("UPDATE FEHLER:", updateError)
             min={todayISO()}
             value={date}
             onChange={(e) => {
-              setDate(e.target.value)
+              setDate(
+                e.target.value,
+              )
               setTime("")
             }}
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none focus:border-ring"
@@ -256,62 +392,96 @@ console.log("UPDATE FEHLER:", updateError)
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) =>
+              setName(
+                e.target.value,
+              )
+            }
             placeholder="Vor- und Nachname"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
       </div>
 
+      {/* UHRZEIT */}
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Uhrzeit
         </span>
 
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-8">
-          {TIMES.map((currentTime) => {
-            const taken = takenForDate.has(currentTime)
-            const active = time === currentTime
+          {TIMES.map(
+            (currentTime) => {
+              const taken =
+                takenForDate.has(
+                  currentTime,
+                )
 
-            return (
-              <button
-                key={currentTime}
-                type="button"
-                disabled={taken || !date}
-                onClick={() => setTime(currentTime)}
-                className={[
-                  "border px-3 py-3 text-sm transition-colors",
-                  active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-foreground hover:bg-secondary",
-                  taken || !date
-                    ? "cursor-not-allowed opacity-30 hover:bg-transparent"
-                    : "",
-                ].join(" ")}
-              >
-                {currentTime}
-              </button>
-            )
-          })}
+              const active =
+                time ===
+                currentTime
+
+              return (
+                <button
+                  key={
+                    currentTime
+                  }
+                  type="button"
+                  disabled={
+                    taken ||
+                    !date
+                  }
+                  onClick={() =>
+                    setTime(
+                      currentTime,
+                    )
+                  }
+                  className={[
+                    "border px-3 py-3 text-sm transition-colors",
+
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-foreground hover:bg-secondary",
+
+                    taken ||
+                    !date
+                      ? "cursor-not-allowed opacity-30 hover:bg-transparent"
+                      : "",
+                  ].join(" ")}
+                >
+                  {
+                    currentTime
+                  }
+                </button>
+              )
+            },
+          )}
         </div>
 
         {!date && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Bitte zuerst ein Datum wählen.
+            Bitte zuerst ein
+            Datum wählen.
           </p>
         )}
       </div>
 
+      {/* KONTAKT + FAHRZEUG */}
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Kontakt (Tel. / E-Mail)
+            Kontakt (Tel. /
+            E-Mail)
           </span>
 
           <input
             type="text"
             value={contact}
-            onChange={(e) => setContact(e.target.value)}
+            onChange={(e) =>
+              setContact(
+                e.target.value,
+              )
+            }
             placeholder="Telefon oder E-Mail"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
@@ -325,13 +495,18 @@ console.log("UPDATE FEHLER:", updateError)
           <input
             type="text"
             value={car}
-            onChange={(e) => setCar(e.target.value)}
+            onChange={(e) =>
+              setCar(
+                e.target.value,
+              )
+            }
             placeholder="z. B. BMW 320i"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
       </div>
 
+      {/* PROBLEM */}
       <label className="mt-6 block">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Problem / Anliegen
@@ -339,17 +514,24 @@ console.log("UPDATE FEHLER:", updateError)
 
         <textarea
           value={problem}
-          onChange={(e) => setProblem(e.target.value)}
+          onChange={(e) =>
+            setProblem(
+              e.target.value,
+            )
+          }
           placeholder="Beschreiben Sie bitte kurz das Problem..."
           rows={5}
           className="mt-2 w-full resize-none border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
         />
       </label>
 
+      {/* BILDER */}
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
-          <span className="opacity-50">(optional)</span>
+          <span className="opacity-50">
+            (optional)
+          </span>
         </span>
 
         <label className="mt-2 flex cursor-pointer items-center justify-center border border-dashed border-border bg-background px-6 py-8 text-center transition-colors hover:bg-secondary">
@@ -361,7 +543,8 @@ console.log("UPDATE FEHLER:", updateError)
             </p>
 
             <p className="mt-1 text-xs text-muted-foreground">
-              Max. 5 Bilder, jeweils bis 10 MB
+              Max. 5 Bilder,
+              jeweils bis 10 MB
             </p>
           </div>
 
@@ -369,54 +552,70 @@ console.log("UPDATE FEHLER:", updateError)
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
             multiple
-            onChange={handleImages}
+            onChange={
+              handleImages
+            }
             className="hidden"
           />
         </label>
 
+        {/* VORSCHAU */}
         {images.length > 0 && (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {images.map((image, index) => (
-              <div
-                key={`${image.name}-${index}`}
-                className="relative aspect-square overflow-hidden border border-border"
-              >
-                <img
-                  src={URL.createObjectURL(image)}
-                  alt={`Ausgewähltes Bild ${index + 1}`}
-                  className="h-full w-full object-cover"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => removeImage(index)}
-                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
-                  aria-label="Bild entfernen"
+            {images.map(
+              (image, index) => (
+                <div
+                  key={`${image.name}-${index}`}
+                  className="relative aspect-square overflow-hidden border border-border"
                 >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                  <img
+                    src={URL.createObjectURL(
+                      image,
+                    )}
+                    alt={`Ausgewähltes Bild ${index + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      removeImage(
+                        index,
+                      )
+                    }
+                    className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
+                    aria-label="Bild entfernen"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ),
+            )}
           </div>
         )}
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Du kannst Fotos vom Schaden hinzufügen.
+          Du kannst Fotos vom
+          Schaden hinzufügen.
         </p>
       </div>
 
+      {/* FEHLER */}
       {error && (
         <p className="mt-4 text-sm text-[var(--bad)]">
           {error}
         </p>
       )}
 
+      {/* ABSENDEN */}
       <button
         type="submit"
         disabled={pending}
         className="mt-8 w-full bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {pending ? "Wird gesendet..." : "Termin anfragen"}
+        {pending
+          ? "Wird gesendet..."
+          : "Termin anfragen"}
       </button>
     </form>
   )
