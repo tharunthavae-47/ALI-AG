@@ -28,6 +28,7 @@ export type Booking = {
   problem: string
   status: BookingStatus
   created_at: string
+  image_urls: string[]
 }
 
 const OPEN_HOUR = 8
