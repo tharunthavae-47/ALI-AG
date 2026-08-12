@@ -147,7 +147,12 @@ export function BookingForm({
           const extension =
             image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-          const fileName = `${crypto.randomUUID()}.${extension}`
+          const safeName = name
+  .trim()
+  .replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, "-")
+  .replace(/-+/g, "-")
+
+const fileName = `${safeName}-${index + 1}.${extension}`
 
           const filePath = `${bookingId}/${fileName}`
 
@@ -412,7 +417,7 @@ console.log(
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
           <span className="opacity-50">
-            (optional)
+            (Muss)
           </span>
         </span>
 
