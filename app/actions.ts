@@ -73,6 +73,7 @@ export async function createBooking(input: {
   contact: string
   car: string
   problem: string
+  images?: File[]
 }): Promise<{ ok: boolean; error?: string }> {
   const name = input.name?.trim()
   const contact = input.contact?.trim()
@@ -91,16 +92,57 @@ export async function createBooking(input: {
     return { ok: false, error: "Eingabe zu lang." }
   }
 
-  const supabase = createAdminClient()
-  const { error } = await supabase.from("bookings").insert({
-    booking_date: input.booking_date,
-    booking_time: input.booking_time,
-    name,
-    contact,
-    car,
-    problem,
-    status: "pending",
-  })
+const supabase = createAdminClient()
+
+const imageUrls: string[] = []
+
+if (input.images && input.images.length > 0) {
+  for (const image of input.images) {
+    if (!image.type.startsWith("image/")) {
+      return { ok: false, error: "Es sind nur Bilder erlaubt." }
+    }
+
+    if (image.size > 10 * 1024 * 1024) {
+      return {
+        ok: false,
+        error: "Ein Bild darf maximal 10 MB gross sein.",
+      }
+    }
+
+    const fileExtension = image.name.split(".").pop() || "jpg"
+
+    const fileName = `${crypto.randomUUID()}.${fileExtension}`
+
+    const { error: uploadError } = await supabase.storage
+      .from("kunden-bilder")
+      .upload(fileName, image, {
+        contentType: image.type,
+        upsert: false,
+      })
+
+    if (uploadError) {
+      console.log("Bild Upload Fehler:", uploadError.message)
+
+      return {
+        ok: false,
+        error: "Die Bilder konnten nicht hochgeladen werden.",
+      }
+    }
+
+    imageUrls.push(fileName)
+  }
+}
+
+const { error } = await supabase.from("bookings").insert({
+  booking_date: input.booking_date,
+  booking_time: input.booking_time,
+  name,
+  contact,
+  car,
+  problem,
+  status: "pending",
+  image_urls: imageUrls,
+})
 
   if (error) {
     // Unique partial index violation => slot already taken.
