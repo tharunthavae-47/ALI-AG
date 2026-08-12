@@ -4,7 +4,7 @@ export function Hero() {
   return (
     <section id="home" className="relative flex min-h-screen items-center overflow-hidden">
       <Image
-        src="/hero-garage.png"
+        src="/AliAuto.jpg"
         alt="Mechaniker bei der Arbeit an einem Motor in der Werkstatt"
         fill
         priority
