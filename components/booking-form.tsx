@@ -121,79 +121,94 @@ export function BookingForm({
 
       const bookingId = result.bookingId
 
+      console.log("BOOKING ID:", bookingId)
+      console.log("ANZAHL BILDER:", images.length)
+
       /*
-      /*
- * 2. Bilder hochladen
- */
-if (images.length > 0) {
-  const supabase = createClient()
-  const uploadedImages: string[] = []
+       * 2. Bilder hochladen
+       */
+      if (images.length > 0) {
+        const supabase = createClient()
+        const uploadedImages: string[] = []
 
-  console.log("BOOKING ID:", bookingId)
-  console.log("ANZAHL BILDER:", images.length)
+        for (const image of images) {
+          const extension =
+            image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-  for (const image of images) {
-    const extension =
-      image.name.split(".").pop()?.toLowerCase() || "jpg"
+          const fileName = `${crypto.randomUUID()}.${extension}`
+          const filePath = `${bookingId}/${fileName}`
 
-    const fileName = `${crypto.randomUUID()}.${extension}`
-    const filePath = `${bookingId}/${fileName}`
+          console.log("UPLOAD:", filePath)
 
-    console.log("UPLOAD:", filePath)
+          const { error: uploadError } = await supabase.storage
+            .from("Kunden-Bilder")
+            .upload(filePath, image, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: image.type,
+            })
 
-    const { error: uploadError } = await supabase.storage
-      .from("Kunden-Bilder")
-      .upload(filePath, image, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: image.type,
-      })
+          if (uploadError) {
+            console.error("BILD UPLOAD FEHLER:", uploadError)
 
-    if (uploadError) {
-      console.error("BILD UPLOAD FEHLER:", uploadError)
+            setError(
+              "Der Termin wurde erstellt, aber das Bild konnte nicht hochgeladen werden.",
+            )
 
-      setError(
-        "Der Termin wurde erstellt, aber das Bild konnte nicht hochgeladen werden.",
-      )
+            setPending(false)
+            return
+          }
+
+          uploadedImages.push(filePath)
+
+          console.log("BILD ERFOLGREICH HOCHGELADEN:", filePath)
+        }
+
+        console.log("HOCHGELADENE BILDER:", uploadedImages)
+
+        /*
+         * 3. Bildpfade in bookings speichern
+         */
+        const { data: updatedBooking, error: updateError } =
+          await supabase
+            .from("bookings")
+            .update({
+              image_urls: uploadedImages,
+            })
+            .eq("id", bookingId)
+            .select("id, image_urls")
+            .single()
+
+        console.log("UPDATE ERGEBNIS:", updatedBooking)
+        console.log("UPDATE FEHLER:", updateError)
+
+        if (updateError) {
+          setError(
+            `Bilder wurden hochgeladen, konnten aber nicht gespeichert werden: ${updateError.message}`,
+          )
+
+          setPending(false)
+          return
+        }
+
+        console.log(
+          "IMAGE_URLS GESPEICHERT:",
+          updatedBooking?.image_urls,
+        )
+      }
 
       setPending(false)
-      return
+      setDone(true)
+    } catch (err) {
+      console.error("FEHLER BEIM TERMIN:", err)
+
+      setPending(false)
+      setError(
+        "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+      )
     }
-
-    uploadedImages.push(filePath)
   }
 
-  console.log("HOCHGELADENE BILDER:", uploadedImages)
-
-  /*
-   * 3. Bildpfade in bookings speichern
-   */
-  const { data: updatedBooking, error: updateError } = await supabase
-    .from("bookings")
-    .update({
-      image_urls: uploadedImages,
-    })
-    .eq("id", bookingId)
-    .select("id, image_urls")
-    .single()
-
-  console.log("UPDATE ERGEBNIS:", updatedBooking)
-  console.log("UPDATE FEHLER:", updateError)
-
-  if (updateError) {
-    setError(
-      `Bilder wurden hochgeladen, aber konnten nicht gespeichert werden: ${updateError.message}`,
-    )
-
-    setPending(false)
-    return
-  }
-
-  console.log("IMAGE_URLS GESPEICHERT:", updatedBooking?.image_urls)
-}
-
-setPending(false)
-setDone(true)
   if (done) {
     return (
       <div className="border border-border bg-card p-10 text-center">
@@ -207,8 +222,8 @@ setDone(true)
         </h3>
 
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Vielen Dank, {name || "geschätzter Kunde"}. Ihre Terminanfrage ist
-          bei uns eingegangen. Wir melden uns zur Bestätigung über{" "}
+          Vielen Dank, {name || "geschätzter Kunde"}. Ihre Terminanfrage
+          ist bei uns eingegangen. Wir melden uns zur Bestätigung über{" "}
           {contact || "Ihre angegebene Kontaktmöglichkeit"}.
         </p>
       </div>
