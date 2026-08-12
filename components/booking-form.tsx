@@ -17,6 +17,7 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
   const [contact, setContact] = useState("")
   const [car, setCar] = useState("")
   const [problem, setProblem] = useState("")
+  const [images, setImages] = useState<File[]>([])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -33,7 +34,15 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
       return
     }
     setPending(true)
-    const res = await createBooking({ booking_date: date, booking_time: time, name, contact, car, problem })
+    const res = await createBooking({
+  booking_date: date,
+  booking_time: time,
+  name,
+  contact,
+  car,
+  problem,
+  images,
+})
     setPending(false)
     if (res.ok) {
       setDone(true)
@@ -160,11 +169,12 @@ export function BookingForm({ bookedSlots }: { bookedSlots: PublicSlot[] }) {
   </span>
 
   <input
-    type="file"
-    accept="image/*"
-    multiple
-    className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground file:mr-4 file:border-0 file:bg-primary file:px-4 file:py-2 file:text-primary-foreground"
-  />
+  type="file"
+  accept="image/*"
+  multiple
+  onChange={(e) => setImages(Array.from(e.target.files ?? []))}
+  className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground file:mr-4 file:border-0 file:bg-primary file:px-4 file:py-2 file:text-primary-foreground"
+/>
 
   <p className="mt-2 text-xs text-muted-foreground">
     Du kannst mehrere Bilder hochladen, z. B. Fotos vom Schaden.
