@@ -169,17 +169,16 @@ export function BookingForm({
         /*
          * 3. Bildpfade in bookings speichern
          */
-        const { data: updatedBooking, error: updateError } =
-          await supabase
-            .from("bookings")
-            .update({
-              image_urls: uploadedImages,
-            })
-            .eq("id", bookingId)
-            .select("id, image_urls")
-            .single()
+       const { error: updateError } = await supabase
+  .from("bookings")
+  .update({
+    image_urls: uploadedImages,
+  })
+  .eq("id", bookingId)
 
-        console.log("UPDATE ERGEBNIS:", updatedBooking)
+console.log("HOCHGELADENE BILDER:", uploadedImages)
+console.log("UPDATE FEHLER:", updateError)
+
         console.log("UPDATE FEHLER:", updateError)
 
         if (updateError) {
@@ -191,10 +190,6 @@ export function BookingForm({
           return
         }
 
-        console.log(
-          "IMAGE_URLS GESPEICHERT:",
-          updatedBooking?.image_urls,
-        )
       }
 
       setPending(false)
