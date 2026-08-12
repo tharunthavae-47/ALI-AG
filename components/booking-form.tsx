@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { CheckCircle2 } from "lucide-react"
 import { createBooking, type PublicSlot } from "@/app/actions"
 
