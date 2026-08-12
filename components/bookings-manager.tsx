@@ -102,9 +102,47 @@ export function BookingsManager({
   }
 
   function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
-    if (!imageUrls) {
+  if (!imageUrls) {
+    return []
+  }
+
+  if (Array.isArray(imageUrls)) {
+    return imageUrls.filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        path.trim().length > 0 &&
+        path !== "[]",
+    )
+  }
+
+  if (typeof imageUrls === "string") {
+    try {
+      const parsed = JSON.parse(imageUrls)
+
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (path): path is string =>
+            typeof path === "string" &&
+            path.trim().length > 0 &&
+            path !== "[]",
+        )
+      }
+
+      return []
+    } catch {
+      if (
+        imageUrls.trim() &&
+        imageUrls.trim() !== "[]"
+      ) {
+        return [imageUrls.trim()]
+      }
+
       return []
     }
+  }
+
+  return []
+}
 
     // Bereits ein Array
     if (Array.isArray(imageUrls)) {
