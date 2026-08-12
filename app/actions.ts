@@ -73,95 +73,82 @@ export async function createBooking(input: {
   contact: string
   car: string
   problem: string
-  images?: File[]
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; bookingId?: string; error?: string }> {
   const name = input.name?.trim()
   const contact = input.contact?.trim()
   const car = input.car?.trim()
   const problem = input.problem?.trim()
 
-  if (!isValidDate(input.booking_date)) return { ok: false, error: "Ungültiges Datum." }
-  if (!isValidTime(input.booking_time)) return { ok: false, error: "Ungültige Uhrzeit." }
+  if (!isValidDate(input.booking_date)) {
+    return { ok: false, error: "Ungültiges Datum." }
+  }
+
+  if (!isValidTime(input.booking_time)) {
+    return { ok: false, error: "Ungültige Uhrzeit." }
+  }
+
   if (!name || !contact || !car || !problem) {
-    return { ok: false, error: "Bitte füllen Sie alle Felder aus." }
+    return {
+      ok: false,
+      error: "Bitte füllen Sie alle Felder aus.",
+    }
   }
+
   if (input.booking_date < new Date().toISOString().slice(0, 10)) {
-    return { ok: false, error: "Bitte wählen Sie ein Datum in der Zukunft." }
+    return {
+      ok: false,
+      error: "Bitte wählen Sie ein Datum in der Zukunft.",
+    }
   }
+
   if ([name, contact, car, problem].some((v) => v.length > 1000)) {
-    return { ok: false, error: "Eingabe zu lang." }
+    return {
+      ok: false,
+      error: "Eingabe zu lang.",
+    }
   }
 
-const supabase = createAdminClient()
+  const supabase = createAdminClient()
 
-const imageUrls: string[] = []
-
-if (input.images && input.images.length > 0) {
-  for (const image of input.images) {
-    if (!image.type.startsWith("image/")) {
-      return { ok: false, error: "Es sind nur Bilder erlaubt." }
-    }
-
-    if (image.size > 10 * 1024 * 1024) {
-      return {
-        ok: false,
-        error: "Ein Bild darf maximal 10 MB gross sein.",
-      }
-    }
-
-    const fileExtension = image.name.split(".").pop() || "jpg"
-
-    const fileName = `${crypto.randomUUID()}.${fileExtension}`
-
-    const { error: uploadError } = await supabase.storage
-      .from("kunden-bilder")
-      .upload(fileName, image, {
-        contentType: image.type,
-        upsert: false,
-      })
-
-    if (uploadError) {
-      console.log("Bild Upload Fehler:", uploadError.message)
-
-      return {
-        ok: false,
-        error: "Die Bilder konnten nicht hochgeladen werden.",
-      }
-    }
-
-    imageUrls.push(fileName)
-  }
-}
-
-const { data, error } = await supabase
-  .from("bookings")
-  .insert({
-    booking_date: input.booking_date,
-    booking_time: input.booking_time,
-    name,
-    contact,
-    car,
-    problem,
-    status: "pending",
-    image_urls: [],
-  })
-  .select("id")
-  .single()
+  const { data, error } = await supabase
+    .from("bookings")
+    .insert({
+      booking_date: input.booking_date,
+      booking_time: input.booking_time,
+      name,
+      contact,
+      car,
+      problem,
+      status: "pending",
+      image_urls: [],
+    })
+    .select("id")
+    .single()
 
   if (error) {
-    // Unique partial index violation => slot already taken.
     if (error.code === "23505") {
-      return { ok: false, error: "Dieser Termin ist leider bereits vergeben." }
+      return {
+        ok: false,
+        error: "Dieser Termin ist leider bereits vergeben.",
+      }
     }
+
     console.log("[v0] createBooking error:", error.message)
-    return { ok: false, error: "Anfrage konnte nicht gespeichert werden." }
+
+    return {
+      ok: false,
+      error: "Anfrage konnte nicht gespeichert werden.",
+    }
   }
 
   revalidatePath("/")
   revalidatePath("/besitzer")
-  return { ok: true }
-}
 
+  return {
+    ok: true,
+    bookingId: data.id,
+  }
+}
 /** Owner-only: full list including PII. Requires an authenticated session. */
 export async function listBookings(): Promise<Booking[]> {
   const auth = await createClient()
