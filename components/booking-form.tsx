@@ -122,73 +122,78 @@ export function BookingForm({
       const bookingId = result.bookingId
 
       /*
-       * 2. Bilder hochladen
-       */
-      if (images.length > 0) {
-        const supabase = createClient()
-        const uploadedImages: string[] = []
+      /*
+ * 2. Bilder hochladen
+ */
+if (images.length > 0) {
+  const supabase = createClient()
+  const uploadedImages: string[] = []
 
-        for (const image of images) {
-          const extension =
-            image.name.split(".").pop()?.toLowerCase() || "jpg"
+  console.log("BOOKING ID:", bookingId)
+  console.log("ANZAHL BILDER:", images.length)
 
-          const fileName = `${crypto.randomUUID()}.${extension}`
-          const filePath = `${bookingId}/${fileName}`
+  for (const image of images) {
+    const extension =
+      image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-          const { error: uploadError } = await supabase.storage
-            .from("Kunden-Bilder")
-            .upload(filePath, image, {
-              cacheControl: "3600",
-              upsert: false,
-              contentType: image.type,
-            })
+    const fileName = `${crypto.randomUUID()}.${extension}`
+    const filePath = `${bookingId}/${fileName}`
 
-          if (uploadError) {
-            console.error("Bild Upload Fehler:", uploadError)
+    console.log("UPLOAD:", filePath)
 
-            setError(
-              "Der Termin wurde erstellt, aber mindestens ein Bild konnte nicht hochgeladen werden.",
-            )
+    const { error: uploadError } = await supabase.storage
+      .from("Kunden-Bilder")
+      .upload(filePath, image, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: image.type,
+      })
 
-            setPending(false)
-            return
-          }
+    if (uploadError) {
+      console.error("BILD UPLOAD FEHLER:", uploadError)
 
-          uploadedImages.push(filePath)
-        }
-
-        /*
-         * 3. Bildpfade in der Buchung speichern
-         */
-        const { error: updateError } = await supabase
-          .from("bookings")
-          .update({
-            image_urls: uploadedImages,
-          })
-          .eq("id", bookingId)
-
-        if (updateError) {
-          console.error("Bildpfade speichern:", updateError)
-
-          setError(
-            "Die Bilder wurden hochgeladen, konnten aber nicht mit dem Termin verbunden werden.",
-          )
-
-          setPending(false)
-          return
-        }
-      }
+      setError(
+        "Der Termin wurde erstellt, aber das Bild konnte nicht hochgeladen werden.",
+      )
 
       setPending(false)
-      setDone(true)
-    } catch (err) {
-      console.error(err)
-
-      setPending(false)
-      setError("Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.")
+      return
     }
+
+    uploadedImages.push(filePath)
   }
 
+  console.log("HOCHGELADENE BILDER:", uploadedImages)
+
+  /*
+   * 3. Bildpfade in bookings speichern
+   */
+  const { data: updatedBooking, error: updateError } = await supabase
+    .from("bookings")
+    .update({
+      image_urls: uploadedImages,
+    })
+    .eq("id", bookingId)
+    .select("id, image_urls")
+    .single()
+
+  console.log("UPDATE ERGEBNIS:", updatedBooking)
+  console.log("UPDATE FEHLER:", updateError)
+
+  if (updateError) {
+    setError(
+      `Bilder wurden hochgeladen, aber konnten nicht gespeichert werden: ${updateError.message}`,
+    )
+
+    setPending(false)
+    return
+  }
+
+  console.log("IMAGE_URLS GESPEICHERT:", updatedBooking?.image_urls)
+}
+
+setPending(false)
+setDone(true)
   if (done) {
     return (
       <div className="border border-border bg-card p-10 text-center">
