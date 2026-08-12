@@ -133,16 +133,20 @@ if (input.images && input.images.length > 0) {
   }
 }
 
-const { error } = await supabase.from("bookings").insert({
-  booking_date: input.booking_date,
-  booking_time: input.booking_time,
-  name,
-  contact,
-  car,
-  problem,
-  status: "pending",
-  image_urls: imageUrls,
-})
+const { data, error } = await supabase
+  .from("bookings")
+  .insert({
+    booking_date: input.booking_date,
+    booking_time: input.booking_time,
+    name,
+    contact,
+    car,
+    problem,
+    status: "pending",
+    image_urls: [],
+  })
+  .select("id")
+  .single()
 
   if (error) {
     // Unique partial index violation => slot already taken.
@@ -203,7 +207,10 @@ export async function updateBookingStatus(
     return { ok: false, error: "Aktualisierung fehlgeschlagen." }
   }
 
-  revalidatePath("/besitzer")
-  revalidatePath("/")
-  return { ok: true }
+ revalidatePath("/")
+revalidatePath("/besitzer")
+
+return {
+  ok: true,
+  bookingId: data.id,
 }
