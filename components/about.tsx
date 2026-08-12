@@ -63,9 +63,14 @@ export function About() {
 
   <div className="h-full min-h-[140px] overflow-hidden border-l border-border">
     <img
-      src="public/Ali protrai.jpg"
+      src="Ali protrai.jpg"
       alt="Mohamedali Brahim – Inhaber und Mechaniker"
       className="h-full w-full object-cover"
-    />
-  </div>
-</div>
+        />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
