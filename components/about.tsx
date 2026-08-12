@@ -1,7 +1,6 @@
 const stats = [
-  { value: "20+", label: "Jahre Erfahrung" },
-  { value: "5.000+", label: "Zufriedene Kunden" },
-  { value: "48h", label: "Ø Durchlaufzeit" },
+  { value: "5+", label: "Erfahrung" },
+  { value: " ", label: "Zufriedene Kunden" },
 ]
 
 export function About() {
@@ -14,12 +13,12 @@ export function About() {
             Handwerk mit Handschlag-Qualität
           </h2>
           <p className="mt-6 text-pretty leading-relaxed text-muted-foreground">
-            ALI-AG ist eine inhabergeführte Kfz-Werkstatt, die für ehrliche Beratung und saubere Arbeit steht. Wir
+            ALI-AG ist eine inhabergeführte Werkstatt, die für ehrliche Beratung und saubere Arbeit steht. Wir
             nehmen uns Zeit für Ihr Anliegen, erklären verständlich, was zu tun ist, und arbeiten transparent zu fairen
             Preisen.
           </p>
           <p className="mt-4 text-pretty leading-relaxed text-muted-foreground">
-            Ob Kleinwagen, Familienauto oder Transporter – bei uns ist Ihr Fahrzeug in erfahrenen Händen.
+            Ob Kleinwagen, Familienauto, Sportwagen oder Transporter – bei uns ist Ihr Fahrzeug in erfahrenen Händen.
           </p>
         </div>
         <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
