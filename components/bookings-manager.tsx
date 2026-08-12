@@ -1,8 +1,20 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Check, X, Phone, Car, Calendar, Clock, Image as ImageIcon } from "lucide-react"
-import { updateBookingStatus, type Booking, type BookingStatus } from "@/app/actions"
+import {
+  Check,
+  X,
+  Phone,
+  Car,
+  Calendar,
+  Clock,
+  Image as ImageIcon,
+} from "lucide-react"
+import {
+  updateBookingStatus,
+  type Booking,
+  type BookingStatus,
+} from "@/app/actions"
 
 const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
   { key: "pending", label: "Offen" },
@@ -25,6 +37,7 @@ const statusLabels: Record<BookingStatus, string> = {
 
 function formatDate(iso: string) {
   const d = new Date(iso + "T00:00:00")
+
   return d.toLocaleDateString("de-DE", {
     weekday: "short",
     day: "2-digit",
@@ -60,28 +73,67 @@ export function BookingsManager({
     setBusyId(id)
 
     startTransition(async () => {
-      const res = await updateBookingStatus(id, status)
+      try {
+        const res = await updateBookingStatus(id, status)
 
-      if (res.ok) {
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === id ? { ...b, status } : b
+        if (res.ok) {
+          setBookings((prev) =>
+            prev.map((b) =>
+              b.id === id ? { ...b, status } : b
+            )
           )
-        )
+        }
+      } catch (error) {
+        console.error("Fehler beim Aktualisieren:", error)
+      } finally {
+        setBusyId(null)
       }
-
-      setBusyId(null)
     })
   }
 
   function getImageUrl(path: string) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-    if (!supabaseUrl) {
+    if (!supabaseUrl || !path) {
       return ""
     }
 
     return `${supabaseUrl}/storage/v1/object/public/kunden-bilder/${path}`
+  }
+
+  function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
+    if (!imageUrls) {
+      return []
+    }
+
+    // Bereits ein Array
+    if (Array.isArray(imageUrls)) {
+      return imageUrls.filter(
+        (path): path is string =>
+          typeof path === "string" && path.length > 0
+      )
+    }
+
+    // Falls Supabase einen String zurückgibt
+    if (typeof imageUrls === "string") {
+      try {
+        const parsed = JSON.parse(imageUrls)
+
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (path): path is string =>
+              typeof path === "string" && path.length > 0
+          )
+        }
+
+        // "{}" oder andere ungültige Formate
+        return []
+      } catch {
+        return []
+      }
+    }
+
+    return []
   }
 
   return (
@@ -92,6 +144,7 @@ export function BookingsManager({
           <div className="font-display text-3xl font-bold text-[var(--warn)]">
             {counts.pending}
           </div>
+
           <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
             Offen
           </div>
@@ -101,6 +154,7 @@ export function BookingsManager({
           <div className="font-display text-3xl font-bold text-[var(--ok)]">
             {counts.confirmed}
           </div>
+
           <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
             Bestätigt
           </div>
@@ -110,6 +164,7 @@ export function BookingsManager({
           <div className="font-display text-3xl font-bold text-[var(--bad)]">
             {counts.rejected}
           </div>
+
           <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
             Abgelehnt
           </div>
@@ -121,6 +176,7 @@ export function BookingsManager({
         {FILTERS.map((f) => (
           <button
             key={f.key}
+            type="button"
             onClick={() => setFilter(f.key)}
             className={[
               "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
@@ -142,144 +198,156 @@ export function BookingsManager({
           </p>
         )}
 
-        {visible.map((b) => (
-          <article
-            key={b.id}
-            className="border border-border bg-card p-6"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="w-full">
-                {/* Name + Status */}
-                <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
-                    {b.name}
-                  </h3>
+        {visible.map((b) => {
+          const imagePaths = getImagePaths(b.image_urls)
 
-                  <span
-                    className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[b.status]}`}
-                  >
-                    {statusLabels[b.status]}
-                  </span>
-                </div>
+          return (
+            <article
+              key={b.id}
+              className="border border-border bg-card p-6"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="w-full">
+                  {/* Name + Status */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
+                      {b.name}
+                    </h3>
 
-                {/* Termin Informationen */}
-                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <Calendar
-                      className="h-4 w-4"
-                      strokeWidth={1.5}
-                    />
-                    {formatDate(b.booking_date)}
-                  </span>
+                    <span
+                      className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
+                        statusStyles[b.status]
+                      }`}
+                    >
+                      {statusLabels[b.status]}
+                    </span>
+                  </div>
 
-                  <span className="flex items-center gap-2">
-                    <Clock
-                      className="h-4 w-4"
-                      strokeWidth={1.5}
-                    />
-                    {b.booking_time}
-                  </span>
+                  {/* Termin Informationen */}
+                  <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-2">
+                      <Calendar
+                        className="h-4 w-4"
+                        strokeWidth={1.5}
+                      />
+                      {formatDate(b.booking_date)}
+                    </span>
 
-                  <span className="flex items-center gap-2">
-                    <Phone
-                      className="h-4 w-4"
-                      strokeWidth={1.5}
-                    />
-                    {b.contact}
-                  </span>
+                    <span className="flex items-center gap-2">
+                      <Clock
+                        className="h-4 w-4"
+                        strokeWidth={1.5}
+                      />
+                      {b.booking_time}
+                    </span>
 
-                  <span className="flex items-center gap-2">
-                    <Car
-                      className="h-4 w-4"
-                      strokeWidth={1.5}
-                    />
-                    {b.car}
-                  </span>
-                </div>
+                    <span className="flex items-center gap-2">
+                      <Phone
+                        className="h-4 w-4"
+                        strokeWidth={1.5}
+                      />
+                      {b.contact}
+                    </span>
 
-                {/* Problem */}
-                <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
-                  {b.problem}
-                </p>
+                    <span className="flex items-center gap-2">
+                      <Car
+                        className="h-4 w-4"
+                        strokeWidth={1.5}
+                      />
+                      {b.car}
+                    </span>
+                  </div>
 
-                {/* Kundenbilder */}
-                {b.image_urls && b.image_urls.length > 0 && (
-                  <div className="mt-6">
-                    <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
+                  {/* Problem */}
+                  <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
+                    {b.problem}
+                  </p>
+
+                  {/* Kundenbilder */}
+                  {imagePaths.length > 0 && (
+                    <div className="mt-6">
+                      <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
+                        <ImageIcon className="h-4 w-4" />
+                        Kundenbilder ({imagePaths.length})
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                        {imagePaths.map((imagePath, index) => {
+                          const imageUrl = getImageUrl(imagePath)
+
+                          if (!imageUrl) {
+                            return null
+                          }
+
+                          return (
+                            <a
+                              key={`${imagePath}-${index}`}
+                              href={imageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group relative aspect-square overflow-hidden border border-border bg-background"
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={`Kundenbild ${index + 1}`}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+
+                              <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
+                                Bild öffnen
+                              </div>
+                            </a>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Keine Bilder */}
+                  {imagePaths.length === 0 && (
+                    <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
                       <ImageIcon className="h-4 w-4" />
-                      Kundenbilder ({b.image_urls.length})
+                      Keine Kundenbilder vorhanden
                     </div>
+                  )}
 
-                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                      {b.image_urls.map((imagePath, index) => {
-                        const imageUrl = getImageUrl(imagePath)
+                  {/* Buttons */}
+                  {b.status === "pending" && (
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdate(b.id, "confirmed")
+                        }
+                        disabled={
+                          isPending && busyId === b.id
+                        }
+                        className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" />
+                        Bestätigen
+                      </button>
 
-                        return (
-                          <a
-                            key={imagePath}
-                            href={imageUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="group relative aspect-square overflow-hidden border border-border bg-background"
-                          >
-                            <img
-                              src={imageUrl}
-                              alt={`Kundenbild ${index + 1}`}
-                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-
-                            <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
-                              Bild öffnen
-                            </div>
-                          </a>
-                        )
-                      })}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleUpdate(b.id, "rejected")
+                        }
+                        disabled={
+                          isPending && busyId === b.id
+                        }
+                        className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" />
+                        Ablehnen
+                      </button>
                     </div>
-                  </div>
-                )}
-
-                {/* Keine Bilder */}
-                {(!b.image_urls || b.image_urls.length === 0) && (
-                  <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <ImageIcon className="h-4 w-4" />
-                    Keine Kundenbilder vorhanden
-                  </div>
-                )}
-
-                {/* Buttons */}
-                {b.status === "pending" && (
-                  <div className="mt-6 flex flex-wrap gap-2">
-                    <button
-                      onClick={() =>
-                        handleUpdate(b.id, "confirmed")
-                      }
-                      disabled={
-                        isPending && busyId === b.id
-                      }
-                      className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
-                    >
-                      <Check className="h-4 w-4" />
-                      Bestätigen
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        handleUpdate(b.id, "rejected")
-                      }
-                      disabled={
-                        isPending && busyId === b.id
-                      }
-                      className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
-                    >
-                      <X className="h-4 w-4" />
-                      Ablehnen
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          )
+        })}
       </div>
     </div>
   )
