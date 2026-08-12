@@ -147,14 +147,14 @@ export function BookingForm({
           const extension =
             image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-          const safeName = name
+ const safeName = name
   .trim()
   .replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, "-")
   .replace(/-+/g, "-")
 
 const fileName = `${safeName}-${index + 1}.${extension}`
 
-          const filePath = `${bookingId}/${fileName}`
+const filePath = fileName
 
           console.log("Upload:", filePath)
 
