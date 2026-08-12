@@ -194,10 +194,10 @@ export async function updateBookingStatus(
     return { ok: false, error: "Aktualisierung fehlgeschlagen." }
   }
 
- revalidatePath("/")
+revalidatePath("/")
 revalidatePath("/besitzer")
 
 return {
   ok: true,
-  bookingId: data.id,
+}
 }
