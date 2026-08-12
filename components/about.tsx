@@ -46,22 +46,26 @@ export function About() {
             ))}
           </div>
 
-          {/* Inhaber */}
-          <div className="mt-6 border border-border bg-card p-6 text-center">
-            <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
-              Inhaber
-            </p>
+         <div className="mt-6 grid grid-cols-[1fr_120px] items-center border border-border bg-card">
+  <div className="p-6">
+    <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
+      Inhaber
+    </p>
 
-            <h3 className="mt-2 font-display text-2xl font-bold uppercase tracking-wide text-foreground">
-              Mohamedali Brahim
-            </h3>
+    <h3 className="mt-2 font-display text-2xl font-bold uppercase tracking-wide text-foreground">
+      Mohamedali Brahim
+    </h3>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Mechaniker
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
+    <p className="mt-1 text-sm text-muted-foreground">
+      Mechaniker
+    </p>
+  </div>
+
+  <div className="h-full min-h-[140px] overflow-hidden border-l border-border">
+    <img
+      src="/mohamedali.jpg"
+      alt="Mohamedali Brahim – Inhaber und Mechaniker"
+      className="h-full w-full object-cover"
+    />
+  </div>
+</div>
