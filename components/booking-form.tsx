@@ -32,15 +32,15 @@ export function BookingForm({
   const [car, setCar] = useState("")
   const [problem, setProblem] = useState("")
   const [images, setImages] = useState<File[]>([])
-  const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
   const [done, setDone] = useState(false)
 
   const takenForDate = useMemo(() => {
     return new Set(
       bookedSlots
-        .filter((s) => s.booking_date === date)
-        .map((s) => s.booking_time),
+        .filter((slot) => slot.booking_date === date)
+        .map((slot) => slot.booking_time),
     )
   }, [bookedSlots, date])
 
@@ -71,10 +71,12 @@ export function BookingForm({
   }
 
   function removeImage(index: number) {
-    setImages((prev) => prev.filter((_, i) => i !== index))
+    setImages((previous) =>
+      previous.filter((_, currentIndex) => currentIndex !== index),
+    )
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
 
     setError(null)
@@ -89,16 +91,18 @@ export function BookingForm({
       return
     }
 
+    if (takenForDate.has(time)) {
+      setError("Dieser Termin ist leider bereits vergeben.")
+      return
+    }
+
     setPending(true)
 
     try {
-      const supabase = createClient()
-
       /*
-       * 1. Zuerst den Termin erstellen.
-       * Dadurch bekommen wir die ID des Termins.
+       * 1. Termin erstellen
        */
-      const res = await createBooking({
+      const result = await createBooking({
         booking_date: date,
         booking_time: time,
         name,
@@ -107,52 +111,55 @@ export function BookingForm({
         problem,
       })
 
-      if (!res.ok || !res.bookingId) {
-        setError(res.error ?? "Der Termin konnte nicht erstellt werden.")
+      if (!result.ok || !result.bookingId) {
+        setError(
+          result.error ?? "Der Termin konnte nicht erstellt werden.",
+        )
         setPending(false)
         return
       }
 
-      const bookingId = res.bookingId
-      const uploadedImages: string[] = []
+      const bookingId = result.bookingId
 
       /*
-       * 2. Bilder direkt vom Browser zu Supabase Storage hochladen.
+       * 2. Bilder hochladen
        */
-      for (const image of images) {
-        const extension =
-          image.name.split(".").pop()?.toLowerCase() || "jpg"
+      if (images.length > 0) {
+        const supabase = createClient()
+        const uploadedImages: string[] = []
 
-        const fileName = `${crypto.randomUUID()}.${extension}`
+        for (const image of images) {
+          const extension =
+            image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-        const filePath = `${bookingId}/${fileName}`
+          const fileName = `${crypto.randomUUID()}.${extension}`
+          const filePath = `${bookingId}/${fileName}`
 
-        const { error: uploadError } = await supabase.storage
-          .from("kunden-bilder")
-          .upload(filePath, image, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: image.type,
-          })
+          const { error: uploadError } = await supabase.storage
+            .from("kunden-bilder")
+            .upload(filePath, image, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: image.type,
+            })
 
-        if (uploadError) {
-          console.error("Bild Upload Fehler:", uploadError)
+          if (uploadError) {
+            console.error("Bild Upload Fehler:", uploadError)
 
-          setError(
-            "Der Termin wurde erstellt, aber mindestens ein Bild konnte nicht hochgeladen werden.",
-          )
+            setError(
+              "Der Termin wurde erstellt, aber mindestens ein Bild konnte nicht hochgeladen werden.",
+            )
 
-          setPending(false)
-          return
+            setPending(false)
+            return
+          }
+
+          uploadedImages.push(filePath)
         }
 
-        uploadedImages.push(filePath)
-      }
-
-      /*
-       * 3. Die Bildpfade beim Termin speichern.
-       */
-      if (uploadedImages.length > 0) {
+        /*
+         * 3. Bildpfade in der Buchung speichern
+         */
         const { error: updateError } = await supabase
           .from("bookings")
           .update({
@@ -222,7 +229,6 @@ export function BookingForm({
               setDate(e.target.value)
               setTime("")
             }}
-            required
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none focus:border-ring"
           />
         </label>
@@ -236,8 +242,7 @@ export function BookingForm({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            required
-            placeholder="Max Mustermann"
+            placeholder="Vor- und Nachname"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
@@ -249,18 +254,18 @@ export function BookingForm({
         </span>
 
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-8">
-          {TIMES.map((t) => {
-            const taken = takenForDate.has(t)
-            const active = time === t
+          {TIMES.map((currentTime) => {
+            const taken = takenForDate.has(currentTime)
+            const active = time === currentTime
 
             return (
               <button
+                key={currentTime}
                 type="button"
-                key={t}
                 disabled={taken || !date}
-                onClick={() => setTime(t)}
+                onClick={() => setTime(currentTime)}
                 className={[
-                  "border px-2 py-3 font-display text-sm tracking-wide transition-colors",
+                  "border px-3 py-3 text-sm transition-colors",
                   active
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border text-foreground hover:bg-secondary",
@@ -269,7 +274,7 @@ export function BookingForm({
                     : "",
                 ].join(" ")}
               >
-                {t}
+                {currentTime}
               </button>
             )
           })}
@@ -292,8 +297,7 @@ export function BookingForm({
             type="text"
             value={contact}
             onChange={(e) => setContact(e.target.value)}
-            required
-            placeholder="0170 1234567"
+            placeholder="Telefon oder E-Mail"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
@@ -307,8 +311,7 @@ export function BookingForm({
             type="text"
             value={car}
             onChange={(e) => setCar(e.target.value)}
-            required
-            placeholder="VW Golf VII, 2018"
+            placeholder="z. B. BMW 320i"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
@@ -322,14 +325,12 @@ export function BookingForm({
         <textarea
           value={problem}
           onChange={(e) => setProblem(e.target.value)}
-          required
-          rows={4}
-          placeholder="Beschreiben Sie kurz, worum es geht…"
+          placeholder="Beschreiben Sie bitte kurz das Problem..."
+          rows={5}
           className="mt-2 w-full resize-none border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
         />
       </label>
 
-      {/* BILDER */}
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
@@ -398,9 +399,9 @@ export function BookingForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-8 w-full bg-primary px-8 py-4 font-display text-sm font-semibold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+        className="mt-8 w-full bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {pending ? "Wird gesendet…" : "Termin anfragen"}
+        {pending ? "Wird gesendet..." : "Termin anfragen"}
       </button>
     </form>
   )
