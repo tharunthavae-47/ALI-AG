@@ -143,7 +143,7 @@ export function BookingForm({
 
         const uploadedImages: string[] = []
 
-        for (const image of images) {
+        for (const [index, image] of images.entries()) {
           const extension =
             image.name.split(".").pop()?.toLowerCase() || "jpg"
 
