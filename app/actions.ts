@@ -199,5 +199,4 @@ revalidatePath("/besitzer")
 
 return {
   ok: true,
-  bookingId: data.id,
 }
