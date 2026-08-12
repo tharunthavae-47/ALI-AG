@@ -4,7 +4,7 @@ const services = [
   { icon: Wrench, title: "Reparaturen", desc: "Von der kleinen Reparatur bis zur großen Instandsetzung – schnell und zuverlässig." },
   { icon: Gauge, title: "Diagnose", desc: "Moderne Fehlerdiagnose für alle gängigen Marken und Modelle." },
   { icon: Cog, title: "Inspektion & Wartung", desc: "Regelmäßige Wartung nach Herstellervorgaben für ein langes Fahrzeugleben." },
-  { icon: ShieldCheck, title: "MFK", desc: "Wir vorbereiten ihr FAhrzeug für ein Problemlose Vorführung." },
+  { icon: ShieldCheck, title: "MFK", desc: "Wir vorbereiten ihr Fahrzeug für ein Problemlose Vorführung." },
   { icon: Droplets, title: "Ölwechsel", desc: "Fachgerechter Öl- und Filterwechsel mit hochwertigen Materialien." },
   { icon: Car, title: "Reifenservice", desc: "Reifenwechsel, Einlagerung und Auswuchten – alles aus einer Hand." },
 ]
