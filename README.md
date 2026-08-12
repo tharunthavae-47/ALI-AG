@@ -1,2 +1,2 @@
-ALTER TABLE bookings
-ADD COLUMN image_url text;
+ALTER TABLE appointments
+ADD COLUMN images text[] DEFAULT '{}';
