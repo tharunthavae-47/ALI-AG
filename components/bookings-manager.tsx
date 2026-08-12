@@ -98,7 +98,7 @@ export function BookingsManager({
       return ""
     }
 
-    return `${supabaseUrl}/storage/v1/object/public/kunden-bilder/${path}`
+    return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${path}`
   }
 
   function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
