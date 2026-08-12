@@ -10,17 +10,13 @@ import {
   Clock,
   Image as ImageIcon,
 } from "lucide-react"
-
 import {
   updateBookingStatus,
   type Booking,
   type BookingStatus,
 } from "@/app/actions"
 
-const FILTERS: {
-  key: BookingStatus | "all"
-  label: string
-}[] = [
+const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
   { key: "pending", label: "Offen" },
   { key: "confirmed", label: "Bestätigt" },
   { key: "rejected", label: "Abgelehnt" },
@@ -48,6 +44,81 @@ function formatDate(iso: string) {
     month: "2-digit",
     year: "numeric",
   })
+}
+
+/**
+ * Holt die Bildpfade aus image_urls.
+ *
+ * Unterstützt:
+ * - Array: ["uuid/bild.jpg"]
+ * - JSON-String: '["uuid/bild.jpg"]'
+ * - einzelner String: "uuid/bild.jpg"
+ */
+function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
+  if (!imageUrls) {
+    return []
+  }
+
+  // Falls image_urls bereits ein Array ist
+  if (Array.isArray(imageUrls)) {
+    return imageUrls.filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        path.trim().length > 0 &&
+        path.trim() !== "[]",
+    )
+  }
+
+  // Falls image_urls ein String ist
+  if (typeof imageUrls === "string") {
+    const value = imageUrls.trim()
+
+    if (!value || value === "[]" || value === "{}") {
+      return []
+    }
+
+    // JSON-Array
+    try {
+      const parsed = JSON.parse(value)
+
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (path): path is string =>
+            typeof path === "string" &&
+            path.trim().length > 0 &&
+            path.trim() !== "[]",
+        )
+      }
+    } catch {
+      // Kein JSON -> behandeln wir als normalen Pfad
+    }
+
+    return [value]
+  }
+
+  return []
+}
+
+/**
+ * Erstellt die öffentliche Supabase-URL für ein Bild.
+ */
+function getImageUrl(path: string) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  if (!supabaseUrl || !path) {
+    return ""
+  }
+
+  const cleanPath = path
+    .trim()
+    .replace(/^\/+/, "")
+
+  if (!cleanPath || cleanPath === "[]") {
+    return ""
+  }
+
+  return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${cleanPath}`
 }
 
 export function BookingsManager({
@@ -108,7 +179,7 @@ export function BookingsManager({
           )
         } else {
           console.error(
-            "Status konnte nicht geändert werden:",
+            "Fehler beim Aktualisieren:",
             result,
           )
         }
@@ -121,119 +192,6 @@ export function BookingsManager({
         setBusyId(null)
       }
     })
-  }
-
-  /*
-   * Erstellt die öffentliche URL für ein Bild
-   */
-  function getImageUrl(path: string) {
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL
-
-    if (!supabaseUrl || !path) {
-      return ""
-    }
-
-    const cleanPath = path
-      .trim()
-      .replace(/^\/+/, "")
-
-    if (!cleanPath || cleanPath === "[]") {
-      return ""
-    }
-
-    return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${cleanPath}`
-  }
-
-  /*
-   * Holt die Bildpfade aus image_urls.
-   *
-   * image_urls ist bei dir text[].
-   */
-  function getImagePaths(
-    imageUrls: Booking["image_urls"],
-  ): string[] {
-    if (!imageUrls) {
-      return []
-    }
-
-    /*
-     * Supabase text[]:
-     *
-     * [
-     *   "booking-id/bild1.jpg",
-     *   "booking-id/bild2.jpg"
-     * ]
-     */
-    if (Array.isArray(imageUrls)) {
-      return imageUrls.filter(
-        (path): path is string => {
-          if (typeof path !== "string") {
-            return false
-          }
-
-          const cleanPath = path.trim()
-
-          return (
-            cleanPath.length > 0 &&
-            cleanPath !== "[]" &&
-            cleanPath !== "{}"
-          )
-        },
-      )
-    }
-
-    /*
-     * Falls Supabase einen String zurückgibt.
-     */
-    if (typeof imageUrls === "string") {
-      const value = imageUrls.trim()
-
-      if (
-        !value ||
-        value === "[]" ||
-        value === "{}"
-      ) {
-        return []
-      }
-
-      /*
-       * JSON Array:
-       *
-       * ["bild1.jpg","bild2.jpg"]
-       */
-      try {
-        const parsed = JSON.parse(value)
-
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (path): path is string => {
-              if (typeof path !== "string") {
-                return false
-              }
-
-              const cleanPath = path.trim()
-
-              return (
-                cleanPath.length > 0 &&
-                cleanPath !== "[]" &&
-                cleanPath !== "{}"
-              )
-            },
-          )
-        }
-      } catch {
-        /*
-         * Kein JSON.
-         * Dann behandeln wir den Wert
-         * als einzelnen Bildpfad.
-         */
-      }
-
-      return [value]
-    }
-
-    return []
   }
 
   return (
@@ -311,100 +269,111 @@ export function BookingsManager({
               key={booking.id}
               className="border border-border bg-card p-6"
             >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="w-full">
-                  {/* Name + Status */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
-                      {booking.name}
-                    </h3>
+              <div className="w-full">
+                {/* Name + Status */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
+                    {booking.name}
+                  </h3>
 
-                    <span
-                      className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
-                    >
-                      {statusLabels[booking.status]}
-                    </span>
+                  <span
+                    className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
+                  >
+                    {statusLabels[booking.status]}
+                  </span>
+                </div>
+
+                {/* Termininformationen */}
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2">
+                    <Calendar
+                      className="h-4 w-4"
+                      strokeWidth={1.5}
+                    />
+
+                    {formatDate(
+                      booking.booking_date,
+                    )}
+                  </span>
+
+                  <span className="flex items-center gap-2">
+                    <Clock
+                      className="h-4 w-4"
+                      strokeWidth={1.5}
+                    />
+
+                    {booking.booking_time}
+                  </span>
+
+                  <span className="flex items-center gap-2">
+                    <Phone
+                      className="h-4 w-4"
+                      strokeWidth={1.5}
+                    />
+
+                    {booking.contact}
+                  </span>
+
+                  <span className="flex items-center gap-2">
+                    <Car
+                      className="h-4 w-4"
+                      strokeWidth={1.5}
+                    />
+
+                    {booking.car}
+                  </span>
+                </div>
+
+                {/* Problem */}
+                <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
+                  {booking.problem}
+                </p>
+
+                {/* ============================= */}
+                {/* KUNDENBILDER */}
+                {/* ============================= */}
+
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
+                    <ImageIcon className="h-4 w-4" />
+
+                    Kundenbilder
+                    {imagePaths.length > 0 &&
+                      ` (${imagePaths.length})`}
                   </div>
 
-                  {/* Termin Informationen */}
-                  <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-2">
-                      <Calendar
-                        className="h-4 w-4"
-                        strokeWidth={1.5}
-                      />
+                  {imagePaths.length === 0 ? (
+                    <div className="mt-3 border border-border bg-background p-5 text-center text-xs text-muted-foreground">
+                      Keine Kundenbilder vorhanden
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                      {imagePaths.map(
+                        (imagePath, index) => {
+                          const imageUrl =
+                            getImageUrl(
+                              imagePath,
+                            )
 
-                      {formatDate(
-                        booking.booking_date,
-                      )}
-                    </span>
+                          if (!imageUrl) {
+                            return null
+                          }
 
-                    <span className="flex items-center gap-2">
-                      <Clock
-                        className="h-4 w-4"
-                        strokeWidth={1.5}
-                      />
-
-                      {booking.booking_time}
-                    </span>
-
-                    <span className="flex items-center gap-2">
-                      <Phone
-                        className="h-4 w-4"
-                        strokeWidth={1.5}
-                      />
-
-                      {booking.contact}
-                    </span>
-
-                    <span className="flex items-center gap-2">
-                      <Car
-                        className="h-4 w-4"
-                        strokeWidth={1.5}
-                      />
-
-                      {booking.car}
-                    </span>
-                  </div>
-
-                  {/* Problem */}
-                  <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
-                    {booking.problem}
-                  </p>
-
-                  {/* Kundenbilder */}
-                  {imagePaths.length > 0 && (
-                    <div className="mt-6">
-                      <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
-                        <ImageIcon className="h-4 w-4" />
-
-                        Kundenbilder (
-                        {imagePaths.length})
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                        {imagePaths.map(
-                          (imagePath, index) => {
-                            const imageUrl =
-                              getImageUrl(imagePath)
-
-                            if (!imageUrl) {
-                              return null
-                            }
-
-                            return (
+                          return (
+                            <div
+                              key={`${imagePath}-${index}`}
+                              className="group relative overflow-hidden border border-border bg-background"
+                            >
+                              {/* Bild direkt anzeigen */}
                               <a
-                                key={`${imagePath}-${index}`}
                                 href={imageUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="group relative aspect-square overflow-hidden border border-border bg-background"
+                                className="block aspect-square"
                               >
                                 <img
                                   src={imageUrl}
-                                  alt={`Kundenbild ${
-                                    index + 1
-                                  }`}
+                                  alt={`Kundenbild ${index + 1}`}
                                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                   onError={(event) => {
                                     console.error(
@@ -416,72 +385,63 @@ export function BookingsManager({
                                       "none"
                                   }}
                                 />
-
-                                <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
-                                  Bild öffnen
-                                </div>
                               </a>
-                            )
-                          },
-                        )}
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Keine Bilder */}
-                  {imagePaths.length === 0 && (
-                    <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <ImageIcon className="h-4 w-4" />
-
-                      Keine Kundenbilder vorhanden
-                    </div>
-                  )}
-
-                  {/* Buttons */}
-                  {booking.status === "pending" && (
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      {/* Bestätigen */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleUpdate(
-                            booking.id,
-                            "confirmed",
+                              {/* Bildnummer */}
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-2 text-center text-[10px] uppercase tracking-wider text-white">
+                                Bild {index + 1}
+                              </div>
+                            </div>
                           )
-                        }
-                        disabled={
-                          isPending &&
-                          busyId === booking.id
-                        }
-                        className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
-                      >
-                        <Check className="h-4 w-4" />
-
-                        Bestätigen
-                      </button>
-
-                      {/* Ablehnen */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleUpdate(
-                            booking.id,
-                            "rejected",
-                          )
-                        }
-                        disabled={
-                          isPending &&
-                          busyId === booking.id
-                        }
-                        className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
-                      >
-                        <X className="h-4 w-4" />
-
-                        Ablehnen
-                      </button>
+                        },
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Buttons */}
+                {booking.status ===
+                  "pending" && (
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdate(
+                          booking.id,
+                          "confirmed",
+                        )
+                      }
+                      disabled={
+                        isPending &&
+                        busyId === booking.id
+                      }
+                      className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+                    >
+                      <Check className="h-4 w-4" />
+
+                      Bestätigen
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdate(
+                          booking.id,
+                          "rejected",
+                        )
+                      }
+                      disabled={
+                        isPending &&
+                        busyId === booking.id
+                      }
+                      className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
+                    >
+                      <X className="h-4 w-4" />
+
+                      Ablehnen
+                    </button>
+                  </div>
+                )}
               </div>
             </article>
           )
