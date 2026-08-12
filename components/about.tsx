@@ -1,6 +1,7 @@
 const stats = [
   { value: "5+", label: "Erfahrung" },
-  { value: " ", label: "Zufriedene Kunden" },
+  { value: "😊 ", label: "Zufriedene Kunden" },
+  { value: "❤️ ", label: "Alles mit liebe" },
 ]
 
 export function About() {
