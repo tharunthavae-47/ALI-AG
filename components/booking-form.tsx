@@ -200,36 +200,31 @@ export function BookingForm({
           imageUrls,
         )
 
-        const {
-          data: updateData,
-          error: updateError,
-        } = await supabase
-          .from("bookings")
-          .update({
-            image_urls: imageUrls,
-          })
-          .eq("id", bookingId)
-          .select("id, image_urls")
-          .single()
+       const { error: updateError } = await supabase
+  .from("bookings")
+  .update({
+    image_urls: imageUrls,
+  })
+  .eq("id", bookingId)
 
-        if (updateError) {
-          console.error(
-            "IMAGE_URLS UPDATE FEHLER:",
-            updateError,
-          )
+if (updateError) {
+  console.error(
+    "IMAGE_URLS UPDATE FEHLER:",
+    updateError,
+  )
 
-          setError(
-            "Die Bilder wurden hochgeladen, aber konnten nicht mit dem Termin verbunden werden.",
-          )
+  setError(
+    "Die Bilder wurden hochgeladen, aber konnten nicht mit dem Termin verbunden werden.",
+  )
 
-          setPending(false)
-          return
-        }
+  setPending(false)
+  return
+}
 
-        console.log(
-          "IMAGE_URLS GESPEICHERT:",
-          updateData,
-        )
+console.log(
+  "IMAGE_URLS ERFOLGREICH GESPEICHERT:",
+  imageUrls,
+)
       }
 
       // ==========================================
