@@ -10,13 +10,17 @@ import {
   Clock,
   Image as ImageIcon,
 } from "lucide-react"
+
 import {
   updateBookingStatus,
   type Booking,
   type BookingStatus,
 } from "@/app/actions"
 
-const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
+const FILTERS: {
+  key: BookingStatus | "all"
+  label: string
+}[] = [
   { key: "pending", label: "Offen" },
   { key: "confirmed", label: "Bestätigt" },
   { key: "rejected", label: "Abgelehnt" },
@@ -52,123 +56,181 @@ export function BookingsManager({
   initialBookings: Booking[]
 }) {
   const [bookings, setBookings] = useState(initialBookings)
-  const [filter, setFilter] = useState<BookingStatus | "all">("pending")
+  const [filter, setFilter] =
+    useState<BookingStatus | "all">("pending")
+
   const [isPending, startTransition] = useTransition()
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const visible = bookings.filter((b) =>
-    filter === "all" ? true : b.status === filter
+  const visible = bookings.filter((booking) =>
+    filter === "all"
+      ? true
+      : booking.status === filter,
   )
 
   const counts = {
-    pending: bookings.filter((b) => b.status === "pending").length,
-    confirmed: bookings.filter((b) => b.status === "confirmed").length,
-    rejected: bookings.filter((b) => b.status === "rejected").length,
+    pending: bookings.filter(
+      (booking) => booking.status === "pending",
+    ).length,
+
+    confirmed: bookings.filter(
+      (booking) => booking.status === "confirmed",
+    ).length,
+
+    rejected: bookings.filter(
+      (booking) => booking.status === "rejected",
+    ).length,
   }
 
   function handleUpdate(
     id: string,
-    status: Exclude<BookingStatus, "pending">
+    status: Exclude<BookingStatus, "pending">,
   ) {
     setBusyId(id)
 
     startTransition(async () => {
       try {
-        const res = await updateBookingStatus(id, status)
+        const result = await updateBookingStatus(
+          id,
+          status,
+        )
 
-        if (res.ok) {
-          setBookings((prev) =>
-            prev.map((b) =>
-              b.id === id ? { ...b, status } : b
-            )
+        if (result.ok) {
+          setBookings((previous) =>
+            previous.map((booking) =>
+              booking.id === id
+                ? {
+                    ...booking,
+                    status,
+                  }
+                : booking,
+            ),
+          )
+        } else {
+          console.error(
+            "Status konnte nicht geändert werden:",
+            result,
           )
         }
       } catch (error) {
-        console.error("Fehler beim Aktualisieren:", error)
+        console.error(
+          "Fehler beim Aktualisieren:",
+          error,
+        )
       } finally {
         setBusyId(null)
       }
     })
   }
 
+  /*
+   * Erstellt die öffentliche URL für ein Bild
+   */
   function getImageUrl(path: string) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL
 
     if (!supabaseUrl || !path) {
       return ""
     }
 
-    return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${path}`
+    const cleanPath = path
+      .trim()
+      .replace(/^\/+/, "")
+
+    if (!cleanPath || cleanPath === "[]") {
+      return ""
+    }
+
+    return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${cleanPath}`
   }
 
-  function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
-  if (!imageUrls) {
-    return []
-  }
-
-  if (Array.isArray(imageUrls)) {
-    return imageUrls.filter(
-      (path): path is string =>
-        typeof path === "string" &&
-        path.trim().length > 0 &&
-        path !== "[]",
-    )
-  }
-
-  if (typeof imageUrls === "string") {
-    try {
-      const parsed = JSON.parse(imageUrls)
-
-      if (Array.isArray(parsed)) {
-        return parsed.filter(
-          (path): path is string =>
-            typeof path === "string" &&
-            path.trim().length > 0 &&
-            path !== "[]",
-        )
-      }
-
-      return []
-    } catch {
-      if (
-        imageUrls.trim() &&
-        imageUrls.trim() !== "[]"
-      ) {
-        return [imageUrls.trim()]
-      }
-
+  /*
+   * Holt die Bildpfade aus image_urls.
+   *
+   * image_urls ist bei dir text[].
+   */
+  function getImagePaths(
+    imageUrls: Booking["image_urls"],
+  ): string[] {
+    if (!imageUrls) {
       return []
     }
-  }
 
-  return []
-}
-
-    // Bereits ein Array
+    /*
+     * Supabase text[]:
+     *
+     * [
+     *   "booking-id/bild1.jpg",
+     *   "booking-id/bild2.jpg"
+     * ]
+     */
     if (Array.isArray(imageUrls)) {
       return imageUrls.filter(
-        (path): path is string =>
-          typeof path === "string" && path.length > 0
+        (path): path is string => {
+          if (typeof path !== "string") {
+            return false
+          }
+
+          const cleanPath = path.trim()
+
+          return (
+            cleanPath.length > 0 &&
+            cleanPath !== "[]" &&
+            cleanPath !== "{}"
+          )
+        },
       )
     }
 
-    // Falls Supabase einen String zurückgibt
+    /*
+     * Falls Supabase einen String zurückgibt.
+     */
     if (typeof imageUrls === "string") {
+      const value = imageUrls.trim()
+
+      if (
+        !value ||
+        value === "[]" ||
+        value === "{}"
+      ) {
+        return []
+      }
+
+      /*
+       * JSON Array:
+       *
+       * ["bild1.jpg","bild2.jpg"]
+       */
       try {
-        const parsed = JSON.parse(imageUrls)
+        const parsed = JSON.parse(value)
 
         if (Array.isArray(parsed)) {
           return parsed.filter(
-            (path): path is string =>
-              typeof path === "string" && path.length > 0
+            (path): path is string => {
+              if (typeof path !== "string") {
+                return false
+              }
+
+              const cleanPath = path.trim()
+
+              return (
+                cleanPath.length > 0 &&
+                cleanPath !== "[]" &&
+                cleanPath !== "{}"
+              )
+            },
           )
         }
-
-        // "{}" oder andere ungültige Formate
-        return []
       } catch {
-        return []
+        /*
+         * Kein JSON.
+         * Dann behandeln wir den Wert
+         * als einzelnen Bildpfad.
+         */
       }
+
+      return [value]
     }
 
     return []
@@ -211,19 +273,22 @@ export function BookingsManager({
 
       {/* Filter */}
       <div className="mt-8 flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
+        {FILTERS.map((filterItem) => (
           <button
-            key={f.key}
+            key={filterItem.key}
             type="button"
-            onClick={() => setFilter(f.key)}
+            onClick={() =>
+              setFilter(filterItem.key)
+            }
             className={[
               "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
-              filter === f.key
+
+              filter === filterItem.key
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border text-muted-foreground hover:text-foreground",
             ].join(" ")}
           >
-            {f.label}
+            {filterItem.label}
           </button>
         ))}
       </div>
@@ -236,12 +301,14 @@ export function BookingsManager({
           </p>
         )}
 
-        {visible.map((b) => {
-          const imagePaths = getImagePaths(b.image_urls)
+        {visible.map((booking) => {
+          const imagePaths = getImagePaths(
+            booking.image_urls,
+          )
 
           return (
             <article
-              key={b.id}
+              key={booking.id}
               className="border border-border bg-card p-6"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -249,15 +316,13 @@ export function BookingsManager({
                   {/* Name + Status */}
                   <div className="flex flex-wrap items-center gap-3">
                     <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
-                      {b.name}
+                      {booking.name}
                     </h3>
 
                     <span
-                      className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${
-                        statusStyles[b.status]
-                      }`}
+                      className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
                     >
-                      {statusLabels[b.status]}
+                      {statusLabels[booking.status]}
                     </span>
                   </div>
 
@@ -268,7 +333,10 @@ export function BookingsManager({
                         className="h-4 w-4"
                         strokeWidth={1.5}
                       />
-                      {formatDate(b.booking_date)}
+
+                      {formatDate(
+                        booking.booking_date,
+                      )}
                     </span>
 
                     <span className="flex items-center gap-2">
@@ -276,7 +344,8 @@ export function BookingsManager({
                         className="h-4 w-4"
                         strokeWidth={1.5}
                       />
-                      {b.booking_time}
+
+                      {booking.booking_time}
                     </span>
 
                     <span className="flex items-center gap-2">
@@ -284,7 +353,8 @@ export function BookingsManager({
                         className="h-4 w-4"
                         strokeWidth={1.5}
                       />
-                      {b.contact}
+
+                      {booking.contact}
                     </span>
 
                     <span className="flex items-center gap-2">
@@ -292,13 +362,14 @@ export function BookingsManager({
                         className="h-4 w-4"
                         strokeWidth={1.5}
                       />
-                      {b.car}
+
+                      {booking.car}
                     </span>
                   </div>
 
                   {/* Problem */}
                   <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
-                    {b.problem}
+                    {booking.problem}
                   </p>
 
                   {/* Kundenbilder */}
@@ -306,37 +377,53 @@ export function BookingsManager({
                     <div className="mt-6">
                       <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
                         <ImageIcon className="h-4 w-4" />
-                        Kundenbilder ({imagePaths.length})
+
+                        Kundenbilder (
+                        {imagePaths.length})
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                        {imagePaths.map((imagePath, index) => {
-                          const imageUrl = getImageUrl(imagePath)
+                        {imagePaths.map(
+                          (imagePath, index) => {
+                            const imageUrl =
+                              getImageUrl(imagePath)
 
-                          if (!imageUrl) {
-                            return null
-                          }
+                            if (!imageUrl) {
+                              return null
+                            }
 
-                          return (
-                            <a
-                              key={`${imagePath}-${index}`}
-                              href={imageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="group relative aspect-square overflow-hidden border border-border bg-background"
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={`Kundenbild ${index + 1}`}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              />
+                            return (
+                              <a
+                                key={`${imagePath}-${index}`}
+                                href={imageUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group relative aspect-square overflow-hidden border border-border bg-background"
+                              >
+                                <img
+                                  src={imageUrl}
+                                  alt={`Kundenbild ${
+                                    index + 1
+                                  }`}
+                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                  onError={(event) => {
+                                    console.error(
+                                      "Bild konnte nicht geladen werden:",
+                                      imageUrl,
+                                    )
 
-                              <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
-                                Bild öffnen
-                              </div>
-                            </a>
-                          )
-                        })}
+                                    event.currentTarget.style.display =
+                                      "none"
+                                  }}
+                                />
+
+                                <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] uppercase tracking-wider text-white opacity-0 transition-opacity group-hover:opacity-100">
+                                  Bild öffnen
+                                </div>
+                              </a>
+                            )
+                          },
+                        )}
                       </div>
                     </div>
                   )}
@@ -345,38 +432,51 @@ export function BookingsManager({
                   {imagePaths.length === 0 && (
                     <div className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
                       <ImageIcon className="h-4 w-4" />
+
                       Keine Kundenbilder vorhanden
                     </div>
                   )}
 
                   {/* Buttons */}
-                  {b.status === "pending" && (
+                  {booking.status === "pending" && (
                     <div className="mt-6 flex flex-wrap gap-2">
+                      {/* Bestätigen */}
                       <button
                         type="button"
                         onClick={() =>
-                          handleUpdate(b.id, "confirmed")
+                          handleUpdate(
+                            booking.id,
+                            "confirmed",
+                          )
                         }
                         disabled={
-                          isPending && busyId === b.id
+                          isPending &&
+                          busyId === booking.id
                         }
                         className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
                       >
                         <Check className="h-4 w-4" />
+
                         Bestätigen
                       </button>
 
+                      {/* Ablehnen */}
                       <button
                         type="button"
                         onClick={() =>
-                          handleUpdate(b.id, "rejected")
+                          handleUpdate(
+                            booking.id,
+                            "rejected",
+                          )
                         }
                         disabled={
-                          isPending && busyId === b.id
+                          isPending &&
+                          busyId === booking.id
                         }
                         className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
                       >
                         <X className="h-4 w-4" />
+
                         Ablehnen
                       </button>
                     </div>
