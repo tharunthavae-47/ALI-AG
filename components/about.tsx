@@ -10,7 +10,7 @@ export function About() {
       <div className="mx-auto grid max-w-6xl gap-14 lg:grid-cols-2 lg:items-center">
         <div>
           <p className="font-display text-sm uppercase tracking-[0.35em] text-muted-foreground">
-            Über ALI-AG
+            Über MB Performance
           </p>
 
           <h2 className="mt-4 text-balance font-display text-4xl font-bold uppercase tracking-tight text-foreground md:text-5xl">
@@ -18,7 +18,7 @@ export function About() {
           </h2>
 
           <p className="mt-6 text-pretty leading-relaxed text-muted-foreground">
-            ALI-AG ist eine inhabergeführte Werkstatt, die für ehrliche Beratung
+            MB Performance ist eine inhabergeführte Werkstatt, die für ehrliche Beratung
             und saubere Arbeit steht. Wir nehmen uns Zeit für Ihr Anliegen,
             erklären verständlich, was zu tun ist, und arbeiten transparent zu
             fairen Preisen.
