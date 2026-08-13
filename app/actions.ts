@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
@@ -405,16 +406,108 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // SEITEN AKTUALISIEREN
-  // =====================================================
+// BESTÄTIGUNGS-E-MAIL BEI "CONFIRMED"
+// ===================================================
 
-  revalidatePath("/")
-  revalidatePath("/besitzer")
+if (status === "confirmed") {
+  const resendApiKey = process.env.RESEND_API_KEY
 
-  return {
-    ok: true,
-    bookingId: data.id,
+  if (!resendApiKey) {
+    console.error("RESEND_API_KEY fehlt.")
+  } else {
+    try {
+      const resend = new Resend(resendApiKey)
+
+      const formattedDate = new Date(
+        booking.booking_date + "T00:00:00",
+      ).toLocaleDateString("de-CH", {
+        weekday: "long",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+
+      const { error: emailError } =
+        await resend.emails.send({
+          from: "MB Performance <onboarding@resend.dev>",
+          to: [booking.email],
+          subject: "Ihr Termin bei MB Performance wurde bestätigt",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px;">
+              
+              <h1>MB Performance</h1>
+
+              <h2>Ihr Termin wurde bestätigt</h2>
+
+              <p>
+                Hallo ${booking.name},
+              </p>
+
+              <p>
+                Ihr Termin bei <strong>MB Performance</strong>
+                wurde erfolgreich bestätigt.
+              </p>
+
+              <div style="background:#f5f5f5; padding:20px; margin:20px 0;">
+                
+                <p>
+                  <strong>Datum:</strong><br>
+                  ${formattedDate}
+                </p>
+
+                <p>
+                  <strong>Uhrzeit:</strong><br>
+                  ${booking.booking_time}
+                </p>
+
+                <p>
+                  <strong>Fahrzeug:</strong><br>
+                  ${booking.car}
+                </p>
+
+              </div>
+
+              <p>
+                Vielen Dank für Ihre Anfrage.
+              </p>
+
+              <p>
+                Freundliche Grüsse<br>
+                <strong>MB Performance</strong>
+              </p>
+
+            </div>
+          `,
+        })
+
+      if (emailError) {
+        console.error(
+          "Fehler beim Senden der E-Mail:",
+          emailError,
+        )
+      } else {
+        console.log(
+          "Bestätigungs-E-Mail wurde gesendet an:",
+          booking.email,
+        )
+      }
+    } catch (error) {
+      console.error(
+        "Resend Fehler:",
+        error,
+      )
+    }
   }
+}
+  // ===================================================
+// SEITEN AKTUALISIEREN
+// ===================================================
+
+revalidatePath("/")
+revalidatePath("/besitzer")
+
+return {
+  ok: true,
 }
 
 // =====================================================
