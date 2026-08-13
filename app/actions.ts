@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
@@ -79,18 +78,8 @@ function isValidTime(value: string) {
   )
 }
 
-// HTML-Zeichen für E-Mail absichern
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}
-
 // =====================================================
-// BUCHUNGEN FÜR ÖFFENTLICHEN KALENDER
+// BELEGTE TERMINE
 // =====================================================
 
 export async function getBookedSlots(): Promise<
@@ -139,16 +128,16 @@ export async function createBooking(input: {
   error?: string
 }> {
   const name =
-    input.name?.trim()
+    input.name?.trim() ?? ""
 
   const contact =
-    input.contact?.trim()
+    input.contact?.trim() ?? ""
 
   const car =
-    input.car?.trim()
+    input.car?.trim() ?? ""
 
   const problem =
-    input.problem?.trim()
+    input.problem?.trim() ?? ""
 
   // Datum prüfen
   if (
@@ -189,11 +178,12 @@ export async function createBooking(input: {
   }
 
   // Vergangenes Datum verhindern
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10)
+
   if (
-    input.booking_date <
-    new Date()
-      .toISOString()
-      .slice(0, 10)
+    input.booking_date < today
   ) {
     return {
       ok: false,
@@ -202,7 +192,7 @@ export async function createBooking(input: {
     }
   }
 
-  // Maximale Länge
+  // Eingabelänge begrenzen
   if (
     [name, contact, car, problem].some(
       (value) => value.length > 1000,
@@ -214,10 +204,11 @@ export async function createBooking(input: {
     }
   }
 
-  // Supabase Admin
+  // Supabase Admin Client
   const supabase =
     createAdminClient()
 
+  // Termin speichern
   const { data, error } =
     await supabase
       .from("bookings")
@@ -238,13 +229,15 @@ export async function createBooking(input: {
 
         status: "pending",
 
-        // Wichtig für deine Bilder
+        // Bilder werden danach
+        // über saveBookingImages gespeichert
         image_urls: [],
       })
       .select("id")
       .single()
 
   if (error) {
+    // Termin bereits vergeben
     if (
       error.code === "23505"
     ) {
@@ -267,12 +260,72 @@ export async function createBooking(input: {
     }
   }
 
+  // Seiten aktualisieren
   revalidatePath("/")
   revalidatePath("/besitzer")
 
   return {
     ok: true,
     bookingId: data.id,
+  }
+}
+
+// =====================================================
+// BILDER EINER BUCHUNG SPEICHERN
+// =====================================================
+
+export async function saveBookingImages(
+  bookingId: string,
+  imageUrls: string[],
+): Promise<{
+  ok: boolean
+  error?: string
+}> {
+  if (!bookingId) {
+    return {
+      ok: false,
+      error: "Buchungs-ID fehlt.",
+    }
+  }
+
+  if (!Array.isArray(imageUrls)) {
+    return {
+      ok: false,
+      error: "Ungültige Bilddaten.",
+    }
+  }
+
+  // Admin Client
+  const supabase =
+    createAdminClient()
+
+  const { error } =
+    await supabase
+      .from("bookings")
+      .update({
+        image_urls: imageUrls,
+      })
+      .eq("id", bookingId)
+
+  if (error) {
+    console.log(
+      "saveBookingImages error:",
+      error.message,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Die Bilder konnten nicht gespeichert werden.",
+    }
+  }
+
+  // Seiten aktualisieren
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
   }
 }
 
@@ -303,21 +356,22 @@ export async function listBookings(): Promise<
   const {
     data,
     error,
-  } = await supabase
-    .from("bookings")
-    .select("*")
-    .order(
-      "booking_date",
-      {
-        ascending: true,
-      },
-    )
-    .order(
-      "booking_time",
-      {
-        ascending: true,
-      },
-    )
+  } =
+    await supabase
+      .from("bookings")
+      .select("*")
+      .order(
+        "booking_date",
+        {
+          ascending: true,
+        },
+      )
+      .order(
+        "booking_time",
+        {
+          ascending: true,
+        },
+      )
 
   if (error) {
     console.log(
@@ -336,6 +390,13 @@ export async function listBookings(): Promise<
 // =====================================================
 // TERMIN BESTÄTIGEN / ABLEHNEN
 // =====================================================
+//
+// WICHTIG:
+// Hier wird KEINE E-Mail verschickt.
+// Hier wird KEINE SMS verschickt.
+//
+// Nur der Status in Supabase wird geändert.
+// =====================================================
 
 export async function updateBookingStatus(
   id: string,
@@ -347,10 +408,7 @@ export async function updateBookingStatus(
   ok: boolean
   error?: string
 }> {
-  // ===================================================
-  // 1. BESITZER PRÜFEN
-  // ===================================================
-
+  // Besitzer prüfen
   const auth =
     await createClient()
 
@@ -366,10 +424,7 @@ export async function updateBookingStatus(
     }
   }
 
-  // ===================================================
-  // 2. STATUS PRÜFEN
-  // ===================================================
-
+  // Status prüfen
   if (
     status !== "confirmed" &&
     status !== "rejected"
@@ -380,67 +435,23 @@ export async function updateBookingStatus(
     }
   }
 
-  // ===================================================
-  // 3. BUCHUNG HOLEN
-  // ===================================================
-
+  // Supabase Admin Client
   const supabase =
     createAdminClient()
 
-  const {
-    data: booking,
-    error: bookingError,
-  } =
+  // Status ändern
+  const { error } =
     await supabase
       .from("bookings")
-      .select(
-        `
-          id,
-          booking_date,
-          booking_time,
-          name,
-          contact,
-          car,
-          problem,
-          status
-        `,
-      )
+      .update({
+        status,
+      })
       .eq("id", id)
-      .single()
 
-  if (
-    bookingError ||
-    !booking
-  ) {
+  if (error) {
     console.log(
-      "Buchung nicht gefunden:",
-      bookingError?.message,
-    )
-
-    return {
-      ok: false,
-      error:
-        "Buchung wurde nicht gefunden.",
-    }
-  }
-
-  // ===================================================
-  // 4. STATUS IN SUPABASE ÄNDERN
-  // ===================================================
-
-  const {
-    error: updateError,
-  } = await supabase
-    .from("bookings")
-    .update({
-      status,
-    })
-    .eq("id", id)
-
-  if (updateError) {
-    console.log(
-      "Status Update Fehler:",
-      updateError.message,
+      "updateBookingStatus error:",
+      error.message,
     )
 
     return {
@@ -450,193 +461,7 @@ export async function updateBookingStatus(
     }
   }
 
-  // ===================================================
-  // 5. E-MAIL NUR BEI BESTÄTIGUNG
-  // ===================================================
-
-  if (
-    status === "confirmed"
-  ) {
-    const contact =
-      booking.contact?.trim() ??
-      ""
-
-    // Prüfen, ob Kontakt eine E-Mail ist
-    const isEmail =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-        contact,
-      )
-
-    if (isEmail) {
-      try {
-        const apiKey =
-          process.env.RESEND_API_KEY
-
-        // Kein API-Key
-        if (!apiKey) {
-          console.error(
-            "RESEND_API_KEY fehlt in den Environment Variables.",
-          )
-        } else {
-          const resend =
-            new Resend(apiKey)
-
-          // Datum formatieren
-          const formattedDate =
-            new Date(
-              booking.booking_date +
-                "T00:00:00",
-            ).toLocaleDateString(
-              "de-CH",
-              {
-                weekday:
-                  "long",
-
-                day: "2-digit",
-
-                month: "2-digit",
-
-                year: "numeric",
-              },
-            )
-
-          // E-Mail senden
-          const {
-            error: emailError,
-          } =
-            await resend.emails.send({
-              from:
-                "MB Performance <onboarding@resend.dev>",
-
-              to: [contact],
-
-              subject:
-                "Termin bei MB Performance bestätigt",
-
-              html: `
-                <div
-                  style="
-                    font-family: Arial, sans-serif;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 30px;
-                    color: #111;
-                  "
-                >
-
-                  <h1>
-                    MB Performance
-                  </h1>
-
-                  <h2>
-                    Ihr Termin wurde bestätigt
-                  </h2>
-
-                  <p>
-                    Hallo ${escapeHtml(
-                      booking.name,
-                    )},
-                  </p>
-
-                  <p>
-                    Ihr Termin bei
-                    <strong>
-                      MB Performance
-                    </strong>
-                    wurde erfolgreich bestätigt.
-                  </p>
-
-                  <div
-                    style="
-                      background: #f5f5f5;
-                      padding: 20px;
-                      margin: 20px 0;
-                    "
-                  >
-
-                    <p>
-                      <strong>
-                        Datum:
-                      </strong>
-                      <br>
-                      ${escapeHtml(
-                        formattedDate,
-                      )}
-                    </p>
-
-                    <p>
-                      <strong>
-                        Uhrzeit:
-                      </strong>
-                      <br>
-                      ${escapeHtml(
-                        booking.booking_time,
-                      )}
-                    </p>
-
-                    <p>
-                      <strong>
-                        Fahrzeug:
-                      </strong>
-                      <br>
-                      ${escapeHtml(
-                        booking.car,
-                      )}
-                    </p>
-
-                  </div>
-
-                  <p>
-                    Vielen Dank für Ihre Anfrage.
-                  </p>
-
-                  <p>
-                    Freundliche Grüsse
-                    <br>
-                    <strong>
-                      MB Performance
-                    </strong>
-                  </p>
-
-                </div>
-              `,
-            })
-
-          if (emailError) {
-            console.error(
-              "E-Mail Fehler:",
-              emailError,
-            )
-          } else {
-            console.log(
-              "Bestätigungs-E-Mail gesendet an:",
-              contact,
-            )
-          }
-        }
-      } catch (error) {
-        console.error(
-          "Fehler beim Senden der E-Mail:",
-          error,
-        )
-      }
-    } else {
-      // =================================================
-      // TELEFONNUMMER
-      // SMS KOMMT ALS NÄCHSTER SCHRITT
-      // =================================================
-
-      console.log(
-        "Kontakt ist keine E-Mail. SMS kann später gesendet werden:",
-        contact,
-      )
-    }
-  }
-
-  // ===================================================
-  // 6. SEITEN AKTUALISIEREN
-  // ===================================================
-
+  // Seiten aktualisieren
   revalidatePath("/")
   revalidatePath("/besitzer")
 
