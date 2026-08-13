@@ -1,10 +1,18 @@
+```tsx
 "use server"
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+
+// =====================================================
+// RESEND
+// =====================================================
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 // =====================================================
 // ABMELDEN
@@ -69,18 +77,13 @@ function isValidDate(value: string) {
     return false
   }
 
-  const date = new Date(
-    value + "T00:00:00",
-  )
+  const date = new Date(value + "T00:00:00")
 
-  return !Number.isNaN(
-    date.getTime(),
-  )
+  return !Number.isNaN(date.getTime())
 }
 
 function isValidTime(value: string) {
-  const match =
-    /^(\d{2}):00$/.exec(value)
+  const match = /^(\d{2}):00$/.exec(value)
 
   if (!match) {
     return false
@@ -101,13 +104,11 @@ function isValidTime(value: string) {
 export async function getBookedSlots(): Promise<
   PublicSlot[]
 > {
-  const supabase =
-    createAdminClient()
+  const supabase = createAdminClient()
 
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10)
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10)
 
   const {
     data,
@@ -117,14 +118,8 @@ export async function getBookedSlots(): Promise<
     .select(
       "booking_date, booking_time",
     )
-    .neq(
-      "status",
-      "rejected",
-    )
-    .gte(
-      "booking_date",
-      today,
-    )
+    .neq("status", "rejected")
+    .gte("booking_date", today)
 
   if (error) {
     console.error(
@@ -169,7 +164,7 @@ export async function createBooking(input: {
     input.phone?.trim() ?? ""
 
   const email =
-    input.email?.trim() ?? ""
+    input.email?.trim().toLowerCase() ?? ""
 
   const car =
     input.car?.trim() ?? ""
@@ -188,8 +183,7 @@ export async function createBooking(input: {
   ) {
     return {
       ok: false,
-      error:
-        "Ungültiges Datum.",
+      error: "Ungültiges Datum.",
     }
   }
 
@@ -204,8 +198,7 @@ export async function createBooking(input: {
   ) {
     return {
       ok: false,
-      error:
-        "Ungültige Uhrzeit.",
+      error: "Ungültige Uhrzeit.",
     }
   }
 
@@ -275,14 +268,9 @@ export async function createBooking(input: {
   // ===================================================
 
   const phoneDigits =
-    phone.replace(
-      /\D/g,
-      "",
-    )
+    phone.replace(/\D/g, "")
 
-  if (
-    phoneDigits.length < 7
-  ) {
+  if (phoneDigits.length < 7) {
     return {
       ok: false,
       error:
@@ -294,14 +282,12 @@ export async function createBooking(input: {
   // VERGANGENES DATUM
   // ===================================================
 
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10)
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10)
 
   if (
-    input.booking_date <
-    today
+    input.booking_date < today
   ) {
     return {
       ok: false,
@@ -311,12 +297,10 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // MAXIMALE LÄNGEN
+  // MAXIMALE LÄNGE
   // ===================================================
 
-  if (
-    name.length > 200
-  ) {
+  if (name.length > 200) {
     return {
       ok: false,
       error:
@@ -324,9 +308,7 @@ export async function createBooking(input: {
     }
   }
 
-  if (
-    phone.length > 50
-  ) {
+  if (phone.length > 50) {
     return {
       ok: false,
       error:
@@ -334,9 +316,7 @@ export async function createBooking(input: {
     }
   }
 
-  if (
-    email.length > 320
-  ) {
+  if (email.length > 320) {
     return {
       ok: false,
       error:
@@ -344,9 +324,7 @@ export async function createBooking(input: {
     }
   }
 
-  if (
-    car.length > 200
-  ) {
+  if (car.length > 200) {
     return {
       ok: false,
       error:
@@ -354,9 +332,7 @@ export async function createBooking(input: {
     }
   }
 
-  if (
-    problem.length > 2000
-  ) {
+  if (problem.length > 2000) {
     return {
       ok: false,
       error:
@@ -372,7 +348,7 @@ export async function createBooking(input: {
     createAdminClient()
 
   // ===================================================
-  // BUCHUNG SPEICHERN
+  // TERMIN SPEICHERN
   // ===================================================
 
   const {
@@ -398,8 +374,7 @@ export async function createBooking(input: {
 
         problem,
 
-        status:
-          "pending",
+        status: "pending",
 
         image_urls: [],
       })
@@ -407,7 +382,7 @@ export async function createBooking(input: {
       .single()
 
   // ===================================================
-  // FEHLER
+  // FEHLER BEIM SPEICHERN
   // ===================================================
 
   if (error) {
@@ -416,9 +391,9 @@ export async function createBooking(input: {
       error,
     )
 
+    // Termin bereits vergeben
     if (
-      error.code ===
-      "23505"
+      error.code === "23505"
     ) {
       return {
         ok: false,
@@ -435,19 +410,152 @@ export async function createBooking(input: {
   }
 
   // ===================================================
+  // AUTOMATISCHE E-MAIL AN KUNDEN
+  // ===================================================
+
+  try {
+    if (
+      !process.env.RESEND_API_KEY
+    ) {
+      console.error(
+        "RESEND_API_KEY fehlt.",
+      )
+    } else if (
+      !process.env.RESEND_FROM_EMAIL
+    ) {
+      console.error(
+        "RESEND_FROM_EMAIL fehlt.",
+      )
+    } else {
+      const { error: emailError } =
+        await resend.emails.send({
+          from:
+            process.env
+              .RESEND_FROM_EMAIL,
+
+          to: email,
+
+          subject:
+            "Ihre Terminanfrage bei ALI AG",
+
+          html: `
+            <!DOCTYPE html>
+            <html lang="de">
+              <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <title>Terminanfrage ALI AG</title>
+              </head>
+
+              <body style="margin:0; padding:0; background:#f5f5f5; font-family:Arial,Helvetica,sans-serif;">
+                <div style="max-width:600px; margin:40px auto; background:#ffffff; padding:32px; border-radius:12px;">
+
+                  <h1 style="margin-top:0;">
+                    Vielen Dank, ${escapeHtml(name)}!
+                  </h1>
+
+                  <p>
+                    Wir haben Ihre Terminanfrage erhalten.
+                  </p>
+
+                  <p>
+                    Ihre Anfrage wird nun geprüft.
+                    Sobald der Termin bestätigt oder abgelehnt wurde,
+                    erhalten Sie eine weitere Information.
+                  </p>
+
+                  <h2>Ihre Angaben</h2>
+
+                  <p>
+                    <strong>Datum:</strong>
+                    ${escapeHtml(input.booking_date)}
+                  </p>
+
+                  <p>
+                    <strong>Uhrzeit:</strong>
+                    ${escapeHtml(input.booking_time)}
+                  </p>
+
+                  <p>
+                    <strong>Fahrzeug:</strong>
+                    ${escapeHtml(car)}
+                  </p>
+
+                  <p>
+                    <strong>Telefon:</strong>
+                    ${escapeHtml(phone)}
+                  </p>
+
+                  <p>
+                    <strong>E-Mail:</strong>
+                    ${escapeHtml(email)}
+                  </p>
+
+                  <p>
+                    <strong>Anliegen:</strong><br />
+                    ${escapeHtml(problem).replace(/\n/g, "<br />")}
+                  </p>
+
+                  <hr style="margin:30px 0; border:none; border-top:1px solid #ddd;" />
+
+                  <p style="color:#666;">
+                    Freundliche Grüsse<br />
+                    <strong>ALI AG</strong>
+                  </p>
+
+                </div>
+              </body>
+            </html>
+          `,
+        })
+
+      if (emailError) {
+        console.error(
+          "Resend email error:",
+          emailError,
+        )
+      } else {
+        console.log(
+          "Bestätigungs-E-Mail wurde gesendet an:",
+          email,
+        )
+      }
+    }
+  } catch (emailError) {
+    // Die Buchung bleibt trotzdem gespeichert,
+    // falls Resend einen Fehler hat.
+    console.error(
+      "E-Mail konnte nicht gesendet werden:",
+      emailError,
+    )
+  }
+
+  // ===================================================
   // SEITEN AKTUALISIEREN
   // ===================================================
 
   revalidatePath("/")
-  revalidatePath(
-    "/besitzer",
-  )
+  revalidatePath("/besitzer")
 
   return {
     ok: true,
-    bookingId:
-      data.id,
+    bookingId: data.id,
   }
+}
+
+// =====================================================
+// HTML SICHER MACHEN
+// =====================================================
+
+function escapeHtml(
+  value: string,
+) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
 }
 
 // =====================================================
@@ -462,7 +570,7 @@ export async function saveBookingImages(
   error?: string
 }> {
   // ===================================================
-  // BUCHUNGS-ID
+  // BUCHUNGS-ID PRÜFEN
   // ===================================================
 
   if (!bookingId) {
@@ -477,11 +585,7 @@ export async function saveBookingImages(
   // BILDER PRÜFEN
   // ===================================================
 
-  if (
-    !Array.isArray(
-      imageUrls,
-    )
-  ) {
+  if (!Array.isArray(imageUrls)) {
     return {
       ok: false,
       error:
@@ -489,9 +593,8 @@ export async function saveBookingImages(
     }
   }
 
-  if (
-    imageUrls.length > 5
-  ) {
+  // Maximal 5 Bilder
+  if (imageUrls.length > 5) {
     return {
       ok: false,
       error:
@@ -499,13 +602,11 @@ export async function saveBookingImages(
     }
   }
 
+  // Nur Strings erlauben
   const validImageUrls =
     imageUrls.filter(
-      (
-        url,
-      ): url is string =>
-        typeof url ===
-          "string" &&
+      (url): url is string =>
+        typeof url === "string" &&
         url.trim() !== "",
     )
 
@@ -515,6 +616,10 @@ export async function saveBookingImages(
 
   const supabase =
     createAdminClient()
+
+  // ===================================================
+  // BILDER IN BUCHUNG SPEICHERN
+  // ===================================================
 
   const {
     error,
@@ -543,10 +648,12 @@ export async function saveBookingImages(
     }
   }
 
+  // ===================================================
+  // AKTUALISIEREN
+  // ===================================================
+
   revalidatePath("/")
-  revalidatePath(
-    "/besitzer",
-  )
+  revalidatePath("/besitzer")
 
   return {
     ok: true,
@@ -568,9 +675,7 @@ export async function listBookings(): Promise<
     await createClient()
 
   const {
-    data: {
-      user,
-    },
+    data: { user },
   } =
     await auth.auth.getUser()
 
@@ -599,15 +704,13 @@ export async function listBookings(): Promise<
       .order(
         "booking_date",
         {
-          ascending:
-            true,
+          ascending: true,
         },
       )
       .order(
         "booking_time",
         {
-          ascending:
-            true,
+          ascending: true,
         },
       )
 
@@ -620,20 +723,17 @@ export async function listBookings(): Promise<
     return []
   }
 
+  // ===================================================
+  // DATEN ZURÜCKGEBEN
+  // ===================================================
+
   return (
-    (data ??
-      []) as Booking[]
+    (data ?? []) as Booking[]
   )
 }
 
 // =====================================================
 // TERMIN BESTÄTIGEN / ABLEHNEN
-// =====================================================
-//
-// KEINE E-MAIL
-// KEINE SMS
-//
-// Nur Status ändern.
 // =====================================================
 
 export async function updateBookingStatus(
@@ -654,9 +754,7 @@ export async function updateBookingStatus(
     await createClient()
 
   const {
-    data: {
-      user,
-    },
+    data: { user },
   } =
     await auth.auth.getUser()
 
@@ -673,10 +771,8 @@ export async function updateBookingStatus(
   // ===================================================
 
   if (
-    status !==
-      "confirmed" &&
-    status !==
-      "rejected"
+    status !== "confirmed" &&
+    status !== "rejected"
   ) {
     return {
       ok: false,
@@ -727,11 +823,10 @@ export async function updateBookingStatus(
   // ===================================================
 
   revalidatePath("/")
-  revalidatePath(
-    "/besitzer",
-  )
+  revalidatePath("/besitzer")
 
   return {
     ok: true,
   }
 }
+```
