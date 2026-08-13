@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react"
 import { CheckCircle2, ImagePlus, X } from "lucide-react"
+
 import {
   createBooking,
   saveBookingImages,
   type PublicSlot,
 } from "@/app/actions"
+
 import { createClient } from "@/lib/supabase/client"
 
 const TIMES = [
@@ -32,7 +34,8 @@ export function BookingForm({
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
   const [name, setName] = useState("")
-  const [contact, setContact] = useState("")
+  const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
   const [car, setCar] = useState("")
   const [problem, setProblem] = useState("")
 
@@ -52,10 +55,6 @@ export function BookingForm({
     )
   }, [bookedSlots, date])
 
-  // ==========================================
-  // BILDER AUSWÄHLEN
-  // ==========================================
-
   function handleImages(
     e: React.ChangeEvent<HTMLInputElement>,
   ) {
@@ -64,12 +63,10 @@ export function BookingForm({
     )
 
     const validImages = selected.filter((file) => {
-      // Nur Bilder erlauben
       if (!file.type.startsWith("image/")) {
         return false
       }
 
-      // Maximal 10 MB
       if (file.size > 10 * 1024 * 1024) {
         return false
       }
@@ -85,17 +82,10 @@ export function BookingForm({
       setError(null)
     }
 
-    // Maximal 5 Bilder
     setImages(validImages.slice(0, 5))
 
-    // Input zurücksetzen, damit dasselbe Bild
-    // später erneut ausgewählt werden kann
     e.target.value = ""
   }
-
-  // ==========================================
-  // BILD ENTFERNEN
-  // ==========================================
 
   function removeImage(index: number) {
     setImages((previous) =>
@@ -106,20 +96,12 @@ export function BookingForm({
     )
   }
 
-  // ==========================================
-  // TERMIN ABSENDEN
-  // ==========================================
-
   async function handleSubmit(
     e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault()
 
     setError(null)
-
-    // ------------------------------------------
-    // Pflichtfelder prüfen
-    // ------------------------------------------
 
     if (!date || !time) {
       setError(
@@ -128,16 +110,18 @@ export function BookingForm({
       return
     }
 
-    if (!name || !contact || !car || !problem) {
+    if (
+      !name ||
+      !phone ||
+      !email ||
+      !car ||
+      !problem
+    ) {
       setError(
         "Bitte füllen Sie alle Felder aus.",
       )
       return
     }
-
-    // ------------------------------------------
-    // Prüfen ob Termin bereits vergeben
-    // ------------------------------------------
 
     if (takenForDate.has(time)) {
       setError(
@@ -145,10 +129,6 @@ export function BookingForm({
       )
       return
     }
-
-    // ------------------------------------------
-    // Prüfen ob mindestens ein Bild vorhanden ist
-    // ------------------------------------------
 
     if (images.length === 0) {
       setError(
@@ -160,15 +140,16 @@ export function BookingForm({
     setPending(true)
 
     try {
-      // ========================================
-      // 1. TERMIN ERSTELLEN
-      // ========================================
+      // ==========================================
+      // TERMIN ERSTELLEN
+      // ==========================================
 
       const result = await createBooking({
         booking_date: date,
         booking_time: time,
         name,
-        contact,
+        phone,
+        email,
         car,
         problem,
       })
@@ -185,131 +166,92 @@ export function BookingForm({
 
       const bookingId = result.bookingId
 
-      console.log(
-        "Termin erstellt:",
-        bookingId,
-      )
-
-      // ========================================
-      // 2. SUPABASE CLIENT
-      // ========================================
+      // ==========================================
+      // SUPABASE
+      // ==========================================
 
       const supabase = createClient()
 
-      // Hier sammeln wir die Pfade der
-      // erfolgreich hochgeladenen Bilder.
       const uploadedImages: string[] = []
 
-      // ========================================
-      // 3. BILDER HOCHLADEN
-      // ========================================
+      // ==========================================
+      // BILDER HOCHLADEN
+      // ==========================================
 
-      for (
-        const [index, image] of images.entries()
-      ) {
-        // Dateiendung ermitteln
-        const extension =
-          image.name
-            .split(".")
-            .pop()
-            ?.toLowerCase() || "jpg"
+      // Parallel hochladen,
+      // damit 5 Bilder schneller hochgeladen werden.
+      const uploadResults = await Promise.all(
+        images.map(async (image, index) => {
+          const extension =
+            image.name
+              .split(".")
+              .pop()
+              ?.toLowerCase() || "jpg"
 
-        // Namen sicher für Dateinamen machen
-        const safeName = name
-          .trim()
-          .replace(
-            /[^a-zA-Z0-9äöüÄÖÜß]/g,
-            "-",
-          )
-          .replace(/-+/g, "-")
+          const safeName = name
+            .trim()
+            .replace(
+              /[^a-zA-Z0-9äöüÄÖÜß]/g,
+              "-",
+            )
+            .replace(/-+/g, "-")
 
-        // Zeitstempel verhindert doppelte Dateinamen
-        const timestamp = Date.now()
+          const timestamp = Date.now()
 
-        const fileName =
-          `${safeName}-${timestamp}-${index + 1}.${extension}`
+          const fileName =
+            `${safeName}-${timestamp}-${index + 1}.${extension}`
 
-        const filePath = fileName
+          const {
+            error: uploadError,
+          } = await supabase.storage
+            .from("Kunden-Bilder")
+            .upload(
+              fileName,
+              image,
+              {
+                cacheControl: "3600",
+                upsert: false,
+                contentType: image.type,
+              },
+            )
 
-        console.log(
-          "Bild wird hochgeladen:",
-          filePath,
-        )
+          if (uploadError) {
+            return {
+              ok: false,
+              path: "",
+              error: uploadError.message,
+            }
+          }
 
-        // ======================================
-        // BUCKET: Kunden-Bilder
-        // ======================================
+          return {
+            ok: true,
+            path: fileName,
+            error: null,
+          }
+        }),
+      )
 
-        const {
-          error: uploadError,
-        } = await supabase.storage
-          .from("Kunden-Bilder")
-          .upload(
-            filePath,
-            image,
-            {
-              cacheControl: "3600",
-              upsert: false,
-              contentType: image.type,
-            },
-          )
-
-        // --------------------------------------
-        // Upload Fehler
-        // --------------------------------------
-
-        if (uploadError) {
+      for (const result of uploadResults) {
+        if (!result.ok) {
           console.error(
             "UPLOAD FEHLER:",
-            uploadError,
+            result.error,
           )
 
           setError(
-            `Das Bild "${image.name}" konnte nicht hochgeladen werden.`,
+            "Mindestens ein Bild konnte nicht hochgeladen werden.",
           )
 
           setPending(false)
           return
         }
 
-        // --------------------------------------
-        // Upload erfolgreich
-        // --------------------------------------
-
-        uploadedImages.push(filePath)
-
-        console.log(
-          "Upload erfolgreich:",
-          filePath,
-        )
+        uploadedImages.push(result.path)
       }
 
-      // ========================================
-      // 4. KONTROLLE
-      // ========================================
-
-      console.log(
-        "ALLE HOCHGELADENEN BILDER:",
-        uploadedImages,
-      )
-
-      if (uploadedImages.length === 0) {
-        setError(
-          "Es konnte kein Bild hochgeladen werden.",
-        )
-
-        setPending(false)
-        return
-      }
-
-      // ========================================
-      // 5. BILDPFADE IN image_urls SPEICHERN
-      // ========================================
-
-      console.log(
-        "Speichere image_urls:",
-        uploadedImages,
-      )
+      // ==========================================
+      // BILDER MIT BUCHUNG VERKNÜPFEN
+      // ==========================================
 
       const imageResult =
         await saveBookingImages(
@@ -317,37 +259,19 @@ export function BookingForm({
           uploadedImages,
         )
 
-      // ----------------------------------------
-      // Fehler beim Speichern
-      // ----------------------------------------
-
       if (!imageResult.ok) {
-        console.error(
-          "IMAGE_URLS FEHLER:",
-          imageResult.error,
-        )
-
         setError(
           imageResult.error ??
-            "Die Bilder wurden hochgeladen, konnten aber nicht mit dem Termin verbunden werden.",
+            "Die Bilder konnten nicht mit dem Termin verbunden werden.",
         )
 
         setPending(false)
         return
       }
 
-      // ========================================
-      // ERFOLGREICH
-      // ========================================
-
-      console.log(
-        "IMAGE_URLS ERFOLGREICH GESPEICHERT:",
-        uploadedImages,
-      )
-
-      // ========================================
-      // 6. FERTIG
-      // ========================================
+      // ==========================================
+      // FERTIG
+      // ==========================================
 
       setPending(false)
       setDone(true)
@@ -366,7 +290,7 @@ export function BookingForm({
   }
 
   // ==========================================
-  // ERFOLGSSEITE
+  // ERFOLG
   // ==========================================
 
   if (done) {
@@ -382,36 +306,27 @@ export function BookingForm({
         </h3>
 
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Vielen Dank,{" "}
-          {name || "geschätzter Kunde"}.
-          Ihre Terminanfrage ist bei uns
-          eingegangen.
-          Wir melden uns zur Bestätigung über{" "}
-          {contact ||
-            "Ihre angegebene Kontaktmöglichkeit"}
-          .
+          Vielen Dank, {name}.
+          <br />
+          Ihre Terminanfrage ist bei uns eingegangen.
+          <br />
+          Wir melden uns bei Ihnen.
         </p>
       </div>
     )
   }
-
-  // ==========================================
-  // FORMULAR
-  // ==========================================
 
   return (
     <form
       onSubmit={handleSubmit}
       className="border border-border bg-card p-6 md:p-10"
     >
-      {/* ======================================
-          DATUM + NAME
-      ====================================== */}
+      {/* DATUM + NAME */}
 
       <div className="grid gap-6 md:grid-cols-2">
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Datum
+            Datum *
           </span>
 
           <input
@@ -422,13 +337,14 @@ export function BookingForm({
               setDate(e.target.value)
               setTime("")
             }}
+            required
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none focus:border-ring"
           />
         </label>
 
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Ihr Name
+            Ihr Name *
           </span>
 
           <input
@@ -438,18 +354,17 @@ export function BookingForm({
               setName(e.target.value)
             }
             placeholder="Vor- und Nachname"
+            required
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
       </div>
 
-      {/* ======================================
-          UHRZEIT
-      ====================================== */}
+      {/* UHRZEIT */}
 
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-          Uhrzeit
+          Uhrzeit *
         </span>
 
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-8">
@@ -495,51 +410,68 @@ export function BookingForm({
         )}
       </div>
 
-      {/* ======================================
-          KONTAKT + FAHRZEUG
-      ====================================== */}
+      {/* TELEFON + E-MAIL */}
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Kontakt (Tel. / E-Mail)
+            Telefonnummer *
           </span>
 
           <input
-            type="text"
-            value={contact}
+            type="tel"
+            value={phone}
             onChange={(e) =>
-              setContact(e.target.value)
+              setPhone(e.target.value)
             }
-            placeholder="Telefon oder E-Mail"
+            placeholder="079 123 45 67"
+            required
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
 
         <label className="block">
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Fahrzeug
+            E-Mail *
           </span>
 
           <input
-            type="text"
-            value={car}
+            type="email"
+            value={email}
             onChange={(e) =>
-              setCar(e.target.value)
+              setEmail(e.target.value)
             }
-            placeholder="z. B. BMW 335i"
+            placeholder="name@beispiel.ch"
+            required
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
           />
         </label>
       </div>
 
-      {/* ======================================
-          PROBLEM
-      ====================================== */}
+      {/* FAHRZEUG */}
 
       <label className="mt-6 block">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-          Problem / Anliegen
+          Fahrzeug *
+        </span>
+
+        <input
+          type="text"
+          value={car}
+          onChange={(e) =>
+            setCar(e.target.value)
+          }
+          placeholder="z. B. BMW 320i"
+          required
+          className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+        />
+      </label>
+
+      {/* PROBLEM */}
+
+      <label className="mt-6 block">
+        <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+          Problem / Anliegen *
         </span>
 
         <textarea
@@ -549,19 +481,18 @@ export function BookingForm({
           }
           placeholder="Beschreiben Sie bitte kurz das Problem..."
           rows={5}
+          required
           className="mt-2 w-full resize-none border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
         />
       </label>
 
-      {/* ======================================
-          BILDER
-      ====================================== */}
+      {/* BILDER */}
 
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
           <span className="text-[var(--bad)]">
-            (Pflicht)
+            (Pflicht) *
           </span>
         </span>
 
@@ -587,51 +518,40 @@ export function BookingForm({
           />
         </label>
 
-        {/* ====================================
-            BILD-VORSCHAU
-        ==================================== */}
-
         {images.length > 0 && (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            {images.map(
-              (image, index) => (
-                <div
-                  key={`${image.name}-${index}`}
-                  className="relative aspect-square overflow-hidden border border-border"
-                >
-                  <img
-                    src={URL.createObjectURL(
-                      image,
-                    )}
-                    alt={`Ausgewähltes Bild ${index + 1}`}
-                    className="h-full w-full object-cover"
-                  />
+            {images.map((image, index) => (
+              <div
+                key={`${image.name}-${index}`}
+                className="relative aspect-square overflow-hidden border border-border"
+              >
+                <img
+                  src={URL.createObjectURL(image)}
+                  alt={`Ausgewähltes Bild ${index + 1}`}
+                  className="h-full w-full object-cover"
+                />
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removeImage(index)
-                    }
-                    className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
-                    aria-label="Bild entfernen"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ),
-            )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    removeImage(index)
+                  }
+                  className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
+                  aria-label="Bild entfernen"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Bitte mindestens ein Foto vom Schaden
-          hinzufügen.
+          Bitte mindestens ein Foto vom Schaden hinzufügen.
         </p>
       </div>
 
-      {/* ======================================
-          FEHLER
-      ====================================== */}
+      {/* FEHLER */}
 
       {error && (
         <p className="mt-4 text-sm text-[var(--bad)]">
@@ -639,9 +559,7 @@ export function BookingForm({
         </p>
       )}
 
-      {/* ======================================
-          ABSENDEN
-      ====================================== */}
+      {/* ABSENDEN */}
 
       <button
         type="submit"
