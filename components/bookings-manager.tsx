@@ -146,11 +146,36 @@ export function BookingsManager({
   const [busyId, setBusyId] =
     useState<string | null>(null)
 
-  const visible = bookings.filter(
-    (booking) =>
-      filter === "all" ||
-      booking.status === filter,
+  const visible = [...bookings]
+  .filter((booking) =>
+    filter === "all"
+      ? true
+      : booking.status === filter,
   )
+  .sort((a, b) => {
+    // OFFEN: neueste Anfrage zuerst
+    if (filter === "pending") {
+      return (
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+      )
+    }
+
+    // ALLE: nach Datum und Uhrzeit
+    if (filter === "all") {
+      const dateA = `${a.booking_date} ${a.booking_time}`
+      const dateB = `${b.booking_date} ${b.booking_time}`
+
+      return dateA.localeCompare(dateB)
+    }
+
+    // BESTÄTIGT / ABGELEHNT:
+    // nach Termin-Datum und Uhrzeit
+    const dateA = `${a.booking_date} ${a.booking_time}`
+    const dateB = `${b.booking_date} ${b.booking_time}`
+
+    return dateA.localeCompare(dateB)
+  })
 
   const counts = {
     pending: bookings.filter(
