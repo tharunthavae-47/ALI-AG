@@ -72,9 +72,6 @@ export function BookingForm({
     }
 
     setImages(validImages.slice(0, 5))
-
-    // Input zurücksetzen, damit dasselbe Bild erneut ausgewählt werden kann
-    e.target.value = ""
   }
 
   function removeImage(index: number) {
@@ -99,12 +96,6 @@ export function BookingForm({
 
     if (!name || !contact || !car || !problem) {
       setError("Bitte füllen Sie alle Felder aus.")
-      return
-    }
-
-    // Bilder sind Pflicht
-    if (images.length === 0) {
-      setError("Bitte laden Sie mindestens ein Bild hoch.")
       return
     }
 
@@ -144,140 +135,128 @@ export function BookingForm({
       console.log("Booking erstellt:", bookingId)
 
       // ==========================================
-      // 2. SUPABASE CLIENT
+      // 2. BILDER HOCHLADEN
       // ==========================================
 
-      const supabase = createClient()
+      if (images.length > 0) {
+        const supabase = createClient()
 
-      // ==========================================
-      // 3. BILDER GLEICHZEITIG HOCHLADEN
-      // ==========================================
+        const uploadedImages: string[] = []
 
-      const uploadedImages: string[] = []
+        for (const [index, image] of images.entries()) {
+          const extension =
+            image.name.split(".").pop()?.toLowerCase() || "jpg"
 
-      try {
-        const uploadResults = await Promise.all(
-          images.map(async (image, index) => {
-            const extension =
-              image.name
-                .split(".")
-                .pop()
-                ?.toLowerCase() || "jpg"
-
-            const safeName = name
-              .trim()
-              .replace(
-                /[^a-zA-Z0-9äöüÄÖÜß]/g,
-                "-",
-              )
-              .replace(/-+/g, "-")
-
-            const fileName =
-              `${safeName}-${Date.now()}-${index + 1}.${extension}`
-
-            console.log(
-              "Upload startet:",
-              fileName,
+          const safeName = name
+            .trim()
+            .replace(
+              /[^a-zA-Z0-9äöüÄÖÜß]/g,
+              "-",
             )
+            .replace(/-+/g, "-")
 
-            const { error: uploadError } =
-              await supabase.storage
-                .from("Kunden-Bilder")
-                .upload(
-                  fileName,
-                  image,
-                  {
-                    cacheControl: "3600",
-                    upsert: false,
-                    contentType: image.type,
-                  },
-                )
+          const fileName =
+            `${safeName}-${index + 1}.${extension}`
 
-            if (uploadError) {
-              console.error(
-                "UPLOAD FEHLER:",
-                uploadError,
+          const filePath = fileName
+
+          console.log(
+            "Upload:",
+            filePath,
+          )
+
+          const { error: uploadError } =
+            await supabase.storage
+              .from("Kunden-Bilder")
+              .upload(
+                filePath,
+                image,
+                {
+                  cacheControl: "3600",
+                  upsert: false,
+                  contentType: image.type,
+                },
               )
 
-              throw uploadError
-            }
-
-            console.log(
-              "Upload erfolgreich:",
-              fileName,
+          if (uploadError) {
+            console.error(
+              "UPLOAD FEHLER:",
+              uploadError,
             )
 
-            return fileName
-          }),
-        )
+            setError(
+              "Das Bild konnte nicht hochgeladen werden.",
+            )
 
-        uploadedImages.push(
-          ...uploadResults,
-        )
+            setPending(false)
+            return
+          }
+
+          uploadedImages.push(
+            filePath,
+          )
+
+          console.log(
+            "Upload erfolgreich:",
+            filePath,
+          )
+        }
 
         console.log(
-          "ALLE BILDER HOCHGELADEN:",
+          "ALLE BILDER:",
           uploadedImages,
         )
-      } catch (uploadError) {
-        console.error(
-          "BILDER-UPLOAD FEHLER:",
-          uploadError,
+
+        // ==========================================
+        // 3. BILDPFADE IN BOOKINGS SPEICHERN
+        // ==========================================
+
+        const imageUrls =
+          JSON.stringify(
+            uploadedImages,
+          )
+
+        console.log(
+          "Speichere image_urls:",
+          imageUrls,
         )
 
-        setError(
-          "Ein oder mehrere Bilder konnten nicht hochgeladen werden.",
-        )
-
-        setPending(false)
-        return
-      }
-
-      // ==========================================
-      // 4. BILDPFADE IN BOOKINGS SPEICHERN
-      // ==========================================
-
-      const imageUrls =
-        JSON.stringify(uploadedImages)
-
-      console.log(
-        "Speichere image_urls:",
-        imageUrls,
-      )
-
-      const { error: updateError } =
-        await supabase
+        const {
+          error: updateError,
+        } = await supabase
           .from("bookings")
           .update({
             image_urls: imageUrls,
           })
           .eq("id", bookingId)
 
-      if (updateError) {
-        console.error(
-          "IMAGE_URLS UPDATE FEHLER:",
-          updateError,
-        )
+        if (updateError) {
+          console.error(
+            "IMAGE_URLS UPDATE FEHLER:",
+            updateError,
+          )
 
-        setError(
-          "Die Bilder wurden hochgeladen, aber konnten nicht mit dem Termin verbunden werden.",
-        )
+          setError(
+            "Die Bilder wurden hochgeladen, aber konnten nicht mit dem Termin verbunden werden.",
+          )
 
-        setPending(false)
-        return
+          setPending(false)
+          return
+        }
+
+        console.log(
+          "IMAGE_URLS ERFOLGREICH GESPEICHERT:",
+          imageUrls,
+        )
       }
 
-      console.log(
-        "IMAGE_URLS ERFOLGREICH GESPEICHERT:",
-        imageUrls,
-      )
-
       // ==========================================
-      // 5. FERTIG
+      // 4. FERTIG
       // ==========================================
 
       setPending(false)
       setDone(true)
+
     } catch (err) {
       console.error(
         "TERMIN FEHLER:",
@@ -374,7 +353,9 @@ export function BookingForm({
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-8">
           {TIMES.map((currentTime) => {
             const taken =
-              takenForDate.has(currentTime)
+              takenForDate.has(
+                currentTime,
+              )
 
             const active =
               time === currentTime
@@ -383,9 +364,13 @@ export function BookingForm({
               <button
                 key={currentTime}
                 type="button"
-                disabled={taken || !date}
+                disabled={
+                  taken || !date
+                }
                 onClick={() =>
-                  setTime(currentTime)
+                  setTime(
+                    currentTime,
+                  )
                 }
                 className={[
                   "border px-3 py-3 text-sm transition-colors",
@@ -422,7 +407,9 @@ export function BookingForm({
             type="text"
             value={contact}
             onChange={(e) =>
-              setContact(e.target.value)
+              setContact(
+                e.target.value,
+              )
             }
             placeholder="Telefon oder E-Mail"
             className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
@@ -456,7 +443,9 @@ export function BookingForm({
         <textarea
           value={problem}
           onChange={(e) =>
-            setProblem(e.target.value)
+            setProblem(
+              e.target.value,
+            )
           }
           placeholder="Beschreiben Sie bitte kurz das Problem..."
           rows={5}
@@ -470,7 +459,7 @@ export function BookingForm({
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
           <span className="opacity-50">
-            (Pflichtfeld)
+            (Muss)
           </span>
         </span>
 
@@ -491,7 +480,9 @@ export function BookingForm({
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
             multiple
-            onChange={handleImages}
+            onChange={
+              handleImages
+            }
             className="hidden"
           />
         </label>
@@ -507,7 +498,9 @@ export function BookingForm({
                   className="relative aspect-square overflow-hidden border border-border"
                 >
                   <img
-                    src={URL.createObjectURL(image)}
+                    src={URL.createObjectURL(
+                      image,
+                    )}
                     alt={`Ausgewähltes Bild ${index + 1}`}
                     className="h-full w-full object-cover"
                   />
@@ -515,7 +508,9 @@ export function BookingForm({
                   <button
                     type="button"
                     onClick={() =>
-                      removeImage(index)
+                      removeImage(
+                        index,
+                      )
                     }
                     className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
                     aria-label="Bild entfernen"
@@ -529,7 +524,7 @@ export function BookingForm({
         )}
 
         <p className="mt-2 text-xs text-muted-foreground">
-          Du kannst bis zu 5 Fotos vom Schaden hinzufügen.
+          Du kannst Fotos vom Schaden hinzufügen.
         </p>
       </div>
 
@@ -549,7 +544,7 @@ export function BookingForm({
         className="mt-8 w-full bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending
-          ? "Bilder werden hochgeladen..."
+          ? "Wird gesendet..."
           : "Termin anfragen"}
       </button>
     </form>
