@@ -1,4 +1,3 @@
-```tsx
 "use server"
 
 import { revalidatePath } from "next/cache"
@@ -7,12 +6,6 @@ import { Resend } from "resend"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
-
-// =====================================================
-// RESEND
-// =====================================================
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 // =====================================================
 // ABMELDEN
@@ -42,22 +35,15 @@ export type PublicSlot = {
 
 export type Booking = {
   id: string
-
   booking_date: string
   booking_time: string
-
   name: string
-
   phone: string
   email: string
-
   car: string
   problem: string
-
   status: BookingStatus
-
   created_at: string
-
   image_urls: string[]
 }
 
@@ -91,33 +77,32 @@ function isValidTime(value: string) {
 
   const hour = Number(match[1])
 
-  return (
-    hour >= OPEN_HOUR &&
-    hour <= CLOSE_HOUR
-  )
+  return hour >= OPEN_HOUR && hour <= CLOSE_HOUR
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
 }
 
 // =====================================================
 // BELEGTE TERMINE
 // =====================================================
 
-export async function getBookedSlots(): Promise<
-  PublicSlot[]
-> {
+export async function getBookedSlots(): Promise<PublicSlot[]> {
   const supabase = createAdminClient()
 
   const today = new Date()
     .toISOString()
     .slice(0, 10)
 
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from("bookings")
-    .select(
-      "booking_date, booking_time",
-    )
+    .select("booking_date, booking_time")
     .neq("status", "rejected")
     .gte("booking_date", today)
 
@@ -140,12 +125,9 @@ export async function getBookedSlots(): Promise<
 export async function createBooking(input: {
   booking_date: string
   booking_time: string
-
   name: string
-
   phone: string
   email: string
-
   car: string
   problem: string
 }): Promise<{
@@ -157,30 +139,17 @@ export async function createBooking(input: {
   // WERTE BEREINIGEN
   // ===================================================
 
-  const name =
-    input.name?.trim() ?? ""
-
-  const phone =
-    input.phone?.trim() ?? ""
-
-  const email =
-    input.email?.trim().toLowerCase() ?? ""
-
-  const car =
-    input.car?.trim() ?? ""
-
-  const problem =
-    input.problem?.trim() ?? ""
+  const name = input.name?.trim() ?? ""
+  const phone = input.phone?.trim() ?? ""
+  const email = input.email?.trim().toLowerCase() ?? ""
+  const car = input.car?.trim() ?? ""
+  const problem = input.problem?.trim() ?? ""
 
   // ===================================================
   // DATUM PRÜFEN
   // ===================================================
 
-  if (
-    !isValidDate(
-      input.booking_date,
-    )
-  ) {
+  if (!isValidDate(input.booking_date)) {
     return {
       ok: false,
       error: "Ungültiges Datum.",
@@ -191,11 +160,7 @@ export async function createBooking(input: {
   // UHRZEIT PRÜFEN
   // ===================================================
 
-  if (
-    !isValidTime(
-      input.booking_time,
-    )
-  ) {
+  if (!isValidTime(input.booking_time)) {
     return {
       ok: false,
       error: "Ungültige Uhrzeit.",
@@ -209,40 +174,35 @@ export async function createBooking(input: {
   if (!name) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie Ihren Namen ein.",
+      error: "Bitte geben Sie Ihren Namen ein.",
     }
   }
 
   if (!phone) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie Ihre Telefonnummer ein.",
+      error: "Bitte geben Sie Ihre Telefonnummer ein.",
     }
   }
 
   if (!email) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie Ihre E-Mail-Adresse ein.",
+      error: "Bitte geben Sie Ihre E-Mail-Adresse ein.",
     }
   }
 
   if (!car) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie Ihr Fahrzeug ein.",
+      error: "Bitte geben Sie Ihr Fahrzeug ein.",
     }
   }
 
   if (!problem) {
     return {
       ok: false,
-      error:
-        "Bitte beschreiben Sie Ihr Anliegen.",
+      error: "Bitte beschreiben Sie Ihr Anliegen.",
     }
   }
 
@@ -250,16 +210,10 @@ export async function createBooking(input: {
   // E-MAIL PRÜFEN
   // ===================================================
 
-  const emailValid =
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-      email,
-    )
-
-  if (!emailValid) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
+      error: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
     }
   }
 
@@ -267,14 +221,12 @@ export async function createBooking(input: {
   // TELEFON PRÜFEN
   // ===================================================
 
-  const phoneDigits =
-    phone.replace(/\D/g, "")
+  const phoneDigits = phone.replace(/\D/g, "")
 
   if (phoneDigits.length < 7) {
     return {
       ok: false,
-      error:
-        "Bitte geben Sie eine gültige Telefonnummer ein.",
+      error: "Bitte geben Sie eine gültige Telefonnummer ein.",
     }
   }
 
@@ -286,57 +238,49 @@ export async function createBooking(input: {
     .toISOString()
     .slice(0, 10)
 
-  if (
-    input.booking_date < today
-  ) {
+  if (input.booking_date < today) {
     return {
       ok: false,
-      error:
-        "Bitte wählen Sie ein Datum in der Zukunft.",
+      error: "Bitte wählen Sie ein Datum in der Zukunft.",
     }
   }
 
   // ===================================================
-  // MAXIMALE LÄNGE
+  // MAXIMALE LÄNGEN
   // ===================================================
 
   if (name.length > 200) {
     return {
       ok: false,
-      error:
-        "Der Name ist zu lang.",
+      error: "Der Name ist zu lang.",
     }
   }
 
   if (phone.length > 50) {
     return {
       ok: false,
-      error:
-        "Die Telefonnummer ist zu lang.",
+      error: "Die Telefonnummer ist zu lang.",
     }
   }
 
   if (email.length > 320) {
     return {
       ok: false,
-      error:
-        "Die E-Mail-Adresse ist zu lang.",
+      error: "Die E-Mail-Adresse ist zu lang.",
     }
   }
 
   if (car.length > 200) {
     return {
       ok: false,
-      error:
-        "Die Fahrzeugangabe ist zu lang.",
+      error: "Die Fahrzeugangabe ist zu lang.",
     }
   }
 
   if (problem.length > 2000) {
     return {
       ok: false,
-      error:
-        "Die Beschreibung ist zu lang.",
+      error: "Die Beschreibung ist zu lang.",
     }
   }
 
@@ -344,42 +288,27 @@ export async function createBooking(input: {
   // SUPABASE
   // ===================================================
 
-  const supabase =
-    createAdminClient()
+  const supabase = createAdminClient()
 
   // ===================================================
   // TERMIN SPEICHERN
   // ===================================================
 
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from("bookings")
-      .insert({
-        booking_date:
-          input.booking_date,
-
-        booking_time:
-          input.booking_time,
-
-        name,
-
-        phone,
-
-        email,
-
-        car,
-
-        problem,
-
-        status: "pending",
-
-        image_urls: [],
-      })
-      .select("id")
-      .single()
+  const { data, error } = await supabase
+    .from("bookings")
+    .insert({
+      booking_date: input.booking_date,
+      booking_time: input.booking_time,
+      name,
+      phone,
+      email,
+      car,
+      problem,
+      status: "pending",
+      image_urls: [],
+    })
+    .select("id")
+    .single()
 
   // ===================================================
   // FEHLER BEIM SPEICHERN
@@ -391,115 +320,116 @@ export async function createBooking(input: {
       error,
     )
 
-    // Termin bereits vergeben
-    if (
-      error.code === "23505"
-    ) {
+    if (error.code === "23505") {
       return {
         ok: false,
-        error:
-          "Dieser Termin ist leider bereits vergeben.",
+        error: "Dieser Termin ist leider bereits vergeben.",
       }
     }
 
     return {
       ok: false,
-      error:
-        "Anfrage konnte nicht gespeichert werden.",
+      error: "Anfrage konnte nicht gespeichert werden.",
     }
   }
 
- // ===================================================
-// AUTOMATISCHE E-MAIL AN KUNDEN
-// ===================================================
+  // ===================================================
+  // AUTOMATISCHE E-MAIL AN KUNDEN
+  // ===================================================
 
-try {
-  if (!process.env.RESEND_API_KEY) {
-    console.error("RESEND_API_KEY fehlt.")
-  } else if (!process.env.RESEND_FROM_EMAIL) {
-    console.error("RESEND_FROM_EMAIL fehlt.")
-  } else {
-    const htmlContent =
-  "<!DOCTYPE html>" +
-  '<html lang="de">' +
-  "<head>" +
-  '<meta charset="UTF-8">' +
-  '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-  "<title>Terminanfrage ALI AG</title>" +
-  "</head>" +
-  '<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:30px;">' +
-  '<div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">' +
-  "<h1>Vielen Dank, " +
-  escapeHtml(name) +
-  "!</h1>" +
-  "<p>Wir haben Ihre Terminanfrage erhalten.</p>" +
-  "<p>Ihre Anfrage wird nun geprüft.</p>" +
-  "<h2>Ihre Angaben</h2>" +
-  "<p><strong>Datum:</strong> " +
-  escapeHtml(input.booking_date) +
-  "</p>" +
-  "<p><strong>Uhrzeit:</strong> " +
-  escapeHtml(input.booking_time) +
-  "</p>" +
-  "<p><strong>Fahrzeug:</strong> " +
-  escapeHtml(car) +
-  "</p>" +
-  "<p><strong>Telefon:</strong> " +
-  escapeHtml(phone) +
-  "</p>" +
-  "<p><strong>E-Mail:</strong> " +
-  escapeHtml(email) +
-  "</p>" +
-  "<p><strong>Anliegen:</strong><br>" +
-  escapeHtml(problem).replace(/\n/g, "<br>") +
-  "</p>" +
-  "<hr>" +
-  "<p>Freundliche Grüsse</p>" +
-  "<p><strong>ALI AG</strong></p>" +
-  "</div>" +
-  "</body>" +
-  "</html>"
+  try {
+    const resendApiKey =
+      process.env.RESEND_API_KEY
 
-    const { error: emailError } =
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL,
-        to: email,
-        subject: "Ihre Terminanfrage bei ALI AG",
-        html: htmlContent,
-      })
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL
 
-    if (emailError) {
-      console.error(
-        "Resend email error:",
-        emailError,
-      )
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY fehlt.")
+    } else if (!fromEmail) {
+      console.error("RESEND_FROM_EMAIL fehlt.")
     } else {
-      console.log(
-        "E-Mail erfolgreich gesendet an:",
-        email,
-      )
+      const resend = new Resend(resendApiKey)
+
+      const htmlContent =
+        "<!DOCTYPE html>" +
+        '<html lang="de">' +
+        "<head>" +
+        '<meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+        "<title>Terminanfrage ALI AG</title>" +
+        "</head>" +
+        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+        "<h1>Vielen Dank, " +
+        escapeHtml(name) +
+        "!</h1>" +
+        "<p>Wir haben Ihre Terminanfrage erhalten.</p>" +
+        "<p>Ihre Anfrage wird nun geprüft.</p>" +
+        "<h2>Ihre Angaben</h2>" +
+        "<p><strong>Datum:</strong> " +
+        escapeHtml(input.booking_date) +
+        "</p>" +
+        "<p><strong>Uhrzeit:</strong> " +
+        escapeHtml(input.booking_time) +
+        "</p>" +
+        "<p><strong>Fahrzeug:</strong> " +
+        escapeHtml(car) +
+        "</p>" +
+        "<p><strong>Telefon:</strong> " +
+        escapeHtml(phone) +
+        "</p>" +
+        "<p><strong>E-Mail:</strong> " +
+        escapeHtml(email) +
+        "</p>" +
+        "<p><strong>Anliegen:</strong><br>" +
+        escapeHtml(problem).replace(/\n/g, "<br>") +
+        "</p>" +
+        "<hr>" +
+        "<p>Freundliche Grüsse</p>" +
+        "<p><strong>ALI AG</strong></p>" +
+        "</div>" +
+        "</body>" +
+        "</html>"
+
+      const { error: emailError } =
+        await resend.emails.send({
+          from: fromEmail,
+          to: email,
+          subject: "Ihre Terminanfrage bei ALI AG",
+          html: htmlContent,
+        })
+
+      if (emailError) {
+        console.error(
+          "Resend email error:",
+          emailError,
+        )
+      } else {
+        console.log(
+          "E-Mail erfolgreich gesendet an:",
+          email,
+        )
+      }
     }
+  } catch (emailError) {
+    console.error(
+      "E-Mail konnte nicht gesendet werden:",
+      emailError,
+    )
   }
-} catch (emailError) {
-  console.error(
-    "E-Mail konnte nicht gesendet werden:",
-    emailError,
-  )
-}
 
-// =====================================================
-// HTML SICHER MACHEN
-// =====================================================
+  // ===================================================
+  // AKTUALISIEREN
+  // ===================================================
 
-function escapeHtml(
-  value: string,
-) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
+    bookingId: data.id,
+  }
 }
 
 // =====================================================
@@ -513,71 +443,41 @@ export async function saveBookingImages(
   ok: boolean
   error?: string
 }> {
-  // ===================================================
-  // BUCHUNGS-ID PRÜFEN
-  // ===================================================
-
   if (!bookingId) {
     return {
       ok: false,
-      error:
-        "Buchungs-ID fehlt.",
+      error: "Buchungs-ID fehlt.",
     }
   }
-
-  // ===================================================
-  // BILDER PRÜFEN
-  // ===================================================
 
   if (!Array.isArray(imageUrls)) {
     return {
       ok: false,
-      error:
-        "Ungültige Bilddaten.",
+      error: "Ungültige Bilddaten.",
     }
   }
 
-  // Maximal 5 Bilder
   if (imageUrls.length > 5) {
     return {
       ok: false,
-      error:
-        "Es sind maximal 5 Bilder erlaubt.",
+      error: "Es sind maximal 5 Bilder erlaubt.",
     }
   }
 
-  // Nur Strings erlauben
-  const validImageUrls =
-    imageUrls.filter(
-      (url): url is string =>
-        typeof url === "string" &&
-        url.trim() !== "",
-    )
+  const validImageUrls = imageUrls.filter(
+    (url): url is string =>
+      typeof url === "string" &&
+      url.trim() !== "",
+  )
 
-  // ===================================================
-  // SUPABASE
-  // ===================================================
+  const supabase = createAdminClient()
 
-  const supabase =
-    createAdminClient()
-
-  // ===================================================
-  // BILDER IN BUCHUNG SPEICHERN
-  // ===================================================
-
-  const {
-    error,
-  } =
-    await supabase
-      .from("bookings")
-      .update({
-        image_urls:
-          validImageUrls,
-      })
-      .eq(
-        "id",
-        bookingId,
-      )
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      image_urls: validImageUrls,
+    })
+    .eq("id", bookingId)
 
   if (error) {
     console.error(
@@ -587,14 +487,9 @@ export async function saveBookingImages(
 
     return {
       ok: false,
-      error:
-        "Die Bilder konnten nicht gespeichert werden.",
+      error: "Die Bilder konnten nicht gespeichert werden.",
     }
   }
-
-  // ===================================================
-  // AKTUALISIEREN
-  // ===================================================
 
   revalidatePath("/")
   revalidatePath("/besitzer")
@@ -608,55 +503,28 @@ export async function saveBookingImages(
 // ALLE BUCHUNGEN FÜR BESITZER
 // =====================================================
 
-export async function listBookings(): Promise<
-  Booking[]
-> {
-  // ===================================================
-  // BENUTZER PRÜFEN
-  // ===================================================
-
-  const auth =
-    await createClient()
+export async function listBookings(): Promise<Booking[]> {
+  const auth = await createClient()
 
   const {
     data: { user },
-  } =
-    await auth.auth.getUser()
+  } = await auth.auth.getUser()
 
   if (!user) {
     return []
   }
 
-  // ===================================================
-  // ADMIN CLIENT
-  // ===================================================
+  const supabase = createAdminClient()
 
-  const supabase =
-    createAdminClient()
-
-  // ===================================================
-  // BUCHUNGEN LADEN
-  // ===================================================
-
-  const {
-    data,
-    error,
-  } =
-    await supabase
-      .from("bookings")
-      .select("*")
-      .order(
-        "booking_date",
-        {
-          ascending: true,
-        },
-      )
-      .order(
-        "booking_time",
-        {
-          ascending: true,
-        },
-      )
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .order("booking_date", {
+      ascending: true,
+    })
+    .order("booking_time", {
+      ascending: true,
+    })
 
   if (error) {
     console.error(
@@ -667,13 +535,7 @@ export async function listBookings(): Promise<
     return []
   }
 
-  // ===================================================
-  // DATEN ZURÜCKGEBEN
-  // ===================================================
-
-  return (
-    (data ?? []) as Booking[]
-  )
+  return (data ?? []) as Booking[]
 }
 
 // =====================================================
@@ -682,10 +544,7 @@ export async function listBookings(): Promise<
 
 export async function updateBookingStatus(
   id: string,
-  status: Exclude<
-    BookingStatus,
-    "pending"
-  >,
+  status: Exclude<BookingStatus, "pending">,
 ): Promise<{
   ok: boolean
   error?: string
@@ -694,19 +553,16 @@ export async function updateBookingStatus(
   // BESITZER PRÜFEN
   // ===================================================
 
-  const auth =
-    await createClient()
+  const auth = await createClient()
 
   const {
     data: { user },
-  } =
-    await auth.auth.getUser()
+  } = await auth.auth.getUser()
 
   if (!user) {
     return {
       ok: false,
-      error:
-        "Nicht autorisiert.",
+      error: "Nicht autorisiert.",
     }
   }
 
@@ -720,8 +576,7 @@ export async function updateBookingStatus(
   ) {
     return {
       ok: false,
-      error:
-        "Ungültiger Status.",
+      error: "Ungültiger Status.",
     }
   }
 
@@ -729,25 +584,18 @@ export async function updateBookingStatus(
   // SUPABASE
   // ===================================================
 
-  const supabase =
-    createAdminClient()
+  const supabase = createAdminClient()
 
   // ===================================================
   // STATUS ÄNDERN
   // ===================================================
 
-  const {
-    error,
-  } =
-    await supabase
-      .from("bookings")
-      .update({
-        status,
-      })
-      .eq(
-        "id",
-        id,
-      )
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      status,
+    })
+    .eq("id", id)
 
   if (error) {
     console.error(
@@ -757,8 +605,7 @@ export async function updateBookingStatus(
 
     return {
       ok: false,
-      error:
-        "Aktualisierung fehlgeschlagen.",
+      error: "Aktualisierung fehlgeschlagen.",
     }
   }
 
@@ -773,4 +620,3 @@ export async function updateBookingStatus(
     ok: true,
   }
 }
-```
