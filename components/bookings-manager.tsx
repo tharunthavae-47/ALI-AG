@@ -10,13 +10,17 @@ import {
   Clock,
   Image as ImageIcon,
 } from "lucide-react"
+
 import {
   updateBookingStatus,
   type Booking,
   type BookingStatus,
 } from "@/app/actions"
 
-const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
+const FILTERS: {
+  key: BookingStatus | "all"
+  label: string
+}[] = [
   { key: "pending", label: "Offen" },
   { key: "confirmed", label: "Bestätigt" },
   { key: "rejected", label: "Abgelehnt" },
@@ -24,9 +28,14 @@ const FILTERS: { key: BookingStatus | "all"; label: string }[] = [
 ]
 
 const statusStyles: Record<BookingStatus, string> = {
-  pending: "text-[var(--warn)] border-[var(--warn)]",
-  confirmed: "text-[var(--ok)] border-[var(--ok)]",
-  rejected: "text-[var(--bad)] border-[var(--bad)]",
+  pending:
+    "text-[var(--warn)] border-[var(--warn)]",
+
+  confirmed:
+    "text-[var(--ok)] border-[var(--ok)]",
+
+  rejected:
+    "text-[var(--bad)] border-[var(--bad)]",
 }
 
 const statusLabels: Record<BookingStatus, string> = {
@@ -47,37 +56,49 @@ function formatDate(iso: string) {
 }
 
 /**
- * Holt die Bildpfade aus image_urls.
+ * image_urls kann aus Supabase z.B. so kommen:
  *
- * Unterstützt:
- * - Array: ["uuid/bild.jpg"]
- * - JSON-String: '["uuid/bild.jpg"]'
- * - einzelner String: "uuid/bild.jpg"
+ * ["Max-1.jpg","Max-2.jpg"]
+ *
+ * oder:
+ *
+ * '["Max-1.jpg","Max-2.jpg"]'
+ *
+ * oder:
+ *
+ * "Max-1.jpg"
  */
-function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
+function getImagePaths(
+  imageUrls: Booking["image_urls"],
+): string[] {
   if (!imageUrls) {
     return []
   }
 
-  // Falls image_urls bereits ein Array ist
+  // Bereits ein Array
   if (Array.isArray(imageUrls)) {
     return imageUrls.filter(
       (path): path is string =>
         typeof path === "string" &&
-        path.trim().length > 0 &&
+        path.trim() !== "" &&
         path.trim() !== "[]",
     )
   }
 
-  // Falls image_urls ein String ist
+  // String
   if (typeof imageUrls === "string") {
     const value = imageUrls.trim()
 
-    if (!value || value === "[]" || value === "{}") {
+    if (
+      value === "" ||
+      value === "[]" ||
+      value === "{}" ||
+      value === "null"
+    ) {
       return []
     }
 
-    // JSON-Array
+    // Versuche JSON zu lesen
     try {
       const parsed = JSON.parse(value)
 
@@ -85,12 +106,12 @@ function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
         return parsed.filter(
           (path): path is string =>
             typeof path === "string" &&
-            path.trim().length > 0 &&
+            path.trim() !== "" &&
             path.trim() !== "[]",
         )
       }
     } catch {
-      // Kein JSON -> behandeln wir als normalen Pfad
+      // Kein JSON -> normaler Dateipfad
     }
 
     return [value]
@@ -100,7 +121,8 @@ function getImagePaths(imageUrls: Booking["image_urls"]): string[] {
 }
 
 /**
- * Erstellt die öffentliche Supabase-URL für ein Bild.
+ * Erstellt die öffentliche URL
+ * für den Bucket "Kunden-Bilder".
  */
 function getImageUrl(path: string) {
   const supabaseUrl =
@@ -110,11 +132,21 @@ function getImageUrl(path: string) {
     return ""
   }
 
-  const cleanPath = path
-    .trim()
-    .replace(/^\/+/, "")
+  let cleanPath = path.trim()
 
-  if (!cleanPath || cleanPath === "[]") {
+  // Falls versehentlich eine komplette URL gespeichert wurde
+  if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+    return cleanPath
+  }
+
+  // Führende / entfernen
+  cleanPath = cleanPath.replace(/^\/+/, "")
+
+  if (
+    !cleanPath ||
+    cleanPath === "[]" ||
+    cleanPath === "null"
+  ) {
     return ""
   }
 
@@ -126,12 +158,17 @@ export function BookingsManager({
 }: {
   initialBookings: Booking[]
 }) {
-  const [bookings, setBookings] = useState(initialBookings)
+  const [bookings, setBookings] =
+    useState<Booking[]>(initialBookings)
+
   const [filter, setFilter] =
     useState<BookingStatus | "all">("pending")
 
-  const [isPending, startTransition] = useTransition()
-  const [busyId, setBusyId] = useState<string | null>(null)
+  const [isPending, startTransition] =
+    useTransition()
+
+  const [busyId, setBusyId] =
+    useState<string | null>(null)
 
   const visible = bookings.filter((booking) =>
     filter === "all"
@@ -141,30 +178,37 @@ export function BookingsManager({
 
   const counts = {
     pending: bookings.filter(
-      (booking) => booking.status === "pending",
+      (booking) =>
+        booking.status === "pending",
     ).length,
 
     confirmed: bookings.filter(
-      (booking) => booking.status === "confirmed",
+      (booking) =>
+        booking.status === "confirmed",
     ).length,
 
     rejected: bookings.filter(
-      (booking) => booking.status === "rejected",
+      (booking) =>
+        booking.status === "rejected",
     ).length,
   }
 
   function handleUpdate(
     id: string,
-    status: Exclude<BookingStatus, "pending">,
+    status: Exclude<
+      BookingStatus,
+      "pending"
+    >,
   ) {
     setBusyId(id)
 
     startTransition(async () => {
       try {
-        const result = await updateBookingStatus(
-          id,
-          status,
-        )
+        const result =
+          await updateBookingStatus(
+            id,
+            status,
+          )
 
         if (result.ok) {
           setBookings((previous) =>
@@ -196,7 +240,10 @@ export function BookingsManager({
 
   return (
     <div>
-      {/* Statistik */}
+      {/* ===================================== */}
+      {/* STATISTIK */}
+      {/* ===================================== */}
+
       <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
         <div className="bg-card p-5">
           <div className="font-display text-3xl font-bold text-[var(--warn)]">
@@ -229,7 +276,10 @@ export function BookingsManager({
         </div>
       </div>
 
-      {/* Filter */}
+      {/* ===================================== */}
+      {/* FILTER */}
+      {/* ===================================== */}
+
       <div className="mt-8 flex flex-wrap gap-2">
         {FILTERS.map((filterItem) => (
           <button
@@ -251,7 +301,10 @@ export function BookingsManager({
         ))}
       </div>
 
-      {/* Buchungen */}
+      {/* ===================================== */}
+      {/* BUCHUNGEN */}
+      {/* ===================================== */}
+
       <div className="mt-6 space-y-px">
         {visible.length === 0 && (
           <p className="border border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -260,9 +313,10 @@ export function BookingsManager({
         )}
 
         {visible.map((booking) => {
-          const imagePaths = getImagePaths(
-            booking.image_urls,
-          )
+          const imagePaths =
+            getImagePaths(
+              booking.image_urls,
+            )
 
           return (
             <article
@@ -270,7 +324,11 @@ export function BookingsManager({
               className="border border-border bg-card p-6"
             >
               <div className="w-full">
-                {/* Name + Status */}
+
+                {/* ================================= */}
+                {/* NAME + STATUS */}
+                {/* ================================= */}
+
                 <div className="flex flex-wrap items-center gap-3">
                   <h3 className="font-display text-lg font-semibold uppercase tracking-wide text-foreground">
                     {booking.name}
@@ -283,8 +341,12 @@ export function BookingsManager({
                   </span>
                 </div>
 
-                {/* Termininformationen */}
+                {/* ================================= */}
+                {/* TERMIN INFORMATIONEN */}
+                {/* ================================= */}
+
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+
                   <span className="flex items-center gap-2">
                     <Calendar
                       className="h-4 w-4"
@@ -324,36 +386,75 @@ export function BookingsManager({
                   </span>
                 </div>
 
-                {/* Problem */}
+                {/* ================================= */}
+                {/* PROBLEM */}
+                {/* ================================= */}
+
                 <p className="mt-4 max-w-2xl text-sm leading-relaxed text-foreground/90">
                   {booking.problem}
                 </p>
 
-                {/* ============================= */}
+                {/* ================================= */}
                 {/* KUNDENBILDER */}
-                {/* ============================= */}
+                {/* ================================= */}
 
                 <div className="mt-6">
+
                   <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
-                    <ImageIcon className="h-4 w-4" />
+                    <ImageIcon
+                      className="h-4 w-4"
+                    />
 
                     Kundenbilder
+
                     {imagePaths.length > 0 &&
                       ` (${imagePaths.length})`}
                   </div>
 
                   {imagePaths.length === 0 ? (
-                    <div className="mt-3 border border-border bg-background p-5 text-center text-xs text-muted-foreground">
-                      Keine Kundenbilder vorhanden
+
+                    <div className="mt-3 border border-border bg-background p-5 text-center">
+
+                      <ImageIcon
+                        className="mx-auto h-6 w-6 text-muted-foreground"
+                      />
+
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Keine Kundenbilder vorhanden
+                      </p>
+
+                      {/* DEBUG */}
+                      <p className="mt-2 break-all text-[10px] text-muted-foreground/50">
+                        image_urls:{" "}
+                        {JSON.stringify(
+                          booking.image_urls,
+                        )}
+                      </p>
+
                     </div>
+
                   ) : (
+
                     <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+
                       {imagePaths.map(
-                        (imagePath, index) => {
+                        (
+                          imagePath,
+                          index,
+                        ) => {
+
                           const imageUrl =
                             getImageUrl(
                               imagePath,
                             )
+
+                          console.log(
+                            "Kundenbild:",
+                            {
+                              imagePath,
+                              imageUrl,
+                            },
+                          )
 
                           if (!imageUrl) {
                             return null
@@ -364,20 +465,23 @@ export function BookingsManager({
                               key={`${imagePath}-${index}`}
                               className="group relative overflow-hidden border border-border bg-background"
                             >
-                              {/* Bild direkt anzeigen */}
+
+                              {/* BILD */}
+
                               <a
                                 href={imageUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="block aspect-square"
                               >
+
                                 <img
                                   src={imageUrl}
                                   alt={`Kundenbild ${index + 1}`}
                                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                   onError={(event) => {
                                     console.error(
-                                      "Bild konnte nicht geladen werden:",
+                                      "BILD FEHLER:",
                                       imageUrl,
                                     )
 
@@ -385,24 +489,35 @@ export function BookingsManager({
                                       "none"
                                   }}
                                 />
+
                               </a>
 
-                              {/* Bildnummer */}
+                              {/* NUMMER */}
+
                               <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-2 text-center text-[10px] uppercase tracking-wider text-white">
-                                Bild {index + 1}
+                                Bild{" "}
+                                {index + 1}
                               </div>
+
                             </div>
                           )
                         },
                       )}
+
                     </div>
                   )}
+
                 </div>
 
-                {/* Buttons */}
+                {/* ================================= */}
+                {/* BUTTONS */}
+                {/* ================================= */}
+
                 {booking.status ===
                   "pending" && (
+
                   <div className="mt-6 flex flex-wrap gap-2">
+
                     <button
                       type="button"
                       onClick={() =>
@@ -413,7 +528,8 @@ export function BookingsManager({
                       }
                       disabled={
                         isPending &&
-                        busyId === booking.id
+                        busyId ===
+                          booking.id
                       }
                       className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
                     >
@@ -432,7 +548,8 @@ export function BookingsManager({
                       }
                       disabled={
                         isPending &&
-                        busyId === booking.id
+                        busyId ===
+                          booking.id
                       }
                       className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
                     >
@@ -440,8 +557,10 @@ export function BookingsManager({
 
                       Ablehnen
                     </button>
+
                   </div>
                 )}
+
               </div>
             </article>
           )
