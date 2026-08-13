@@ -3,14 +3,25 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { Resend } from "resend"
+
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
+// =====================================================
+// ABMELDEN
+// =====================================================
+
 export async function signOut() {
   const supabase = await createClient()
+
   await supabase.auth.signOut()
+
   redirect("/auth/login")
 }
+
+// =====================================================
+// TYPES
+// =====================================================
 
 export type BookingStatus =
   | "pending"
@@ -32,15 +43,19 @@ export type Booking = {
   problem: string
   status: BookingStatus
   created_at: string
-
-  // Wichtig:
-  // Supabase JSON/JSONB kann hier entweder ein Array
-  // oder in alten Datensätzen eventuell einen String liefern.
   image_urls: string[]
 }
 
+// =====================================================
+// ÖFFNUNGSZEITEN
+// =====================================================
+
 const OPEN_HOUR = 8
 const CLOSE_HOUR = 22
+
+// =====================================================
+// HILFSFUNKTIONEN
+// =====================================================
 
 function isValidDate(value: string) {
   return (
@@ -52,16 +67,32 @@ function isValidDate(value: string) {
 function isValidTime(value: string) {
   const match = /^(\d{2}):00$/.exec(value)
 
-  if (!match) return false
+  if (!match) {
+    return false
+  }
 
   const hour = Number(match[1])
 
-  return hour >= OPEN_HOUR && hour <= CLOSE_HOUR
+  return (
+    hour >= OPEN_HOUR &&
+    hour <= CLOSE_HOUR
+  )
 }
 
-/**
- * Öffentliche Termine
- */
+// HTML-Zeichen für E-Mail absichern
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+// =====================================================
+// BUCHUNGEN FÜR ÖFFENTLICHEN KALENDER
+// =====================================================
+
 export async function getBookedSlots(): Promise<
   PublicSlot[]
 > {
@@ -73,7 +104,9 @@ export async function getBookedSlots(): Promise<
 
   const { data, error } = await supabase
     .from("bookings")
-    .select("booking_date, booking_time")
+    .select(
+      "booking_date, booking_time",
+    )
     .neq("status", "rejected")
     .gte("booking_date", today)
 
@@ -89,9 +122,10 @@ export async function getBookedSlots(): Promise<
   return data ?? []
 }
 
-/**
- * Erstellt einen neuen Termin
- */
+// =====================================================
+// TERMIN ERSTELLEN
+// =====================================================
+
 export async function createBooking(input: {
   booking_date: string
   booking_time: string
@@ -104,35 +138,62 @@ export async function createBooking(input: {
   bookingId?: string
   error?: string
 }> {
-  const name = input.name?.trim()
-  const contact = input.contact?.trim()
-  const car = input.car?.trim()
-  const problem = input.problem?.trim()
+  const name =
+    input.name?.trim()
 
-  if (!isValidDate(input.booking_date)) {
+  const contact =
+    input.contact?.trim()
+
+  const car =
+    input.car?.trim()
+
+  const problem =
+    input.problem?.trim()
+
+  // Datum prüfen
+  if (
+    !isValidDate(
+      input.booking_date,
+    )
+  ) {
     return {
       ok: false,
       error: "Ungültiges Datum.",
     }
   }
 
-  if (!isValidTime(input.booking_time)) {
+  // Uhrzeit prüfen
+  if (
+    !isValidTime(
+      input.booking_time,
+    )
+  ) {
     return {
       ok: false,
       error: "Ungültige Uhrzeit.",
     }
   }
 
-  if (!name || !contact || !car || !problem) {
+  // Pflichtfelder prüfen
+  if (
+    !name ||
+    !contact ||
+    !car ||
+    !problem
+  ) {
     return {
       ok: false,
-      error: "Bitte füllen Sie alle Felder aus.",
+      error:
+        "Bitte füllen Sie alle Felder aus.",
     }
   }
 
+  // Vergangenes Datum verhindern
   if (
     input.booking_date <
-    new Date().toISOString().slice(0, 10)
+    new Date()
+      .toISOString()
+      .slice(0, 10)
   ) {
     return {
       ok: false,
@@ -141,9 +202,10 @@ export async function createBooking(input: {
     }
   }
 
+  // Maximale Länge
   if (
     [name, contact, car, problem].some(
-      (v) => v.length > 1000,
+      (value) => value.length > 1000,
     )
   ) {
     return {
@@ -152,29 +214,40 @@ export async function createBooking(input: {
     }
   }
 
-  const supabase = createAdminClient()
+  // Supabase Admin
+  const supabase =
+    createAdminClient()
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert({
-      booking_date: input.booking_date,
-      booking_time: input.booking_time,
-      name,
-      contact,
-      car,
-      problem,
-      status: "pending",
+  const { data, error } =
+    await supabase
+      .from("bookings")
+      .insert({
+        booking_date:
+          input.booking_date,
 
-      // Anfangs leer.
-      // Die Bilder werden danach mit saveBookingImages()
-      // eingetragen.
-      image_urls: [],
-    })
-    .select("id")
-    .single()
+        booking_time:
+          input.booking_time,
+
+        name,
+
+        contact,
+
+        car,
+
+        problem,
+
+        status: "pending",
+
+        // Wichtig für deine Bilder
+        image_urls: [],
+      })
+      .select("id")
+      .single()
 
   if (error) {
-    if (error.code === "23505") {
+    if (
+      error.code === "23505"
+    ) {
       return {
         ok: false,
         error:
@@ -203,112 +276,48 @@ export async function createBooking(input: {
   }
 }
 
-/**
- * =========================================================
- * BILDER ZU EINEM TERMIN SPEICHERN
- * =========================================================
- *
- * Diese Funktion läuft auf dem Server.
- *
- * Dadurch verwenden wir createAdminClient()
- * und umgehen das Problem, dass der öffentliche
- * Kunde keine UPDATE-Berechtigung auf bookings hat.
- */
-export async function saveBookingImages(
-  bookingId: string,
-  imagePaths: string[],
-): Promise<{
-  ok: boolean
-  error?: string
-}> {
-  if (!bookingId) {
-    return {
-      ok: false,
-      error: "Keine Buchungs-ID vorhanden.",
-    }
-  }
+// =====================================================
+// ALLE BUCHUNGEN FÜR BESITZER
+// =====================================================
 
-  if (!Array.isArray(imagePaths)) {
-    return {
-      ok: false,
-      error: "Ungültige Bilddaten.",
-    }
-  }
-
-  // Maximal 5 Bilder
-  const cleanPaths = imagePaths
-    .filter(
-      (path): path is string =>
-        typeof path === "string" &&
-        path.trim().length > 0,
-    )
-    .map((path) => path.trim())
-    .slice(0, 5)
-
-  const supabase = createAdminClient()
-
-  const { error } = await supabase
-    .from("bookings")
-    .update({
-      image_urls: cleanPaths,
-    })
-    .eq("id", bookingId)
-
-  if (error) {
-    console.log(
-      "saveBookingImages error:",
-      error.message,
-    )
-
-    return {
-      ok: false,
-      error:
-        "Die Bilder konnten nicht gespeichert werden.",
-    }
-  }
-
-  console.log(
-    "Bilder erfolgreich gespeichert:",
-    cleanPaths,
-  )
-
-  revalidatePath("/besitzer")
-  revalidatePath("/")
-
-  return {
-    ok: true,
-  }
-}
-
-/**
- * =========================================================
- * BESITZER: BUCHUNGEN LADEN
- * =========================================================
- */
 export async function listBookings(): Promise<
   Booking[]
 > {
-  const auth = await createClient()
+  // Benutzer prüfen
+  const auth =
+    await createClient()
 
   const {
     data: { user },
-  } = await auth.auth.getUser()
+  } =
+    await auth.auth.getUser()
 
   if (!user) {
     return []
   }
 
-  const supabase = createAdminClient()
+  // Admin Client
+  const supabase =
+    createAdminClient()
 
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("bookings")
     .select("*")
-    .order("booking_date", {
-      ascending: true,
-    })
-    .order("booking_time", {
-      ascending: true,
-    })
+    .order(
+      "booking_date",
+      {
+        ascending: true,
+      },
+    )
+    .order(
+      "booking_time",
+      {
+        ascending: true,
+      },
+    )
 
   if (error) {
     console.log(
@@ -319,14 +328,15 @@ export async function listBookings(): Promise<
     return []
   }
 
-  return (data ?? []) as Booking[]
+  return (
+    (data ?? []) as Booking[]
+  )
 }
 
-/**
- * =========================================================
- * BESITZER: STATUS ÄNDERN
- * =========================================================
- */
+// =====================================================
+// TERMIN BESTÄTIGEN / ABLEHNEN
+// =====================================================
+
 export async function updateBookingStatus(
   id: string,
   status: Exclude<
@@ -337,11 +347,17 @@ export async function updateBookingStatus(
   ok: boolean
   error?: string
 }> {
-  const auth = await createClient()
+  // ===================================================
+  // 1. BESITZER PRÜFEN
+  // ===================================================
+
+  const auth =
+    await createClient()
 
   const {
     data: { user },
-  } = await auth.auth.getUser()
+  } =
+    await auth.auth.getUser()
 
   if (!user) {
     return {
@@ -349,6 +365,10 @@ export async function updateBookingStatus(
       error: "Nicht autorisiert.",
     }
   }
+
+  // ===================================================
+  // 2. STATUS PRÜFEN
+  // ===================================================
 
   if (
     status !== "confirmed" &&
@@ -360,19 +380,67 @@ export async function updateBookingStatus(
     }
   }
 
-  const supabase = createAdminClient()
+  // ===================================================
+  // 3. BUCHUNG HOLEN
+  // ===================================================
 
-  const { error } = await supabase
+  const supabase =
+    createAdminClient()
+
+  const {
+    data: booking,
+    error: bookingError,
+  } =
+    await supabase
+      .from("bookings")
+      .select(
+        `
+          id,
+          booking_date,
+          booking_time,
+          name,
+          contact,
+          car,
+          problem,
+          status
+        `,
+      )
+      .eq("id", id)
+      .single()
+
+  if (
+    bookingError ||
+    !booking
+  ) {
+    console.log(
+      "Buchung nicht gefunden:",
+      bookingError?.message,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Buchung wurde nicht gefunden.",
+    }
+  }
+
+  // ===================================================
+  // 4. STATUS IN SUPABASE ÄNDERN
+  // ===================================================
+
+  const {
+    error: updateError,
+  } = await supabase
     .from("bookings")
     .update({
       status,
     })
     .eq("id", id)
 
-  if (error) {
+  if (updateError) {
     console.log(
-      "updateBookingStatus error:",
-      error.message,
+      "Status Update Fehler:",
+      updateError.message,
     )
 
     return {
@@ -381,6 +449,193 @@ export async function updateBookingStatus(
         "Aktualisierung fehlgeschlagen.",
     }
   }
+
+  // ===================================================
+  // 5. E-MAIL NUR BEI BESTÄTIGUNG
+  // ===================================================
+
+  if (
+    status === "confirmed"
+  ) {
+    const contact =
+      booking.contact?.trim() ??
+      ""
+
+    // Prüfen, ob Kontakt eine E-Mail ist
+    const isEmail =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+        contact,
+      )
+
+    if (isEmail) {
+      try {
+        const apiKey =
+          process.env.RESEND_API_KEY
+
+        // Kein API-Key
+        if (!apiKey) {
+          console.error(
+            "RESEND_API_KEY fehlt in den Environment Variables.",
+          )
+        } else {
+          const resend =
+            new Resend(apiKey)
+
+          // Datum formatieren
+          const formattedDate =
+            new Date(
+              booking.booking_date +
+                "T00:00:00",
+            ).toLocaleDateString(
+              "de-CH",
+              {
+                weekday:
+                  "long",
+
+                day: "2-digit",
+
+                month: "2-digit",
+
+                year: "numeric",
+              },
+            )
+
+          // E-Mail senden
+          const {
+            error: emailError,
+          } =
+            await resend.emails.send({
+              from:
+                "MB Performance <onboarding@resend.dev>",
+
+              to: [contact],
+
+              subject:
+                "Termin bei MB Performance bestätigt",
+
+              html: `
+                <div
+                  style="
+                    font-family: Arial, sans-serif;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 30px;
+                    color: #111;
+                  "
+                >
+
+                  <h1>
+                    MB Performance
+                  </h1>
+
+                  <h2>
+                    Ihr Termin wurde bestätigt
+                  </h2>
+
+                  <p>
+                    Hallo ${escapeHtml(
+                      booking.name,
+                    )},
+                  </p>
+
+                  <p>
+                    Ihr Termin bei
+                    <strong>
+                      MB Performance
+                    </strong>
+                    wurde erfolgreich bestätigt.
+                  </p>
+
+                  <div
+                    style="
+                      background: #f5f5f5;
+                      padding: 20px;
+                      margin: 20px 0;
+                    "
+                  >
+
+                    <p>
+                      <strong>
+                        Datum:
+                      </strong>
+                      <br>
+                      ${escapeHtml(
+                        formattedDate,
+                      )}
+                    </p>
+
+                    <p>
+                      <strong>
+                        Uhrzeit:
+                      </strong>
+                      <br>
+                      ${escapeHtml(
+                        booking.booking_time,
+                      )}
+                    </p>
+
+                    <p>
+                      <strong>
+                        Fahrzeug:
+                      </strong>
+                      <br>
+                      ${escapeHtml(
+                        booking.car,
+                      )}
+                    </p>
+
+                  </div>
+
+                  <p>
+                    Vielen Dank für Ihre Anfrage.
+                  </p>
+
+                  <p>
+                    Freundliche Grüsse
+                    <br>
+                    <strong>
+                      MB Performance
+                    </strong>
+                  </p>
+
+                </div>
+              `,
+            })
+
+          if (emailError) {
+            console.error(
+              "E-Mail Fehler:",
+              emailError,
+            )
+          } else {
+            console.log(
+              "Bestätigungs-E-Mail gesendet an:",
+              contact,
+            )
+          }
+        }
+      } catch (error) {
+        console.error(
+          "Fehler beim Senden der E-Mail:",
+          error,
+        )
+      }
+    } else {
+      // =================================================
+      // TELEFONNUMMER
+      // SMS KOMMT ALS NÄCHSTER SCHRITT
+      // =================================================
+
+      console.log(
+        "Kontakt ist keine E-Mail. SMS kann später gesendet werden:",
+        contact,
+      )
+    }
+  }
+
+  // ===================================================
+  // 6. SEITEN AKTUALISIEREN
+  // ===================================================
 
   revalidatePath("/")
   revalidatePath("/besitzer")
