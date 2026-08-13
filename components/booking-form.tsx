@@ -461,7 +461,7 @@ export function BookingForm({
           onChange={(e) =>
             setCar(e.target.value)
           }
-          placeholder="z. B. BMW 320i"
+          placeholder="z. B. BMW 335i"
           required
           className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
         />
