@@ -2,13 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { CheckCircle2, ImagePlus, X } from "lucide-react"
-
 import {
   createBooking,
   saveBookingImages,
   type PublicSlot,
 } from "@/app/actions"
-
 import { createClient } from "@/lib/supabase/client"
 
 const TIMES = [
@@ -33,9 +31,11 @@ export function BookingForm({
 }) {
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
+
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
+
   const [car, setCar] = useState("")
   const [problem, setProblem] = useState("")
 
@@ -48,9 +48,7 @@ export function BookingForm({
   const takenForDate = useMemo(() => {
     return new Set(
       bookedSlots
-        .filter(
-          (slot) => slot.booking_date === date,
-        )
+        .filter((slot) => slot.booking_date === date)
         .map((slot) => slot.booking_time),
     )
   }, [bookedSlots, date])
@@ -58,9 +56,7 @@ export function BookingForm({
   function handleImages(
     e: React.ChangeEvent<HTMLInputElement>,
   ) {
-    const selected = Array.from(
-      e.target.files ?? [],
-    )
+    const selected = Array.from(e.target.files ?? [])
 
     const validImages = selected.filter((file) => {
       if (!file.type.startsWith("image/")) {
@@ -89,10 +85,7 @@ export function BookingForm({
 
   function removeImage(index: number) {
     setImages((previous) =>
-      previous.filter(
-        (_, currentIndex) =>
-          currentIndex !== index,
-      ),
+      previous.filter((_, i) => i !== index),
     )
   }
 
@@ -100,26 +93,35 @@ export function BookingForm({
     e: React.FormEvent<HTMLFormElement>,
   ) {
     e.preventDefault()
-
     setError(null)
 
     if (!date || !time) {
-      setError(
-        "Bitte wählen Sie Datum und Uhrzeit.",
-      )
+      setError("Bitte wählen Sie Datum und Uhrzeit.")
       return
     }
 
-    if (
-      !name ||
-      !phone ||
-      !email ||
-      !car ||
-      !problem
-    ) {
-      setError(
-        "Bitte füllen Sie alle Felder aus.",
-      )
+    if (!name.trim()) {
+      setError("Bitte geben Sie Ihren Namen ein.")
+      return
+    }
+
+    if (!phone.trim()) {
+      setError("Bitte geben Sie Ihre Telefonnummer ein.")
+      return
+    }
+
+    if (!email.trim()) {
+      setError("Bitte geben Sie Ihre E-Mail-Adresse ein.")
+      return
+    }
+
+    if (!car.trim()) {
+      setError("Bitte geben Sie Ihr Fahrzeug ein.")
+      return
+    }
+
+    if (!problem.trim()) {
+      setError("Bitte beschreiben Sie Ihr Anliegen.")
       return
     }
 
@@ -131,9 +133,7 @@ export function BookingForm({
     }
 
     if (images.length === 0) {
-      setError(
-        "Bitte laden Sie mindestens ein Bild hoch.",
-      )
+      setError("Bitte laden Sie mindestens ein Bild hoch.")
       return
     }
 
@@ -147,11 +147,11 @@ export function BookingForm({
       const result = await createBooking({
         booking_date: date,
         booking_time: time,
-        name,
-        phone,
-        email,
-        car,
-        problem,
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        car: car.trim(),
+        problem: problem.trim(),
       })
 
       if (!result.ok || !result.bookingId) {
@@ -159,7 +159,6 @@ export function BookingForm({
           result.error ??
             "Der Termin konnte nicht erstellt werden.",
         )
-
         setPending(false)
         return
       }
@@ -175,25 +174,17 @@ export function BookingForm({
       const uploadedImages: string[] = []
 
       // ==========================================
-      // BILDER HOCHLADEN
+      // BILDER PARALLEL HOCHLADEN
       // ==========================================
 
-      // Parallel hochladen,
-      // damit 5 Bilder schneller hochgeladen werden.
       const uploadResults = await Promise.all(
         images.map(async (image, index) => {
           const extension =
-            image.name
-              .split(".")
-              .pop()
-              ?.toLowerCase() || "jpg"
+            image.name.split(".").pop()?.toLowerCase() || "jpg"
 
           const safeName = name
             .trim()
-            .replace(
-              /[^a-zA-Z0-9äöüÄÖÜß]/g,
-              "-",
-            )
+            .replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, "-")
             .replace(/-+/g, "-")
 
           const timestamp = Date.now()
@@ -201,70 +192,39 @@ export function BookingForm({
           const fileName =
             `${safeName}-${timestamp}-${index + 1}.${extension}`
 
-          const {
-            error: uploadError,
-          } = await supabase.storage
-            .from("Kunden-Bilder")
-            .upload(
-              fileName,
-              image,
-              {
+          const { error: uploadError } =
+            await supabase.storage
+              .from("Kunden-Bilder")
+              .upload(fileName, image, {
                 cacheControl: "3600",
                 upsert: false,
                 contentType: image.type,
-              },
-            )
+              })
 
           if (uploadError) {
-            return {
-              ok: false,
-              path: "",
-              error: uploadError.message,
-            }
+            throw uploadError
           }
 
-          return {
-            ok: true,
-            path: fileName,
-            error: null,
-          }
+          return fileName
         }),
       )
 
-      for (const result of uploadResults) {
-        if (!result.ok) {
-          console.error(
-            "UPLOAD FEHLER:",
-            result.error,
-          )
-
-          setError(
-            "Mindestens ein Bild konnte nicht hochgeladen werden.",
-          )
-
-          setPending(false)
-          return
-        }
-
-        uploadedImages.push(result.path)
-      }
+      uploadedImages.push(...uploadResults)
 
       // ==========================================
       // BILDER MIT BUCHUNG VERKNÜPFEN
       // ==========================================
 
-      const imageResult =
-        await saveBookingImages(
-          bookingId,
-          uploadedImages,
-        )
+      const imageResult = await saveBookingImages(
+        bookingId,
+        uploadedImages,
+      )
 
       if (!imageResult.ok) {
         setError(
           imageResult.error ??
-            "Die Bilder konnten nicht mit dem Termin verbunden werden.",
+            "Die Bilder konnten nicht gespeichert werden.",
         )
-
         setPending(false)
         return
       }
@@ -275,11 +235,8 @@ export function BookingForm({
 
       setPending(false)
       setDone(true)
-    } catch (err) {
-      console.error(
-        "TERMIN FEHLER:",
-        err,
-      )
+    } catch (error) {
+      console.error("Booking Fehler:", error)
 
       setPending(false)
 
@@ -289,10 +246,6 @@ export function BookingForm({
     }
   }
 
-  // ==========================================
-  // ERFOLG
-  // ==========================================
-
   if (done) {
     return (
       <div className="border border-border bg-card p-10 text-center">
@@ -301,16 +254,15 @@ export function BookingForm({
           strokeWidth={1.5}
         />
 
-        <h3 className="mt-6 font-display text-2xl font-bold uppercase tracking-wide text-foreground">
+        <h3 className="mt-6 font-display text-2xl font-bold uppercase tracking-wide">
           Anfrage gesendet
         </h3>
 
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
           Vielen Dank, {name}.
           <br />
-          Ihre Terminanfrage ist bei uns eingegangen.
-          <br />
-          Wir melden uns bei Ihnen.
+          Ihre Terminanfrage wurde erfolgreich
+          übermittelt.
         </p>
       </div>
     )
@@ -324,9 +276,9 @@ export function BookingForm({
       {/* DATUM + NAME */}
 
       <div className="grid gap-6 md:grid-cols-2">
-        <label className="block">
+        <label>
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Datum *
+            Datum
           </span>
 
           <input
@@ -337,25 +289,21 @@ export function BookingForm({
               setDate(e.target.value)
               setTime("")
             }}
-            required
-            className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none focus:border-ring"
+            className="mt-2 w-full border border-input bg-background px-4 py-3 outline-none"
           />
         </label>
 
-        <label className="block">
+        <label>
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-            Ihr Name *
+            Name *
           </span>
 
           <input
             type="text"
             value={name}
-            onChange={(e) =>
-              setName(e.target.value)
-            }
+            onChange={(e) => setName(e.target.value)}
             placeholder="Vor- und Nachname"
-            required
-            className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+            className="mt-2 w-full border border-input bg-background px-4 py-3 outline-none"
           />
         </label>
       </div>
@@ -364,37 +312,28 @@ export function BookingForm({
 
       <div className="mt-6">
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-          Uhrzeit *
+          Uhrzeit
         </span>
 
         <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-8">
           {TIMES.map((currentTime) => {
-            const taken =
-              takenForDate.has(currentTime)
-
-            const active =
-              time === currentTime
+            const taken = takenForDate.has(currentTime)
+            const active = time === currentTime
 
             return (
               <button
                 key={currentTime}
                 type="button"
-                disabled={
-                  taken || !date
-                }
-                onClick={() =>
-                  setTime(currentTime)
-                }
+                disabled={taken || !date}
+                onClick={() => setTime(currentTime)}
                 className={[
-                  "border px-3 py-3 text-sm transition-colors",
-
+                  "border px-3 py-3 text-sm",
                   active
                     ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-foreground hover:bg-secondary",
-
+                    : "border-border",
                   taken || !date
-                    ? "cursor-not-allowed opacity-30 hover:bg-transparent"
-                    : "",
+                    ? "cursor-not-allowed opacity-30"
+                    : "hover:bg-secondary",
                 ].join(" ")}
               >
                 {currentTime}
@@ -402,18 +341,12 @@ export function BookingForm({
             )
           })}
         </div>
-
-        {!date && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Bitte zuerst ein Datum wählen.
-          </p>
-        )}
       </div>
 
-      {/* TELEFON + E-MAIL */}
+      {/* TELEFON + EMAIL */}
 
       <div className="mt-6 grid gap-6 md:grid-cols-2">
-        <label className="block">
+        <label>
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
             Telefonnummer *
           </span>
@@ -421,16 +354,13 @@ export function BookingForm({
           <input
             type="tel"
             value={phone}
-            onChange={(e) =>
-              setPhone(e.target.value)
-            }
+            onChange={(e) => setPhone(e.target.value)}
             placeholder="079 123 45 67"
-            required
-            className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+            className="mt-2 w-full border border-input bg-background px-4 py-3 outline-none"
           />
         </label>
 
-        <label className="block">
+        <label>
           <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
             E-Mail *
           </span>
@@ -438,12 +368,9 @@ export function BookingForm({
           <input
             type="email"
             value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
+            onChange={(e) => setEmail(e.target.value)}
             placeholder="name@beispiel.ch"
-            required
-            className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+            className="mt-2 w-full border border-input bg-background px-4 py-3 outline-none"
           />
         </label>
       </div>
@@ -458,12 +385,9 @@ export function BookingForm({
         <input
           type="text"
           value={car}
-          onChange={(e) =>
-            setCar(e.target.value)
-          }
-          placeholder="z. B. BMW 335i/X4M"
-          required
-          className="mt-2 w-full border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+          onChange={(e) => setCar(e.target.value)}
+          placeholder="z. B. BMW 320i"
+          className="mt-2 w-full border border-input bg-background px-4 py-3 outline-none"
         />
       </label>
 
@@ -476,13 +400,10 @@ export function BookingForm({
 
         <textarea
           value={problem}
-          onChange={(e) =>
-            setProblem(e.target.value)
-          }
+          onChange={(e) => setProblem(e.target.value)}
           placeholder="Beschreiben Sie bitte kurz das Problem..."
           rows={5}
-          required
-          className="mt-2 w-full resize-none border border-input bg-background px-4 py-3 text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring"
+          className="mt-2 w-full resize-none border border-input bg-background px-4 py-3 outline-none"
         />
       </label>
 
@@ -492,11 +413,11 @@ export function BookingForm({
         <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
           Bilder hinzufügen{" "}
           <span className="text-[var(--bad)]">
-            (Pflicht) *
+            (Pflicht)
           </span>
         </span>
 
-        <label className="mt-2 flex cursor-pointer items-center justify-center border border-dashed border-border bg-background px-6 py-8 text-center transition-colors hover:bg-secondary">
+        <label className="mt-2 flex cursor-pointer items-center justify-center border border-dashed border-border px-6 py-8 text-center hover:bg-secondary">
           <div>
             <ImagePlus className="mx-auto h-8 w-8 text-muted-foreground" />
 
@@ -527,17 +448,14 @@ export function BookingForm({
               >
                 <img
                   src={URL.createObjectURL(image)}
-                  alt={`Ausgewähltes Bild ${index + 1}`}
+                  alt={`Bild ${index + 1}`}
                   className="h-full w-full object-cover"
                 />
 
                 <button
                   type="button"
-                  onClick={() =>
-                    removeImage(index)
-                  }
+                  onClick={() => removeImage(index)}
                   className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center bg-black/70 text-white"
-                  aria-label="Bild entfernen"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -545,10 +463,6 @@ export function BookingForm({
             ))}
           </div>
         )}
-
-        <p className="mt-2 text-xs text-muted-foreground">
-          Bitte mindestens ein Foto vom Schaden hinzufügen.
-        </p>
       </div>
 
       {/* FEHLER */}
@@ -564,7 +478,7 @@ export function BookingForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-8 w-full bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-8 w-full bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground disabled:opacity-50"
       >
         {pending
           ? "Wird gesendet..."
