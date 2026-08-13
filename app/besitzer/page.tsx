@@ -20,7 +20,7 @@ export default async function OwnerPage() {
     <main className="min-h-screen bg-background">
       <header className="flex items-center justify-between border-b border-border px-[6%] py-5">
         <Link href="/" className="font-display text-xl font-bold tracking-[0.2em] text-foreground">
-          ALI-AG
+          MB Performance
         </Link>
         <div className="flex items-center gap-5">
           <span className="hidden text-sm text-muted-foreground sm:inline">{user.email}</span>
