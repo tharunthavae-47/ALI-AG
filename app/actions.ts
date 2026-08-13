@@ -419,48 +419,46 @@ try {
   } else if (!process.env.RESEND_FROM_EMAIL) {
     console.error("RESEND_FROM_EMAIL fehlt.")
   } else {
-    const htmlContent = [
-      "<!DOCTYPE html>",
-      '<html lang="de">',
-      "<head>",
-      '<meta charset="UTF-8">',
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-      "<title>Terminanfrage ALI AG</title>",
-      "</head>",
-      '<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:30px;">',
-
-      '<div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">',
-
-      `<h1>Vielen Dank, ${escapeHtml(name)}!</h1>`,
-
-      "<p>Wir haben Ihre Terminanfrage erhalten.</p>",
-
-      "<p>Ihre Anfrage wird nun geprüft.</p>",
-
-      "<h2>Ihre Angaben</h2>",
-
-      `<p><strong>Datum:</strong> ${escapeHtml(input.booking_date)}</p>`,
-
-      `<p><strong>Uhrzeit:</strong> ${escapeHtml(input.booking_time)}</p>`,
-
-      `<p><strong>Fahrzeug:</strong> ${escapeHtml(car)}</p>`,
-
-      `<p><strong>Telefon:</strong> ${escapeHtml(phone)}</p>`,
-
-      `<p><strong>E-Mail:</strong> ${escapeHtml(email)}</p>`,
-
-      `<p><strong>Anliegen:</strong><br>${escapeHtml(problem).replace(/\n/g, "<br>")}</p>`,
-
-      "<hr>",
-
-      "<p>Freundliche Grüsse</p>",
-
-      "<p><strong>ALI AG</strong></p>",
-
-      "</div>",
-      "</body>",
-      "</html>",
-    ].join("")
+    const htmlContent =
+  "<!DOCTYPE html>" +
+  '<html lang="de">' +
+  "<head>" +
+  '<meta charset="UTF-8">' +
+  '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+  "<title>Terminanfrage ALI AG</title>" +
+  "</head>" +
+  '<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:30px;">' +
+  '<div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">' +
+  "<h1>Vielen Dank, " +
+  escapeHtml(name) +
+  "!</h1>" +
+  "<p>Wir haben Ihre Terminanfrage erhalten.</p>" +
+  "<p>Ihre Anfrage wird nun geprüft.</p>" +
+  "<h2>Ihre Angaben</h2>" +
+  "<p><strong>Datum:</strong> " +
+  escapeHtml(input.booking_date) +
+  "</p>" +
+  "<p><strong>Uhrzeit:</strong> " +
+  escapeHtml(input.booking_time) +
+  "</p>" +
+  "<p><strong>Fahrzeug:</strong> " +
+  escapeHtml(car) +
+  "</p>" +
+  "<p><strong>Telefon:</strong> " +
+  escapeHtml(phone) +
+  "</p>" +
+  "<p><strong>E-Mail:</strong> " +
+  escapeHtml(email) +
+  "</p>" +
+  "<p><strong>Anliegen:</strong><br>" +
+  escapeHtml(problem).replace(/\n/g, "<br>") +
+  "</p>" +
+  "<hr>" +
+  "<p>Freundliche Grüsse</p>" +
+  "<p><strong>ALI AG</strong></p>" +
+  "</div>" +
+  "</body>" +
+  "</html>"
 
     const { error: emailError } =
       await resend.emails.send({
