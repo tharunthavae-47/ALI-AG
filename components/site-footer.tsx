@@ -37,7 +37,7 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="mx-auto mt-12 flex max-w-6xl flex-col items-center justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row">
-        <span>© {new Date().getFullYear()} ALI-AG. Alle Rechte vorbehalten.</span>
+        <span>© {new Date().getFullYear()} MB Performance. Alle Rechte vorbehalten.</span>
         <Link href="/besitzer" className="transition-colors hover:text-foreground">
           Besitzer-Login
         </Link>
