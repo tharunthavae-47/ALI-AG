@@ -6,7 +6,12 @@ export function SiteFooter() {
     <footer className="border-t border-border px-[6%] py-16">
       <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-2 lg:grid-cols-4">
         <div>
-          <span className="font-display text-xl font-bold tracking-[0.2em] text-foreground">MB Performance</span>
+          <img
+           src="/logo.png"
+           alt="MB Performance Logo"
+           className="h-12 w-auto object-contain"
+           />
+          
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
             Ihre Werkstatt für ehrlichen Service und saubere Arbeit.
           </p>
