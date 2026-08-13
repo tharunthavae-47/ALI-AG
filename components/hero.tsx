@@ -22,7 +22,7 @@ export function Hero() {
             <span className="text-muted-foreground">der Sie vertrauen.</span>
           </h1>
           <p className="mt-6 max-w-lg text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">
-            Persönlich, zuverlässig und professionell. Bei ALI-AG kümmern wir uns um Ihr Fahrzeug, als wäre es unser
+            Persönlich, zuverlässig und professionell. Bei MB Performance kümmern wir uns um Ihr Fahrzeug, als wäre es unser
             eigenes. Vereinbaren Sie Ihren Termin bequem online.
           </p>
           <div className="mt-9 flex flex-wrap gap-4">
