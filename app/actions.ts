@@ -409,138 +409,84 @@ export async function createBooking(input: {
     }
   }
 
-  // ===================================================
-  // AUTOMATISCHE E-MAIL AN KUNDEN
-  // ===================================================
+ // ===================================================
+// AUTOMATISCHE E-MAIL AN KUNDEN
+// ===================================================
 
-  try {
-    if (
-      !process.env.RESEND_API_KEY
-    ) {
+try {
+  if (!process.env.RESEND_API_KEY) {
+    console.error("RESEND_API_KEY fehlt.")
+  } else if (!process.env.RESEND_FROM_EMAIL) {
+    console.error("RESEND_FROM_EMAIL fehlt.")
+  } else {
+    const htmlContent = [
+      "<!DOCTYPE html>",
+      '<html lang="de">',
+      "<head>",
+      '<meta charset="UTF-8">',
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+      "<title>Terminanfrage ALI AG</title>",
+      "</head>",
+      '<body style="font-family: Arial, sans-serif; background:#f5f5f5; padding:30px;">',
+
+      '<div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">',
+
+      `<h1>Vielen Dank, ${escapeHtml(name)}!</h1>`,
+
+      "<p>Wir haben Ihre Terminanfrage erhalten.</p>",
+
+      "<p>Ihre Anfrage wird nun geprüft.</p>",
+
+      "<h2>Ihre Angaben</h2>",
+
+      `<p><strong>Datum:</strong> ${escapeHtml(input.booking_date)}</p>`,
+
+      `<p><strong>Uhrzeit:</strong> ${escapeHtml(input.booking_time)}</p>`,
+
+      `<p><strong>Fahrzeug:</strong> ${escapeHtml(car)}</p>`,
+
+      `<p><strong>Telefon:</strong> ${escapeHtml(phone)}</p>`,
+
+      `<p><strong>E-Mail:</strong> ${escapeHtml(email)}</p>`,
+
+      `<p><strong>Anliegen:</strong><br>${escapeHtml(problem).replace(/\n/g, "<br>")}</p>`,
+
+      "<hr>",
+
+      "<p>Freundliche Grüsse</p>",
+
+      "<p><strong>ALI AG</strong></p>",
+
+      "</div>",
+      "</body>",
+      "</html>",
+    ].join("")
+
+    const { error: emailError } =
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: email,
+        subject: "Ihre Terminanfrage bei ALI AG",
+        html: htmlContent,
+      })
+
+    if (emailError) {
       console.error(
-        "RESEND_API_KEY fehlt.",
-      )
-    } else if (
-      !process.env.RESEND_FROM_EMAIL
-    ) {
-      console.error(
-        "RESEND_FROM_EMAIL fehlt.",
+        "Resend email error:",
+        emailError,
       )
     } else {
-      const { error: emailError } =
-        await resend.emails.send({
-          from:
-            process.env
-              .RESEND_FROM_EMAIL,
-
-          to: email,
-
-          subject:
-            "Ihre Terminanfrage bei ALI AG",
-
-          html: `
-            <!DOCTYPE html>
-            <html lang="de">
-              <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Terminanfrage ALI AG</title>
-              </head>
-
-              <body style="margin:0; padding:0; background:#f5f5f5; font-family:Arial,Helvetica,sans-serif;">
-                <div style="max-width:600px; margin:40px auto; background:#ffffff; padding:32px; border-radius:12px;">
-
-                  <h1 style="margin-top:0;">
-                    Vielen Dank, ${escapeHtml(name)}!
-                  </h1>
-
-                  <p>
-                    Wir haben Ihre Terminanfrage erhalten.
-                  </p>
-
-                  <p>
-                    Ihre Anfrage wird nun geprüft.
-                    Sobald der Termin bestätigt oder abgelehnt wurde,
-                    erhalten Sie eine weitere Information.
-                  </p>
-
-                  <h2>Ihre Angaben</h2>
-
-                  <p>
-                    <strong>Datum:</strong>
-                    ${escapeHtml(input.booking_date)}
-                  </p>
-
-                  <p>
-                    <strong>Uhrzeit:</strong>
-                    ${escapeHtml(input.booking_time)}
-                  </p>
-
-                  <p>
-                    <strong>Fahrzeug:</strong>
-                    ${escapeHtml(car)}
-                  </p>
-
-                  <p>
-                    <strong>Telefon:</strong>
-                    ${escapeHtml(phone)}
-                  </p>
-
-                  <p>
-                    <strong>E-Mail:</strong>
-                    ${escapeHtml(email)}
-                  </p>
-
-                  <p>
-                    <strong>Anliegen:</strong><br />
-                    ${escapeHtml(problem).replace(/\n/g, "<br />")}
-                  </p>
-
-                  <hr style="margin:30px 0; border:none; border-top:1px solid #ddd;" />
-
-                  <p style="color:#666;">
-                    Freundliche Grüsse<br />
-                    <strong>ALI AG</strong>
-                  </p>
-
-                </div>
-              </body>
-            </html>
-          `,
-        })
-
-      if (emailError) {
-        console.error(
-          "Resend email error:",
-          emailError,
-        )
-      } else {
-        console.log(
-          "Bestätigungs-E-Mail wurde gesendet an:",
-          email,
-        )
-      }
+      console.log(
+        "E-Mail erfolgreich gesendet an:",
+        email,
+      )
     }
-  } catch (emailError) {
-    // Die Buchung bleibt trotzdem gespeichert,
-    // falls Resend einen Fehler hat.
-    console.error(
-      "E-Mail konnte nicht gesendet werden:",
-      emailError,
-    )
   }
-
-  // ===================================================
-  // SEITEN AKTUALISIEREN
-  // ===================================================
-
-  revalidatePath("/")
-  revalidatePath("/besitzer")
-
-  return {
-    ok: true,
-    bookingId: data.id,
-  }
+} catch (emailError) {
+  console.error(
+    "E-Mail konnte nicht gesendet werden:",
+    emailError,
+  )
 }
 
 // =====================================================
