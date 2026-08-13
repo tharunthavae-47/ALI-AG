@@ -34,21 +34,23 @@ export type PublicSlot = {
 
 export type Booking = {
   id: string
+
   booking_date: string
   booking_time: string
 
   name: string
 
-  email: string
   phone: string
+  email: string
 
   car: string
   problem: string
 
   status: BookingStatus
+
   created_at: string
 
-  image_urls: string[] | string | null
+  image_urls: string[]
 }
 
 // =====================================================
@@ -63,10 +65,13 @@ const CLOSE_HOUR = 22
 // =====================================================
 
 function isValidDate(value: string) {
-  return (
-    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    !Number.isNaN(Date.parse(value))
-  )
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+
+  const date = new Date(value + "T00:00:00")
+
+  return !Number.isNaN(date.getTime())
 }
 
 function isValidTime(value: string) {
@@ -97,7 +102,10 @@ export async function getBookedSlots(): Promise<
     .toISOString()
     .slice(0, 10)
 
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("bookings")
     .select(
       "booking_date, booking_time",
@@ -106,7 +114,7 @@ export async function getBookedSlots(): Promise<
     .gte("booking_date", today)
 
   if (error) {
-    console.log(
+    console.error(
       "getBookedSlots error:",
       error.message,
     )
@@ -126,8 +134,9 @@ export async function createBooking(input: {
   booking_time: string
 
   name: string
-  email: string
+
   phone: string
+  email: string
 
   car: string
   problem: string
@@ -136,14 +145,18 @@ export async function createBooking(input: {
   bookingId?: string
   error?: string
 }> {
+  // ===================================================
+  // WERTE BEREINIGEN
+  // ===================================================
+
   const name =
     input.name?.trim() ?? ""
 
-  const email =
-    input.email?.trim() ?? ""
-
   const phone =
     input.phone?.trim() ?? ""
+
+  const email =
+    input.email?.trim() ?? ""
 
   const car =
     input.car?.trim() ?? ""
@@ -152,7 +165,7 @@ export async function createBooking(input: {
     input.problem?.trim() ?? ""
 
   // ===================================================
-  // DATUM
+  // DATUM PRÜFEN
   // ===================================================
 
   if (
@@ -167,7 +180,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // UHRZEIT
+  // UHRZEIT PRÜFEN
   // ===================================================
 
   if (
@@ -185,17 +198,43 @@ export async function createBooking(input: {
   // PFLICHTFELDER
   // ===================================================
 
-  if (
-    !name ||
-    !email ||
-    !phone ||
-    !car ||
-    !problem
-  ) {
+  if (!name) {
     return {
       ok: false,
       error:
-        "Bitte füllen Sie alle Pflichtfelder aus.",
+        "Bitte geben Sie Ihren Namen ein.",
+    }
+  }
+
+  if (!phone) {
+    return {
+      ok: false,
+      error:
+        "Bitte geben Sie Ihre Telefonnummer ein.",
+    }
+  }
+
+  if (!email) {
+    return {
+      ok: false,
+      error:
+        "Bitte geben Sie Ihre E-Mail-Adresse ein.",
+    }
+  }
+
+  if (!car) {
+    return {
+      ok: false,
+      error:
+        "Bitte geben Sie Ihr Fahrzeug ein.",
+    }
+  }
+
+  if (!problem) {
+    return {
+      ok: false,
+      error:
+        "Bitte beschreiben Sie Ihr Anliegen.",
     }
   }
 
@@ -217,7 +256,22 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // DATUM IN DER VERGANGENHEIT
+  // TELEFON PRÜFEN
+  // ===================================================
+
+  const phoneDigits =
+    phone.replace(/\D/g, "")
+
+  if (phoneDigits.length < 7) {
+    return {
+      ok: false,
+      error:
+        "Bitte geben Sie eine gültige Telefonnummer ein.",
+    }
+  }
+
+  // ===================================================
+  // VERGANGENES DATUM
   // ===================================================
 
   const today = new Date()
@@ -238,14 +292,43 @@ export async function createBooking(input: {
   // MAXIMALE LÄNGE
   // ===================================================
 
-  if (
-    [name, email, phone, car, problem].some(
-      (value) => value.length > 1000,
-    )
-  ) {
+  if (name.length > 200) {
     return {
       ok: false,
-      error: "Eingabe zu lang.",
+      error:
+        "Der Name ist zu lang.",
+    }
+  }
+
+  if (phone.length > 50) {
+    return {
+      ok: false,
+      error:
+        "Die Telefonnummer ist zu lang.",
+    }
+  }
+
+  if (email.length > 320) {
+    return {
+      ok: false,
+      error:
+        "Die E-Mail-Adresse ist zu lang.",
+    }
+  }
+
+  if (car.length > 200) {
+    return {
+      ok: false,
+      error:
+        "Die Fahrzeugangabe ist zu lang.",
+    }
+  }
+
+  if (problem.length > 2000) {
+    return {
+      ok: false,
+      error:
+        "Die Beschreibung ist zu lang.",
     }
   }
 
@@ -255,6 +338,10 @@ export async function createBooking(input: {
 
   const supabase =
     createAdminClient()
+
+  // ===================================================
+  // BUCHUNG SPEICHERN
+  // ===================================================
 
   const {
     data,
@@ -271,9 +358,9 @@ export async function createBooking(input: {
 
         name,
 
-        email,
-
         phone,
+
+        email,
 
         car,
 
@@ -281,12 +368,25 @@ export async function createBooking(input: {
 
         status: "pending",
 
+        // Bilder werden danach
+        // über saveBookingImages
+        // gespeichert.
         image_urls: [],
       })
       .select("id")
       .single()
 
+  // ===================================================
+  // FEHLER
+  // ===================================================
+
   if (error) {
+    console.error(
+      "createBooking error:",
+      error,
+    )
+
+    // Termin bereits vergeben
     if (
       error.code === "23505"
     ) {
@@ -297,17 +397,16 @@ export async function createBooking(input: {
       }
     }
 
-    console.log(
-      "createBooking error:",
-      error.message,
-    )
-
     return {
       ok: false,
       error:
         "Anfrage konnte nicht gespeichert werden.",
     }
   }
+
+  // ===================================================
+  // SEITEN AKTUALISIEREN
+  // =====================================================
 
   revalidatePath("/")
   revalidatePath("/besitzer")
@@ -329,22 +428,57 @@ export async function saveBookingImages(
   ok: boolean
   error?: string
 }> {
+  // ===================================================
+  // BUCHUNGS-ID PRÜFEN
+  // ===================================================
+
   if (!bookingId) {
     return {
       ok: false,
-      error: "Buchungs-ID fehlt.",
+      error:
+        "Buchungs-ID fehlt.",
     }
   }
+
+  // ===================================================
+  // BILDER PRÜFEN
+  // ===================================================
 
   if (!Array.isArray(imageUrls)) {
     return {
       ok: false,
-      error: "Ungültige Bilddaten.",
+      error:
+        "Ungültige Bilddaten.",
     }
   }
 
+  // Maximal 5 Bilder
+  if (imageUrls.length > 5) {
+    return {
+      ok: false,
+      error:
+        "Es sind maximal 5 Bilder erlaubt.",
+    }
+  }
+
+  // Nur Strings erlauben
+  const validImageUrls =
+    imageUrls.filter(
+      (url): url is string =>
+        typeof url === "string" &&
+        url.trim() !== "",
+    )
+
+  // ===================================================
+  // SUPABASE
+  // ===================================================
+
   const supabase =
     createAdminClient()
+
+  // ===================================================
+  // BILDER IN BUCHUNG SPEICHERN
+  // ===================================================
 
   const {
     error,
@@ -352,14 +486,18 @@ export async function saveBookingImages(
     await supabase
       .from("bookings")
       .update({
-        image_urls: imageUrls,
+        image_urls:
+          validImageUrls,
       })
-      .eq("id", bookingId)
+      .eq(
+        "id",
+        bookingId,
+      )
 
   if (error) {
-    console.log(
+    console.error(
       "saveBookingImages error:",
-      error.message,
+      error,
     )
 
     return {
@@ -368,6 +506,10 @@ export async function saveBookingImages(
         "Die Bilder konnten nicht gespeichert werden.",
     }
   }
+
+  // ===================================================
+  // AKTUALISIEREN
+  // ===================================================
 
   revalidatePath("/")
   revalidatePath("/besitzer")
@@ -378,12 +520,16 @@ export async function saveBookingImages(
 }
 
 // =====================================================
-// BUCHUNGEN FÜR BESITZER
+// ALLE BUCHUNGEN FÜR BESITZER
 // =====================================================
 
 export async function listBookings(): Promise<
   Booking[]
 > {
+  // ===================================================
+  // BENUTZER PRÜFEN
+  // ===================================================
+
   const auth =
     await createClient()
 
@@ -396,8 +542,16 @@ export async function listBookings(): Promise<
     return []
   }
 
+  // ===================================================
+  // ADMIN CLIENT
+  // ===================================================
+
   const supabase =
     createAdminClient()
+
+  // ===================================================
+  // BUCHUNGEN LADEN
+  // ===================================================
 
   const {
     data,
@@ -420,13 +574,17 @@ export async function listBookings(): Promise<
       )
 
   if (error) {
-    console.log(
+    console.error(
       "listBookings error:",
-      error.message,
+      error,
     )
 
     return []
   }
+
+  // ===================================================
+  // DATEN ZURÜCKGEBEN
+  // ===================================================
 
   return (
     (data ?? []) as Booking[]
@@ -435,6 +593,15 @@ export async function listBookings(): Promise<
 
 // =====================================================
 // TERMIN BESTÄTIGEN / ABLEHNEN
+// =====================================================
+//
+// WICHTIG:
+//
+// Keine E-Mail
+// Keine SMS
+//
+// Es wird ausschließlich
+// der Status geändert.
 // =====================================================
 
 export async function updateBookingStatus(
@@ -447,6 +614,10 @@ export async function updateBookingStatus(
   ok: boolean
   error?: string
 }> {
+  // ===================================================
+  // BESITZER PRÜFEN
+  // ===================================================
+
   const auth =
     await createClient()
 
@@ -458,9 +629,14 @@ export async function updateBookingStatus(
   if (!user) {
     return {
       ok: false,
-      error: "Nicht autorisiert.",
+      error:
+        "Nicht autorisiert.",
     }
   }
+
+  // ===================================================
+  // STATUS PRÜFEN
+  // ===================================================
 
   if (
     status !== "confirmed" &&
@@ -468,12 +644,21 @@ export async function updateBookingStatus(
   ) {
     return {
       ok: false,
-      error: "Ungültiger Status.",
+      error:
+        "Ungültiger Status.",
     }
   }
 
+  // ===================================================
+  // SUPABASE
+  // ===================================================
+
   const supabase =
     createAdminClient()
+
+  // ===================================================
+  // STATUS ÄNDERN
+  // ===================================================
 
   const {
     error,
@@ -483,12 +668,15 @@ export async function updateBookingStatus(
       .update({
         status,
       })
-      .eq("id", id)
+      .eq(
+        "id",
+        id,
+      )
 
   if (error) {
-    console.log(
+    console.error(
       "updateBookingStatus error:",
-      error.message,
+      error,
     )
 
     return {
@@ -497,6 +685,10 @@ export async function updateBookingStatus(
         "Aktualisierung fehlgeschlagen.",
     }
   }
+
+  // ===================================================
+  // SEITEN AKTUALISIEREN
+  // ===================================================
 
   revalidatePath("/")
   revalidatePath("/besitzer")
