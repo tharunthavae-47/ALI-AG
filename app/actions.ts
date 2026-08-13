@@ -91,6 +91,19 @@ function isValidTime(value: string) {
 }
 
 // =====================================================
+// HTML SICHER MACHEN
+// =====================================================
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+// =====================================================
 // BELEGTE TERMINE
 // =====================================================
 
@@ -196,7 +209,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // PFLICHTFELDER
+  // NAME
   // ===================================================
 
   if (!name) {
@@ -207,6 +220,10 @@ export async function createBooking(input: {
     }
   }
 
+  // ===================================================
+  // TELEFON
+  // ===================================================
+
   if (!phone) {
     return {
       ok: false,
@@ -214,6 +231,10 @@ export async function createBooking(input: {
         "Bitte geben Sie Ihre Telefonnummer ein.",
     }
   }
+
+  // ===================================================
+  // E-MAIL
+  // ===================================================
 
   if (!email) {
     return {
@@ -223,6 +244,10 @@ export async function createBooking(input: {
     }
   }
 
+  // ===================================================
+  // FAHRZEUG
+  // ===================================================
+
   if (!car) {
     return {
       ok: false,
@@ -230,6 +255,10 @@ export async function createBooking(input: {
         "Bitte geben Sie Ihr Fahrzeug ein.",
     }
   }
+
+  // ===================================================
+  // PROBLEM
+  // ===================================================
 
   if (!problem) {
     return {
@@ -272,7 +301,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // VERGANGENES DATUM
+  // VERGANGENES DATUM VERHINDERN
   // ===================================================
 
   const today = new Date()
@@ -290,7 +319,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // MAXIMALE LÄNGE
+  // MAXIMALE LÄNGEN
   // ===================================================
 
   if (name.length > 200) {
@@ -369,9 +398,6 @@ export async function createBooking(input: {
 
         status: "pending",
 
-        // Bilder werden danach
-        // über saveBookingImages
-        // gespeichert.
         image_urls: [],
       })
       .select("id")
@@ -387,7 +413,6 @@ export async function createBooking(input: {
       error,
     )
 
-    // Termin bereits vergeben
     if (
       error.code === "23505"
     ) {
@@ -406,108 +431,16 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-// BESTÄTIGUNGS-E-MAIL BEI "CONFIRMED"
-// ===================================================
-
-if (status === "confirmed") {
-  const resendApiKey = process.env.RESEND_API_KEY
-
-  if (!resendApiKey) {
-    console.error("RESEND_API_KEY fehlt.")
-  } else {
-    try {
-      const resend = new Resend(resendApiKey)
-
-      const formattedDate = new Date(
-        booking.booking_date + "T00:00:00",
-      ).toLocaleDateString("de-CH", {
-        weekday: "long",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-
-      const { error: emailError } =
-        await resend.emails.send({
-          from: "MB Performance <onboarding@resend.dev>",
-          to: [booking.email],
-          subject: "Ihr Termin bei MB Performance wurde bestätigt",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px;">
-              
-              <h1>MB Performance</h1>
-
-              <h2>Ihr Termin wurde bestätigt</h2>
-
-              <p>
-                Hallo ${booking.name},
-              </p>
-
-              <p>
-                Ihr Termin bei <strong>MB Performance</strong>
-                wurde erfolgreich bestätigt.
-              </p>
-
-              <div style="background:#f5f5f5; padding:20px; margin:20px 0;">
-                
-                <p>
-                  <strong>Datum:</strong><br>
-                  ${formattedDate}
-                </p>
-
-                <p>
-                  <strong>Uhrzeit:</strong><br>
-                  ${booking.booking_time}
-                </p>
-
-                <p>
-                  <strong>Fahrzeug:</strong><br>
-                  ${booking.car}
-                </p>
-
-              </div>
-
-              <p>
-                Vielen Dank für Ihre Anfrage.
-              </p>
-
-              <p>
-                Freundliche Grüsse<br>
-                <strong>MB Performance</strong>
-              </p>
-
-            </div>
-          `,
-        })
-
-      if (emailError) {
-        console.error(
-          "Fehler beim Senden der E-Mail:",
-          emailError,
-        )
-      } else {
-        console.log(
-          "Bestätigungs-E-Mail wurde gesendet an:",
-          booking.email,
-        )
-      }
-    } catch (error) {
-      console.error(
-        "Resend Fehler:",
-        error,
-      )
-    }
-  }
-}
+  // SEITEN AKTUALISIEREN
   // ===================================================
-// SEITEN AKTUALISIEREN
-// ===================================================
 
-revalidatePath("/")
-revalidatePath("/besitzer")
+  revalidatePath("/")
+  revalidatePath("/besitzer")
 
-return {
-  ok: true,
+  return {
+    ok: true,
+    bookingId: data.id,
+  }
 }
 
 // =====================================================
@@ -554,7 +487,7 @@ export async function saveBookingImages(
     }
   }
 
-  // Nur Strings erlauben
+  // Nur gültige Strings
   const validImageUrls =
     imageUrls.filter(
       (url): url is string =>
@@ -570,7 +503,7 @@ export async function saveBookingImages(
     createAdminClient()
 
   // ===================================================
-  // BILDER IN BUCHUNG SPEICHERN
+  // BILDER SPEICHERN
   // ===================================================
 
   const {
@@ -675,10 +608,6 @@ export async function listBookings(): Promise<
     return []
   }
 
-  // ===================================================
-  // DATEN ZURÜCKGEBEN
-  // ===================================================
-
   return (
     (data ?? []) as Booking[]
   )
@@ -688,13 +617,14 @@ export async function listBookings(): Promise<
 // TERMIN BESTÄTIGEN / ABLEHNEN
 // =====================================================
 //
-// WICHTIG:
+// BESTÄTIGEN:
+// → Status wird auf confirmed gesetzt
+// → automatische E-Mail wird verschickt
 //
-// Keine E-Mail
-// Keine SMS
-//
-// Es wird ausschließlich
-// der Status geändert.
+// ABLEHNEN:
+// → Status wird auf rejected gesetzt
+// → KEINE E-Mail
+// → KEINE SMS
 // =====================================================
 
 export async function updateBookingStatus(
@@ -708,7 +638,7 @@ export async function updateBookingStatus(
   error?: string
 }> {
   // ===================================================
-  // BESITZER PRÜFEN
+  // 1. BESITZER PRÜFEN
   // ===================================================
 
   const auth =
@@ -728,7 +658,7 @@ export async function updateBookingStatus(
   }
 
   // ===================================================
-  // STATUS PRÜFEN
+  // 2. STATUS PRÜFEN
   // ===================================================
 
   if (
@@ -743,18 +673,59 @@ export async function updateBookingStatus(
   }
 
   // ===================================================
-  // SUPABASE
+  // 3. BUCHUNG HOLEN
   // ===================================================
 
   const supabase =
     createAdminClient()
 
+  const {
+    data: booking,
+    error: bookingError,
+  } =
+    await supabase
+      .from("bookings")
+      .select(
+        `
+          id,
+          booking_date,
+          booking_time,
+          name,
+          phone,
+          email,
+          car,
+          problem,
+          status
+        `,
+      )
+      .eq(
+        "id",
+        id,
+      )
+      .single()
+
+  if (
+    bookingError ||
+    !booking
+  ) {
+    console.error(
+      "Buchung nicht gefunden:",
+      bookingError?.message,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Buchung wurde nicht gefunden.",
+    }
+  }
+
   // ===================================================
-  // STATUS ÄNDERN
+  // 4. STATUS ÄNDERN
   // ===================================================
 
   const {
-    error,
+    error: updateError,
   } =
     await supabase
       .from("bookings")
@@ -766,16 +737,290 @@ export async function updateBookingStatus(
         id,
       )
 
-  if (error) {
+  if (updateError) {
     console.error(
       "updateBookingStatus error:",
-      error,
+      updateError,
     )
 
     return {
       ok: false,
       error:
         "Aktualisierung fehlgeschlagen.",
+    }
+  }
+
+  // ===================================================
+  // 5. E-MAIL NUR BEI BESTÄTIGUNG
+  // ===================================================
+
+  if (
+    status === "confirmed"
+  ) {
+    try {
+      // ===============================================
+      // RESEND API KEY
+      // ===============================================
+
+      const apiKey =
+        process.env.RESEND_API_KEY
+
+      if (!apiKey) {
+        console.error(
+          "RESEND_API_KEY fehlt in den Vercel Environment Variables.",
+        )
+      } else {
+        // =============================================
+        // RESEND CLIENT
+        // =============================================
+
+        const resend =
+          new Resend(apiKey)
+
+        // =============================================
+        // DATUM FORMATIEREN
+        // =============================================
+
+        const formattedDate =
+          new Date(
+            booking.booking_date +
+              "T00:00:00",
+          ).toLocaleDateString(
+            "de-CH",
+            {
+              weekday:
+                "long",
+
+              day: "2-digit",
+
+              month: "2-digit",
+
+              year: "numeric",
+            },
+          )
+
+        // =============================================
+        // E-MAIL SENDEN
+        // =============================================
+
+        const {
+          data: emailData,
+          error: emailError,
+        } =
+          await resend.emails.send({
+            from:
+              "MB Performance <onboarding@resend.dev>",
+
+            to: [booking.email],
+
+            subject:
+              "Ihr Termin bei MB Performance wurde bestätigt",
+
+            html: `
+              <!DOCTYPE html>
+
+              <html lang="de">
+
+                <head>
+                  <meta charset="UTF-8" />
+                  <meta
+                    name="viewport"
+                    content="width=device-width, initial-scale=1.0"
+                  />
+
+                  <title>
+                    Termin bestätigt
+                  </title>
+                </head>
+
+                <body
+                  style="
+                    margin: 0;
+                    padding: 0;
+                    background: #f5f5f5;
+                    font-family: Arial, Helvetica, sans-serif;
+                  "
+                >
+
+                  <div
+                    style="
+                      max-width: 600px;
+                      margin: 40px auto;
+                      background: #ffffff;
+                      padding: 40px;
+                    "
+                  >
+
+                    <h1
+                      style="
+                        margin: 0 0 10px;
+                        font-size: 28px;
+                        color: #111111;
+                      "
+                    >
+                      MB Performance
+                    </h1>
+
+                    <p
+                      style="
+                        color: #666666;
+                        margin-bottom: 30px;
+                      "
+                    >
+                      Auto Reparatur & Service
+                    </p>
+
+                    <h2
+                      style="
+                        font-size: 24px;
+                        color: #111111;
+                      "
+                    >
+                      Ihr Termin wurde bestätigt
+                    </h2>
+
+                    <p
+                      style="
+                        font-size: 16px;
+                        line-height: 1.6;
+                        color: #333333;
+                      "
+                    >
+                      Hallo
+                      <strong>
+                        ${escapeHtml(
+                          booking.name,
+                        )}
+                      </strong>,
+                    </p>
+
+                    <p
+                      style="
+                        font-size: 16px;
+                        line-height: 1.6;
+                        color: #333333;
+                      "
+                    >
+                      Ihr Termin bei
+                      <strong>
+                        MB Performance
+                      </strong>
+                      wurde erfolgreich bestätigt.
+                    </p>
+
+                    <div
+                      style="
+                        margin: 30px 0;
+                        padding: 20px;
+                        background: #f5f5f5;
+                        border-left: 4px solid #111111;
+                      "
+                    >
+
+                      <p
+                        style="
+                          margin: 0 0 15px;
+                          color: #333333;
+                        "
+                      >
+                        <strong>
+                          Datum
+                        </strong>
+                        <br />
+
+                        ${escapeHtml(
+                          formattedDate,
+                        )}
+                      </p>
+
+                      <p
+                        style="
+                          margin: 0 0 15px;
+                          color: #333333;
+                        "
+                      >
+                        <strong>
+                          Uhrzeit
+                        </strong>
+                        <br />
+
+                        ${escapeHtml(
+                          booking.booking_time,
+                        )}
+                      </p>
+
+                      <p
+                        style="
+                          margin: 0;
+                          color: #333333;
+                        "
+                      >
+                        <strong>
+                          Fahrzeug
+                        </strong>
+                        <br />
+
+                        ${escapeHtml(
+                          booking.car,
+                        )}
+                      </p>
+
+                    </div>
+
+                    <p
+                      style="
+                        font-size: 16px;
+                        line-height: 1.6;
+                        color: #333333;
+                      "
+                    >
+                      Vielen Dank für Ihr Vertrauen.
+                    </p>
+
+                    <p
+                      style="
+                        font-size: 16px;
+                        line-height: 1.6;
+                        color: #333333;
+                      "
+                    >
+                      Freundliche Grüsse
+                      <br />
+
+                      <strong>
+                        MB Performance
+                      </strong>
+                    </p>
+
+                  </div>
+
+                </body>
+
+              </html>
+            `,
+          })
+
+        // =============================================
+        // E-MAIL FEHLER
+        // =============================================
+
+        if (emailError) {
+          console.error(
+            "Resend E-Mail Fehler:",
+            emailError,
+          )
+        } else {
+          console.log(
+            "Bestätigungs-E-Mail erfolgreich gesendet:",
+            emailData,
+          )
+        }
+      }
+    } catch (error) {
+      console.error(
+        "Fehler beim Senden der Bestätigungs-E-Mail:",
+        error,
+      )
     }
   }
 
