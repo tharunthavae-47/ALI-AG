@@ -11,7 +11,10 @@ export async function signOut() {
   redirect("/auth/login")
 }
 
-export type BookingStatus = "pending" | "confirmed" | "rejected"
+export type BookingStatus =
+  | "pending"
+  | "confirmed"
+  | "rejected"
 
 export type PublicSlot = {
   booking_date: string
@@ -28,6 +31,10 @@ export type Booking = {
   problem: string
   status: BookingStatus
   created_at: string
+
+  // Wichtig:
+  // Supabase JSON/JSONB kann hier entweder ein Array
+  // oder in alten Datensätzen eventuell einen String liefern.
   image_urls: string[]
 }
 
@@ -35,24 +42,34 @@ const OPEN_HOUR = 8
 const CLOSE_HOUR = 22
 
 function isValidDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value))
+  )
 }
 
 function isValidTime(value: string) {
   const match = /^(\d{2}):00$/.exec(value)
+
   if (!match) return false
+
   const hour = Number(match[1])
+
   return hour >= OPEN_HOUR && hour <= CLOSE_HOUR
 }
 
 /**
- * Returns only the date + time of active bookings (no customer PII) so the
- * public calendar can grey out taken slots. Runs with the service role because
- * the table is fully RLS-locked.
+ * Öffentliche Termine
  */
-export async function getBookedSlots(): Promise<PublicSlot[]> {
+export async function getBookedSlots(): Promise<
+  PublicSlot[]
+> {
   const supabase = createAdminClient()
-  const today = new Date().toISOString().slice(0, 10)
+
+  const today = new Date()
+    .toISOString()
+    .slice(0, 10)
+
   const { data, error } = await supabase
     .from("bookings")
     .select("booking_date, booking_time")
@@ -60,12 +77,20 @@ export async function getBookedSlots(): Promise<PublicSlot[]> {
     .gte("booking_date", today)
 
   if (error) {
-    console.log("[v0] getBookedSlots error:", error.message)
+    console.log(
+      "getBookedSlots error:",
+      error.message,
+    )
+
     return []
   }
+
   return data ?? []
 }
 
+/**
+ * Erstellt einen neuen Termin
+ */
 export async function createBooking(input: {
   booking_date: string
   booking_time: string
@@ -73,18 +98,28 @@ export async function createBooking(input: {
   contact: string
   car: string
   problem: string
-}): Promise<{ ok: boolean; bookingId?: string; error?: string }> {
+}): Promise<{
+  ok: boolean
+  bookingId?: string
+  error?: string
+}> {
   const name = input.name?.trim()
   const contact = input.contact?.trim()
   const car = input.car?.trim()
   const problem = input.problem?.trim()
 
   if (!isValidDate(input.booking_date)) {
-    return { ok: false, error: "Ungültiges Datum." }
+    return {
+      ok: false,
+      error: "Ungültiges Datum.",
+    }
   }
 
   if (!isValidTime(input.booking_time)) {
-    return { ok: false, error: "Ungültige Uhrzeit." }
+    return {
+      ok: false,
+      error: "Ungültige Uhrzeit.",
+    }
   }
 
   if (!name || !contact || !car || !problem) {
@@ -94,14 +129,22 @@ export async function createBooking(input: {
     }
   }
 
-  if (input.booking_date < new Date().toISOString().slice(0, 10)) {
+  if (
+    input.booking_date <
+    new Date().toISOString().slice(0, 10)
+  ) {
     return {
       ok: false,
-      error: "Bitte wählen Sie ein Datum in der Zukunft.",
+      error:
+        "Bitte wählen Sie ein Datum in der Zukunft.",
     }
   }
 
-  if ([name, contact, car, problem].some((v) => v.length > 1000)) {
+  if (
+    [name, contact, car, problem].some(
+      (v) => v.length > 1000,
+    )
+  ) {
     return {
       ok: false,
       error: "Eingabe zu lang.",
@@ -120,6 +163,10 @@ export async function createBooking(input: {
       car,
       problem,
       status: "pending",
+
+      // Anfangs leer.
+      // Die Bilder werden danach mit saveBookingImages()
+      // eingetragen.
       image_urls: [],
     })
     .select("id")
@@ -129,15 +176,20 @@ export async function createBooking(input: {
     if (error.code === "23505") {
       return {
         ok: false,
-        error: "Dieser Termin ist leider bereits vergeben.",
+        error:
+          "Dieser Termin ist leider bereits vergeben.",
       }
     }
 
-    console.log("[v0] createBooking error:", error.message)
+    console.log(
+      "createBooking error:",
+      error.message,
+    )
 
     return {
       ok: false,
-      error: "Anfrage konnte nicht gespeichert werden.",
+      error:
+        "Anfrage konnte nicht gespeichert werden.",
     }
   }
 
@@ -149,55 +201,190 @@ export async function createBooking(input: {
     bookingId: data.id,
   }
 }
-/** Owner-only: full list including PII. Requires an authenticated session. */
-export async function listBookings(): Promise<Booking[]> {
+
+/**
+ * =========================================================
+ * BILDER ZU EINEM TERMIN SPEICHERN
+ * =========================================================
+ *
+ * Diese Funktion läuft auf dem Server.
+ *
+ * Dadurch verwenden wir createAdminClient()
+ * und umgehen das Problem, dass der öffentliche
+ * Kunde keine UPDATE-Berechtigung auf bookings hat.
+ */
+export async function saveBookingImages(
+  bookingId: string,
+  imagePaths: string[],
+): Promise<{
+  ok: boolean
+  error?: string
+}> {
+  if (!bookingId) {
+    return {
+      ok: false,
+      error: "Keine Buchungs-ID vorhanden.",
+    }
+  }
+
+  if (!Array.isArray(imagePaths)) {
+    return {
+      ok: false,
+      error: "Ungültige Bilddaten.",
+    }
+  }
+
+  // Maximal 5 Bilder
+  const cleanPaths = imagePaths
+    .filter(
+      (path): path is string =>
+        typeof path === "string" &&
+        path.trim().length > 0,
+    )
+    .map((path) => path.trim())
+    .slice(0, 5)
+
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      image_urls: cleanPaths,
+    })
+    .eq("id", bookingId)
+
+  if (error) {
+    console.log(
+      "saveBookingImages error:",
+      error.message,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Die Bilder konnten nicht gespeichert werden.",
+    }
+  }
+
+  console.log(
+    "Bilder erfolgreich gespeichert:",
+    cleanPaths,
+  )
+
+  revalidatePath("/besitzer")
+  revalidatePath("/")
+
+  return {
+    ok: true,
+  }
+}
+
+/**
+ * =========================================================
+ * BESITZER: BUCHUNGEN LADEN
+ * =========================================================
+ */
+export async function listBookings(): Promise<
+  Booking[]
+> {
   const auth = await createClient()
+
   const {
     data: { user },
   } = await auth.auth.getUser()
-  if (!user) return []
+
+  if (!user) {
+    return []
+  }
 
   const supabase = createAdminClient()
+
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
-    .order("booking_date", { ascending: true })
-    .order("booking_time", { ascending: true })
+    .order("booking_date", {
+      ascending: true,
+    })
+    .order("booking_time", {
+      ascending: true,
+    })
 
   if (error) {
-    console.log("[v0] listBookings error:", error.message)
+    console.log(
+      "listBookings error:",
+      error.message,
+    )
+
     return []
   }
+
   return (data ?? []) as Booking[]
 }
 
-/** Owner-only: confirm or reject a request. Requires an authenticated session. */
+/**
+ * =========================================================
+ * BESITZER: STATUS ÄNDERN
+ * =========================================================
+ */
 export async function updateBookingStatus(
   id: string,
-  status: Exclude<BookingStatus, "pending">,
-): Promise<{ ok: boolean; error?: string }> {
+  status: Exclude<
+    BookingStatus,
+    "pending"
+  >,
+): Promise<{
+  ok: boolean
+  error?: string
+}> {
   const auth = await createClient()
+
   const {
     data: { user },
   } = await auth.auth.getUser()
-  if (!user) return { ok: false, error: "Nicht autorisiert." }
 
-  if (status !== "confirmed" && status !== "rejected") {
-    return { ok: false, error: "Ungültiger Status." }
+  if (!user) {
+    return {
+      ok: false,
+      error: "Nicht autorisiert.",
+    }
+  }
+
+  if (
+    status !== "confirmed" &&
+    status !== "rejected"
+  ) {
+    return {
+      ok: false,
+      error: "Ungültiger Status.",
+    }
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from("bookings").update({ status }).eq("id", id)
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({
+      status,
+    })
+    .eq("id", id)
 
   if (error) {
-    console.log("[v0] updateBookingStatus error:", error.message)
-    return { ok: false, error: "Aktualisierung fehlgeschlagen." }
+    console.log(
+      "updateBookingStatus error:",
+      error.message,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Aktualisierung fehlgeschlagen.",
+    }
   }
 
-revalidatePath("/")
-revalidatePath("/besitzer")
+  revalidatePath("/")
+  revalidatePath("/besitzer")
 
-return {
-  ok: true,
-}
+  return {
+    ok: true,
+  }
 }
