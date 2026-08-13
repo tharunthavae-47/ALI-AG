@@ -17,7 +17,7 @@ const oswald = Oswald({
 })
 
 export const metadata: Metadata = {
-  title: "ALI-AG – Auto Reparatur & Service",
+  title: "MB Performance – Auto Reparatur & Service",
   description:
     "Persönlicher, zuverlässiger und professioneller Service rund um Ihr Fahrzeug. Vereinbaren Sie online einen Termin bei ALI-AG.",
   generator: "v0.app",
