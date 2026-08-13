@@ -7,7 +7,7 @@ export function SiteFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <img
-           src="/logo.png"
+           src="MB Performance.png"
            alt="MB Performance Logo"
            className="h-12 w-auto object-contain"
            />
