@@ -9,7 +9,7 @@ export function SiteFooter() {
           <img
            src="MB Performance.png"
            alt="MB Performance Logo"
-           className="h-12 w-auto object-contain"
+           className="h-18 w-auto object-contain"
            />
           
           <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
