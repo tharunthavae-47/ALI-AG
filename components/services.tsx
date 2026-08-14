@@ -1,6 +1,6 @@
 "use client"
 
-import { Gauge, Wrench, Car, Cog, ShieldCheck, Droplets } from "lucide-react"
+import { Gauge, Wrench, Cog, ShieldCheck, Droplets, CircleDot } from "lucide-react"
 
 const services = [
   {
