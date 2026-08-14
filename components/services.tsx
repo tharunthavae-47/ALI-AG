@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   Gauge,
   Wrench,
@@ -12,42 +13,59 @@ const services = [
   {
     icon: Wrench,
     title: "Reparaturen",
-    desc: "Von der kleinen Reparatur bis zur großen Instandsetzung – schnell und zuverlässig.",
+    short:
+      "Von der kleinen Reparatur bis zur großen Instandsetzung – schnell und zuverlässig.",
+    details:
+      "Wir übernehmen Reparaturen aller Art – von kleineren Arbeiten bis hin zu umfangreichen Instandsetzungen. Dabei prüfen wir die Ursache des Problems sorgfältig und führen die notwendigen Arbeiten fachgerecht und zuverlässig durch.",
     animation: "repair",
   },
   {
     icon: Gauge,
     title: "Diagnose",
-    desc: "Moderne Fehlerdiagnose für alle gängigen Marken und Modelle.",
+    short:
+      "Moderne Fehlerdiagnose für alle gängigen Marken und Modelle.",
+    details:
+      "Mit moderner Fahrzeugdiagnose überprüfen wir elektronische Systeme und Fehlermeldungen Ihres Fahrzeugs. Wir suchen gezielt nach der Ursache und informieren Sie verständlich über den festgestellten Fehler und die notwendigen Reparaturen.",
     animation: "diagnose",
   },
   {
     icon: Cog,
     title: "Inspektion & Wartung",
-    desc: "Regelmäßige Wartung nach Herstellervorgaben für ein langes Fahrzeugleben.",
+    short:
+      "Regelmäßige Wartung nach Herstellervorgaben für ein langes Fahrzeugleben.",
+    details:
+      "Wir führen regelmäßige Wartungs- und Inspektionsarbeiten nach den Vorgaben des Fahrzeugherstellers durch. Dazu gehören unter anderem Kontrollen wichtiger Fahrzeugkomponenten sowie der Austausch von Verschleißteilen und Betriebsstoffen.",
     animation: "maintenance",
   },
   {
     icon: ShieldCheck,
     title: "MFK",
-    desc: "Wir bereiten Ihr Fahrzeug für eine problemlose Vorführung vor.",
+    short:
+      "Wir bereiten Ihr Fahrzeug für eine problemlose Vorführung vor.",
+    details:
+      "Wir bereiten Ihr Fahrzeug sorgfältig auf die MFK vor. Dabei kontrollieren wir wichtige sicherheitsrelevante Bereiche und weisen Sie auf mögliche Mängel hin, damit Ihr Fahrzeug möglichst problemlos zur Vorführung kann.",
     animation: "mfk",
   },
   {
     icon: Droplets,
     title: "Ölwechsel",
-    desc: "Fachgerechter Öl- und Filterwechsel mit hochwertigen Materialien.",
+    short:
+      "Fachgerechter Öl- und Filterwechsel mit hochwertigen Materialien.",
+    details:
+      "Wir führen fachgerechte Öl- und Filterwechsel mit passenden, hochwertigen Materialien durch. Dabei achten wir auf die vom Fahrzeughersteller vorgeschriebenen Spezifikationen, damit Motor und Schmierung optimal funktionieren.",
     animation: "oil",
   },
   {
     icon: null,
     title: "Reifenservice",
-    desc: "Reifenwechsel, Einlagerung und Auswuchten – alles aus einer Hand.",
+    short:
+      "Reifenwechsel, Einlagerung und Auswuchten – alles aus einer Hand.",
+    details:
+      "Wir kümmern uns um den kompletten Reifenservice – vom saisonalen Reifenwechsel über das Auswuchten bis zur fachgerechten Einlagerung. Dabei kontrollieren wir Zustand, Profil und Luftdruck der Reifen und sorgen für einen sicheren und sauberen Wechsel.",
     animation: "tires",
   },
 ]
 
-/* Eigenes Reifen-Symbol */
 function TireIcon() {
   return (
     <svg
@@ -57,7 +75,6 @@ function TireIcon() {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      {/* Reifen */}
       <circle
         cx="24"
         cy="24"
@@ -66,7 +83,6 @@ function TireIcon() {
         strokeWidth="4"
       />
 
-      {/* Felge */}
       <circle
         cx="24"
         cy="24"
@@ -75,7 +91,6 @@ function TireIcon() {
         strokeWidth="2.5"
       />
 
-      {/* Felgenmitte */}
       <circle
         cx="24"
         cy="24"
@@ -83,7 +98,6 @@ function TireIcon() {
         fill="currentColor"
       />
 
-      {/* Speichen */}
       <path
         d="M24 13V21"
         stroke="currentColor"
@@ -144,6 +158,14 @@ function TireIcon() {
 }
 
 export function Services() {
+  const [openService, setOpenService] = useState<string | null>(null)
+
+  const toggleService = (title: string) => {
+    setOpenService((current) =>
+      current === title ? null : title
+    )
+  }
+
   return (
     <section
       id="leistungen"
@@ -160,17 +182,24 @@ export function Services() {
           <h2 className="mt-4 max-w-2xl text-balance font-display text-4xl font-bold uppercase tracking-tight text-foreground md:text-5xl">
             Leistungen rund um Ihr Fahrzeug
           </h2>
+
+          <p className="mt-5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Von Reparaturen und Diagnose bis hin zu Wartung, MFK,
+            Ölwechsel und Reifenservice – wir kümmern uns zuverlässig
+            um Ihr Fahrzeug.
+          </p>
         </div>
 
         {/* Leistungen */}
         <div className="mt-14 grid gap-px overflow-hidden border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
 
-          {services.map((s, index) => {
-            const Icon = s.icon
+          {services.map((service, index) => {
+            const Icon = service.icon
+            const isOpen = openService === service.title
 
             return (
               <div
-                key={s.title}
+                key={service.title}
                 className="
                   group
                   relative
@@ -209,7 +238,7 @@ export function Services() {
                   {/* ICON */}
                   <div className="flex h-8 items-center">
 
-                    {s.animation === "tires" ? (
+                    {service.animation === "tires" ? (
                       <TireIcon />
                     ) : (
                       Icon && (
@@ -222,31 +251,31 @@ export function Services() {
                             duration-500
 
                             ${
-                              s.animation === "repair"
+                              service.animation === "repair"
                                 ? "group-hover:rotate-12 group-hover:scale-110"
                                 : ""
                             }
 
                             ${
-                              s.animation === "diagnose"
+                              service.animation === "diagnose"
                                 ? "group-hover:scale-125"
                                 : ""
                             }
 
                             ${
-                              s.animation === "maintenance"
+                              service.animation === "maintenance"
                                 ? "group-hover:rotate-180"
                                 : ""
                             }
 
                             ${
-                              s.animation === "mfk"
+                              service.animation === "mfk"
                                 ? "group-hover:-translate-y-1 group-hover:scale-110"
                                 : ""
                             }
 
                             ${
-                              s.animation === "oil"
+                              service.animation === "oil"
                                 ? "group-hover:translate-y-1"
                                 : ""
                             }
@@ -273,44 +302,96 @@ export function Services() {
                       group-hover:translate-x-1
                     "
                   >
-                    {s.title}
+                    {service.title}
                   </h3>
 
-                  {/* BESCHREIBUNG */}
-                  <p
-                    className="
-                      mt-3
-                      text-sm
-                      leading-relaxed
-                      text-muted-foreground
-                    "
-                  >
-                    {s.desc}
+                  {/* KURZER TEXT */}
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {service.short}
                   </p>
 
-                  {/* MEHR ERFAHREN */}
+                  {/* AUSFÜHRLICHER TEXT */}
                   <div
+                    className={`
+                      grid transition-all duration-500 ease-in-out
+                      ${
+                        isOpen
+                          ? "mt-5 grid-rows-[1fr] opacity-100"
+                          : "grid-rows-[0fr] opacity-0"
+                      }
+                    `}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="border-t border-border pt-5">
+                        <p className="text-sm leading-7 text-muted-foreground">
+                          {service.details}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => toggleService(service.title)}
+                    aria-expanded={isOpen}
                     className="
                       mt-6
-                      translate-x-[-8px]
+                      inline-flex
+                      items-center
+                      gap-2
                       text-sm
                       font-medium
                       text-foreground
-                      opacity-0
                       transition-all
                       duration-300
-                      group-hover:translate-x-0
-                      group-hover:opacity-100
+                      hover:gap-3
                     "
                   >
-                    Mehr erfahren →
-                  </div>
+                    {isOpen ? "Weniger anzeigen" : "Mehr erfahren"}
+
+                    <span
+                      className={`
+                        transition-transform
+                        duration-300
+                        ${isOpen ? "rotate-180" : ""}
+                      `}
+                    >
+                      ↓
+                    </span>
+                  </button>
 
                 </div>
               </div>
             )
           })}
 
+        </div>
+
+        {/* Termin Button */}
+        <div className="mt-12 text-center animate-fade-up">
+          <a
+            href="/termin"
+            className="
+              inline-flex
+              items-center
+              justify-center
+              rounded-xl
+              bg-foreground
+              px-7
+              py-3.5
+              text-sm
+              font-medium
+              text-background
+              transition-all
+              duration-300
+              hover:scale-105
+              hover:shadow-lg
+              active:scale-95
+            "
+          >
+            Termin vereinbaren
+          </a>
         </div>
 
       </div>
