@@ -335,7 +335,7 @@ export async function createBooking(input: {
 
   // ===================================================
   // AUTOMATISCHE E-MAIL AN KUNDEN
-  // ===================================================
+  // =====================================================
 
   try {
     const resendApiKey =
@@ -345,9 +345,13 @@ export async function createBooking(input: {
       process.env.RESEND_FROM_EMAIL
 
     if (!resendApiKey) {
-      console.error("RESEND_API_KEY fehlt.")
+      console.error(
+        "RESEND_API_KEY fehlt.",
+      )
     } else if (!fromEmail) {
-      console.error("RESEND_FROM_EMAIL fehlt.")
+      console.error(
+        "RESEND_FROM_EMAIL fehlt.",
+      )
     } else {
       const resend = new Resend(resendApiKey)
 
@@ -396,7 +400,8 @@ export async function createBooking(input: {
         await resend.emails.send({
           from: fromEmail,
           to: email,
-          subject: "Ihre Terminanfrage bei ALI AG",
+          subject:
+            "Ihre Terminanfrage bei ALI AG",
           html: htmlContent,
         })
 
@@ -587,6 +592,31 @@ export async function updateBookingStatus(
   const supabase = createAdminClient()
 
   // ===================================================
+  // BUCHUNG LADEN
+  // ===================================================
+
+  const { data: booking, error: bookingError } =
+    await supabase
+      .from("bookings")
+      .select(
+        "id, booking_date, booking_time, name, email, car, problem",
+      )
+      .eq("id", id)
+      .single()
+
+  if (bookingError || !booking) {
+    console.error(
+      "Buchung konnte nicht geladen werden:",
+      bookingError,
+    )
+
+    return {
+      ok: false,
+      error: "Die Buchung konnte nicht gefunden werden.",
+    }
+  }
+
+  // ===================================================
   // STATUS ÄNDERN
   // ===================================================
 
@@ -607,6 +637,159 @@ export async function updateBookingStatus(
       ok: false,
       error: "Aktualisierung fehlgeschlagen.",
     }
+  }
+
+  // ===================================================
+  // E-MAIL AN KUNDEN
+  // ===================================================
+
+  try {
+    const resendApiKey =
+      process.env.RESEND_API_KEY
+
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL
+
+    if (!resendApiKey) {
+      console.error(
+        "RESEND_API_KEY fehlt.",
+      )
+    } else if (!fromEmail) {
+      console.error(
+        "RESEND_FROM_EMAIL fehlt.",
+      )
+    } else if (!booking.email) {
+      console.error(
+        "Keine E-Mail-Adresse bei der Buchung vorhanden.",
+      )
+    } else {
+      const resend = new Resend(resendApiKey)
+
+      // =================================================
+      // TERMIN BESTÄTIGT
+      // =================================================
+
+      if (status === "confirmed") {
+        const htmlContent =
+          "<!DOCTYPE html>" +
+          '<html lang="de">' +
+          "<head>" +
+          '<meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          "<title>Termin bestätigt - ALI AG</title>" +
+          "</head>" +
+          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+          "<h1>Termin bestätigt</h1>" +
+          "<p>Hallo " +
+          escapeHtml(booking.name) +
+          ",</p>" +
+          "<p>Ihre Terminanfrage bei der <strong>ALI AG</strong> wurde bestätigt.</p>" +
+          "<h2>Ihr Termin</h2>" +
+          "<p><strong>Datum:</strong> " +
+          escapeHtml(booking.booking_date) +
+          "</p>" +
+          "<p><strong>Uhrzeit:</strong> " +
+          escapeHtml(booking.booking_time) +
+          "</p>" +
+          "<p><strong>Fahrzeug:</strong> " +
+          escapeHtml(booking.car) +
+          "</p>" +
+          "<hr>" +
+          "<p>Wir freuen uns auf Ihren Besuch.</p>" +
+          "<p>Freundliche Grüsse</p>" +
+          "<p><strong>ALI AG</strong></p>" +
+          "</div>" +
+          "</body>" +
+          "</html>"
+
+        const { error: emailError } =
+          await resend.emails.send({
+            from: fromEmail,
+            to: booking.email,
+            subject:
+              "Ihr Termin bei ALI AG wurde bestätigt",
+            html: htmlContent,
+          })
+
+        if (emailError) {
+          console.error(
+            "Resend Bestätigungs-E-Mail Fehler:",
+            emailError,
+          )
+        } else {
+          console.log(
+            "Bestätigungs-E-Mail erfolgreich gesendet an:",
+            booking.email,
+          )
+        }
+      }
+
+      // =================================================
+      // TERMIN ABGELEHNT
+      // =================================================
+
+      if (status === "rejected") {
+        const htmlContent =
+          "<!DOCTYPE html>" +
+          '<html lang="de">' +
+          "<head>" +
+          '<meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          "<title>Terminanfrage - ALI AG</title>" +
+          "</head>" +
+          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+          "<h1>Terminanfrage</h1>" +
+          "<p>Hallo " +
+          escapeHtml(booking.name) +
+          ",</p>" +
+          "<p>leider konnten wir Ihre Terminanfrage bei der <strong>ALI AG</strong> nicht bestätigen.</p>" +
+          "<h2>Angefragter Termin</h2>" +
+          "<p><strong>Datum:</strong> " +
+          escapeHtml(booking.booking_date) +
+          "</p>" +
+          "<p><strong>Uhrzeit:</strong> " +
+          escapeHtml(booking.booking_time) +
+          "</p>" +
+          "<p><strong>Fahrzeug:</strong> " +
+          escapeHtml(booking.car) +
+          "</p>" +
+          "<hr>" +
+          "<p>Bitte kontaktieren Sie uns gerne, um einen anderen Termin zu vereinbaren.</p>" +
+          "<p>Freundliche Grüsse</p>" +
+          "<p><strong>ALI AG</strong></p>" +
+          "</div>" +
+          "</body>" +
+          "</html>"
+
+        const { error: emailError } =
+          await resend.emails.send({
+            from: fromEmail,
+            to: booking.email,
+            subject:
+              "Ihre Terminanfrage bei ALI AG",
+            html: htmlContent,
+          })
+
+        if (emailError) {
+          console.error(
+            "Resend Ablehnungs-E-Mail Fehler:",
+            emailError,
+          )
+        } else {
+          console.log(
+            "Ablehnungs-E-Mail erfolgreich gesendet an:",
+            booking.email,
+          )
+        }
+      }
+    }
+  } catch (emailError) {
+    console.error(
+      "E-Mail konnte nicht gesendet werden:",
+      emailError,
+    )
   }
 
   // ===================================================
