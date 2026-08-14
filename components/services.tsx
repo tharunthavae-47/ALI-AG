@@ -34,7 +34,7 @@ const services = [
     animation: "oil",
   },
   {
-    icon: Car,
+    icon: CircleDot,
     title: "Reifenservice",
     desc: "Reifenwechsel, Einlagerung und Auswuchten – alles aus einer Hand.",
     animation: "tires",
