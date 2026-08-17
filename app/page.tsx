@@ -4,7 +4,7 @@ import { Services } from "@/components/services"
 import { About } from "@/components/about"
 import { BookingForm } from "@/components/booking-form"
 import { SiteFooter } from "@/components/site-footer"
-import { MobileActionBar } from "@/components/mobile-action-bar"
+import { MobileActionBar } from "@/components/components/mobile-action-bar"
 import { getBookedSlots } from "@/app/actions"
 
 export default async function HomePage() {
