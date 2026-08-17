@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server"
 import OpenAI from "openai"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export async function POST(request: Request) {
   try {
+    // API-Key prüfen
+    const apiKey = process.env.OPENAI_API_KEY
+
+    if (!apiKey) {
+      console.error("OPENAI_API_KEY fehlt")
+
+      return NextResponse.json(
+        {
+          error: "OPENAI_API_KEY fehlt in Vercel.",
+        },
+        {
+          status: 500,
+        }
+      )
+    }
+
     // Anfrage lesen
     const body = await request.json()
 
@@ -23,57 +35,70 @@ export async function POST(request: Request) {
       )
     }
 
-    // OpenAI aufrufen
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    console.log("JARVIS Anfrage:", message)
 
-      messages: [
-        {
-          role: "system",
-          content: `
+    // OpenAI erstellen
+    const openai = new OpenAI({
+      apiKey: apiKey,
+    })
+
+    // OpenAI Anfrage
+    const completion =
+      await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+
+        messages: [
+          {
+            role: "system",
+            content: `
 Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
 
 Deine Aufgaben:
-- Beantworte Fragen auf Deutsch.
-- Sei freundlich, professionell und kurz.
+- Antworte auf Deutsch.
+- Sei freundlich und professionell.
+- Halte Antworten verständlich und relativ kurz.
 - Hilf bei Fragen rund um MB-Performance.
-- Wenn du etwas nicht weißt, sage ehrlich, dass du es nicht weißt.
-- Erfinde keine Termine oder Kundendaten.
-- Du kannst später mit der Supabase-Datenbank von MB-Performance verbunden werden.
-          `,
-        },
+- Erfinde niemals Termine, Kunden oder andere Daten.
+- Wenn du etwas nicht weißt, sage es ehrlich.
+            `,
+          },
+          {
+            role: "user",
+            content: message,
+          },
+        ],
+      })
 
-        {
-          role: "user",
-          content: message,
-        },
-      ],
-    })
-
+    // Antwort holen
     const answer =
       completion.choices[0]?.message?.content
 
     if (!answer) {
-      return NextResponse.json(
-        {
-          error: "JARVIS konnte keine Antwort erzeugen.",
-        },
-        {
-          status: 500,
-        }
+      throw new Error(
+        "OpenAI hat keine Antwort zurückgegeben."
       )
     }
 
-    // Antwort an die Webseite
+    console.log("JARVIS Antwort:", answer)
+
     return NextResponse.json({
       answer,
     })
   } catch (error) {
-    console.error("JARVIS API ERROR:", error)
+    console.error("========== JARVIS ERROR ==========")
+    console.error(error)
+    console.error("===================================")
+
+    let errorMessage =
+      "Unbekannter Fehler bei JARVIS."
+
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
 
     return NextResponse.json(
       {
-        error: "JARVIS konnte die Anfrage nicht verarbeiten.",
+        error: errorMessage,
       },
       {
         status: 500,
