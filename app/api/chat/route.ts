@@ -21,7 +21,6 @@ export async function POST(request: Request) {
 
     // Anfrage lesen
     const body = await request.json()
-
     const message = body?.message
 
     if (!message || typeof message !== "string") {
@@ -65,6 +64,19 @@ Deine Aufgaben:
 - Wenn du keine Daten aus der MB-Performance-Datenbank erhalten hast,
   behaupte niemals, dass du einen bestimmten Termin gesehen hast.
 - Du bist der digitale Assistent von MB-Performance und heißt JARVIS.
+
+WICHTIGES FORMAT:
+
+- Verwende niemals Markdown.
+- Verwende niemals Sternchen (*) in deinen Antworten.
+- Verwende keine Markdown-Überschriften.
+- Verwende keine Markdown-Tabellen.
+- Verwende keine Markdown-Codeblöcke.
+- Verwende keine Zeichen wie ** für Hervorhebungen.
+- Verwende für Aufzählungen stattdessen das Zeichen "•".
+- Schreibe normalen, sauberen Klartext.
+- Verwende keine unnötigen Sonderzeichen.
+- Formatiere Antworten übersichtlich mit normalen Absätzen.
         `,
       },
     })
