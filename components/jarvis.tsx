@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react"
 
-type SpeechRecognitionEvent = Event & {
+type SpeechRecognitionResultEvent = Event & {
   results: {
     [index: number]: {
       [index: number]: {
@@ -27,12 +27,15 @@ type SpeechRecognitionInstance = {
   interimResults: boolean
   start: () => void
   stop: () => void
-  onresult: ((event: SpeechRecognitionEvent) => void) | null
+  abort: () => void
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null
+  onstart: (() => void) | null
   onend: (() => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: { error: string }) => void) | null
 }
 
-type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
+type SpeechRecognitionConstructor =
+  new () => SpeechRecognitionInstance
 
 declare global {
   interface Window {
@@ -53,11 +56,12 @@ export function Jarvis() {
   const [speaking, setSpeaking] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
 
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+  const recognitionRef =
+    useRef<SpeechRecognitionInstance | null>(null)
 
-  // =========================
+  // =====================================================
   // JARVIS SPRICHT
-  // =========================
+  // =====================================================
 
   function speak(text: string) {
     if (!voiceEnabled) return
@@ -71,7 +75,14 @@ export function Jarvis() {
 
     window.speechSynthesis.cancel()
 
-    const utterance = new SpeechSynthesisUtterance(text)
+    const cleanText = text
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .replace(/#{1,6}\s/g, "")
+      .replace(/`/g, "")
+
+    const utterance =
+      new SpeechSynthesisUtterance(cleanText)
 
     utterance.lang = "de-DE"
     utterance.rate = 0.95
@@ -93,14 +104,26 @@ export function Jarvis() {
     window.speechSynthesis.speak(utterance)
   }
 
-  // =========================
+  // =====================================================
   // JARVIS FRAGEN
-  // =========================
+  // =====================================================
 
   async function askJarvis(text?: string) {
     const cleanMessage = (text ?? message).trim()
 
     if (!cleanMessage || loading) return
+
+    // Mikrofon stoppen
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+    }
+
+    // Aktuelle Sprachausgabe stoppen
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+      setSpeaking(false)
+    }
 
     setMessage("")
     setLoading(true)
@@ -150,26 +173,60 @@ export function Jarvis() {
     }
   }
 
-  // =========================
-  // MIKROFON
-  // =========================
+  // =====================================================
+  // MIKROFON STARTEN
+  // =====================================================
 
-  function startListening() {
+  async function startListening() {
     if (typeof window === "undefined") return
 
+    // Wenn JARVIS gerade zuhört -> stoppen
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+
+    // Browser-Unterstützung prüfen
     const SpeechRecognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
       setAnswer(
-        "Dein Browser unterstützt leider keine Spracherkennung."
+        "Dein Browser unterstützt leider keine Spracherkennung. Bitte verwende Google Chrome oder Microsoft Edge."
       )
       return
     }
 
-    if (listening) {
-      recognitionRef.current?.stop()
+    // Aktuelle Sprachausgabe stoppen
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+      setSpeaking(false)
+    }
+
+    // Mikrofon-Berechtigung prüfen
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        })
+
+      // Stream sofort wieder schließen.
+      // Die eigentliche Spracherkennung übernimmt danach der Browser.
+      stream.getTracks().forEach((track) => {
+        track.stop()
+      })
+    } catch (error) {
+      console.error(
+        "MICROPHONE PERMISSION ERROR:",
+        error
+      )
+
+      setAnswer(
+        "Ich kann dein Mikrofon nicht verwenden. Bitte erlaube dieser Website den Mikrofonzugriff in den Browser-Einstellungen."
+      )
+
       return
     }
 
@@ -179,14 +236,35 @@ export function Jarvis() {
     recognition.continuous = false
     recognition.interimResults = false
 
+    recognition.onstart = () => {
+      setListening(true)
+
+      setAnswer(
+        "Ich höre zu. Sprich jetzt..."
+      )
+    }
+
     recognition.onresult = (
-      event: SpeechRecognitionEvent
+      event: SpeechRecognitionResultEvent
     ) => {
       const transcript =
-        event.results[0][0].transcript
+        event.results[0][0].transcript.trim()
+
+      console.log(
+        "SPRACHE ERKANNT:",
+        transcript
+      )
+
+      if (!transcript) {
+        setAnswer(
+          "Ich habe leider nichts verstanden."
+        )
+        return
+      }
 
       setMessage(transcript)
 
+      // Erkannte Sprache direkt an JARVIS senden
       askJarvis(transcript)
     }
 
@@ -194,49 +272,94 @@ export function Jarvis() {
       setListening(false)
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      console.error(
+        "SPEECH RECOGNITION ERROR:",
+        event.error
+      )
+
       setListening(false)
 
-      setAnswer(
-        "Ich konnte das Mikrofon nicht verwenden."
-      )
+      switch (event.error) {
+        case "not-allowed":
+          setAnswer(
+            "Der Mikrofonzugriff wurde blockiert. Erlaube Mikrofonzugriff für diese Website und versuche es erneut."
+          )
+          break
+
+        case "no-speech":
+          setAnswer(
+            "Ich habe keine Sprache erkannt. Bitte versuche es erneut."
+          )
+          break
+
+        case "audio-capture":
+          setAnswer(
+            "Ich konnte kein Mikrofon finden. Überprüfe, ob dein Mikrofon angeschlossen und aktiviert ist."
+          )
+          break
+
+        case "network":
+          setAnswer(
+            "Die Spracherkennung konnte keine Verbindung herstellen. Überprüfe deine Internetverbindung."
+          )
+          break
+
+        default:
+          setAnswer(
+            `Mikrofonfehler: ${event.error}`
+          )
+      }
     }
 
     recognitionRef.current = recognition
 
     try {
       recognition.start()
-      setListening(true)
     } catch (error) {
-      console.error(error)
+      console.error(
+        "MICROPHONE START ERROR:",
+        error
+      )
+
       setListening(false)
+
+      setAnswer(
+        "Das Mikrofon konnte nicht gestartet werden. Bitte versuche es erneut."
+      )
     }
   }
 
-  // =========================
+  // =====================================================
   // AUFRÄUMEN
-  // =========================
+  // =====================================================
 
   useEffect(() => {
     return () => {
-      recognitionRef.current?.stop()
-      window.speechSynthesis?.cancel()
+      recognitionRef.current?.abort()
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel()
+      }
     }
   }, [])
 
   useEffect(() => {
     if (!open) {
-      recognitionRef.current?.stop()
-      window.speechSynthesis?.cancel()
+      recognitionRef.current?.abort()
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel()
+      }
 
       setListening(false)
       setSpeaking(false)
     }
   }, [open])
 
-  // =========================
-  // BUTTON
-  // =========================
+  // =====================================================
+  // JARVIS BUTTON
+  // =====================================================
 
   if (!open) {
     return (
@@ -256,9 +379,9 @@ export function Jarvis() {
     )
   }
 
-  // =========================
+  // =====================================================
   // JARVIS FENSTER
-  // =========================
+  // =====================================================
 
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex h-[620px] w-[390px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#090909] text-white shadow-[0_20px_80px_rgba(0,0,0,0.6)]">
@@ -266,6 +389,7 @@ export function Jarvis() {
       {/* HEADER */}
 
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+
         <div className="flex items-center gap-3">
 
           <div className="relative flex h-11 w-11 items-center justify-center">
@@ -287,6 +411,7 @@ export function Jarvis() {
           </div>
 
           <div>
+
             <div className="font-semibold tracking-wider">
               JARVIS
             </div>
@@ -314,7 +439,9 @@ export function Jarvis() {
                     : "ONLINE"}
 
             </div>
+
           </div>
+
         </div>
 
         <button
@@ -325,6 +452,7 @@ export function Jarvis() {
         >
           <X size={20} />
         </button>
+
       </div>
 
       {/* ANIMATION */}
@@ -399,7 +527,11 @@ export function Jarvis() {
               setMessage(event.target.value)
             }
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey
+              ) {
+                event.preventDefault()
                 askJarvis()
               }
             }}
@@ -414,10 +546,14 @@ export function Jarvis() {
             type="button"
             onClick={startListening}
             disabled={loading}
-            aria-label="Mikrofon"
+            aria-label={
+              listening
+                ? "Mikrofon stoppen"
+                : "Mikrofon starten"
+            }
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
               listening
-                ? "bg-red-500 text-white"
+                ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]"
                 : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
             }`}
           >
@@ -455,11 +591,19 @@ export function Jarvis() {
 
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              if (
+                voiceEnabled &&
+                "speechSynthesis" in window
+              ) {
+                window.speechSynthesis.cancel()
+                setSpeaking(false)
+              }
+
               setVoiceEnabled(
                 (value) => !value
               )
-            }
+            }}
             className="flex items-center gap-2 text-xs text-white/40 transition hover:text-white"
           >
 
