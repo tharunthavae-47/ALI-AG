@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server"
-import OpenAI from "openai"
+import { GoogleGenAI } from "@google/genai"
 
 export async function POST(request: Request) {
   try {
-    // API-Key prüfen
-    const apiKey = process.env.OPENAI_API_KEY
+    // Gemini API-Key prüfen
+    const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      console.error("OPENAI_API_KEY fehlt")
+      console.error("GEMINI_API_KEY fehlt")
 
       return NextResponse.json(
         {
-          error: "OPENAI_API_KEY fehlt in Vercel.",
+          error: "GEMINI_API_KEY fehlt in Vercel.",
         },
         {
           status: 500,
@@ -37,45 +37,43 @@ export async function POST(request: Request) {
 
     console.log("JARVIS Anfrage:", message)
 
-    // OpenAI erstellen
-    const openai = new OpenAI({
-      apiKey: apiKey,
+    // Gemini initialisieren
+    const ai = new GoogleGenAI({
+      apiKey,
     })
 
-    // OpenAI Anfrage
-    const completion =
-      await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+    // Gemini aufrufen
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
 
-        messages: [
-          {
-            role: "system",
-            content: `
+      contents: message,
+
+      config: {
+        systemInstruction: `
 Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
 
 Deine Aufgaben:
-- Antworte auf Deutsch.
-- Sei freundlich und professionell.
-- Halte Antworten verständlich und relativ kurz.
-- Hilf bei Fragen rund um MB-Performance.
-- Erfinde niemals Termine, Kunden oder andere Daten.
-- Wenn du etwas nicht weißt, sage es ehrlich.
-            `,
-          },
-          {
-            role: "user",
-            content: message,
-          },
-        ],
-      })
 
-    // Antwort holen
-    const answer =
-      completion.choices[0]?.message?.content
+- Antworte immer auf Deutsch.
+- Sei freundlich, professionell und verständlich.
+- Halte normale Antworten relativ kurz.
+- Hilf bei Fragen rund um MB-Performance.
+- Unterstütze bei Fragen zu Fahrzeugen, Reparaturen, Inspektionen,
+  MFK, Ölwechsel, Reifenservice und Terminvereinbarungen.
+- Erfinde niemals Termine, Kunden oder andere Daten.
+- Wenn du etwas nicht weißt, sage ehrlich, dass du es nicht weißt.
+- Wenn du keine Daten aus der MB-Performance-Datenbank erhalten hast,
+  behaupte niemals, dass du einen bestimmten Termin gesehen hast.
+- Du bist der digitale Assistent von MB-Performance und heißt JARVIS.
+        `,
+      },
+    })
+
+    const answer = response.text
 
     if (!answer) {
       throw new Error(
-        "OpenAI hat keine Antwort zurückgegeben."
+        "Gemini hat keine Antwort zurückgegeben."
       )
     }
 
@@ -85,16 +83,14 @@ Deine Aufgaben:
       answer,
     })
   } catch (error) {
-    console.error("========== JARVIS ERROR ==========")
+    console.error("========== JARVIS GEMINI ERROR ==========")
     console.error(error)
-    console.error("===================================")
+    console.error("==========================================")
 
-    let errorMessage =
-      "Unbekannter Fehler bei JARVIS."
-
-    if (error instanceof Error) {
-      errorMessage = error.message
-    }
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unbekannter Gemini-Fehler."
 
     return NextResponse.json(
       {
