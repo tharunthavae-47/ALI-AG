@@ -8,63 +8,67 @@ import {
   Clock,
   User,
   Car,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react"
 
-import type { Booking } from "@/app/actions"
+import type {
+  Booking,
+  BookingStatus,
+} from "@/app/actions"
+
+// =====================================================
+// TYPES
+// =====================================================
 
 type BookingCalendarProps = {
   bookings: Booking[]
 }
 
-const WEEKDAYS = [
-  "Mo",
-  "Di",
-  "Mi",
-  "Do",
-  "Fr",
-  "Sa",
-  "So",
-]
+// =====================================================
+// HILFSFUNKTIONEN
+// =====================================================
 
-function formatDate(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-
-  return `${year}-${month}-${day}`
+function pad(value: number) {
+  return String(value).padStart(2, "0")
 }
 
-function getMonthName(date: Date) {
-  return date.toLocaleDateString("de-CH", {
-    month: "long",
-    year: "numeric",
-  })
+function getDateKey(date: Date) {
+  return (
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}`
+  )
 }
 
-function getDaysInMonth(date: Date) {
+function getDateFromKey(value: string) {
+  const [year, month, day] =
+    value.split("-").map(Number)
+
   return new Date(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    0,
-  ).getDate()
+    year,
+    month - 1,
+    day,
+  )
 }
 
-function getFirstDayOfMonth(date: Date) {
-  const day = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    1,
-  ).getDay()
-
-  // Sonntag = 0 → auf Montag-basierten Kalender umrechnen
-  return day === 0 ? 6 : day - 1
-}
-
-function formatBookingDate(date: string) {
-  return new Date(date + "T00:00:00").toLocaleDateString(
+function formatLongDate(value: string) {
+  return getDateFromKey(value).toLocaleDateString(
     "de-CH",
     {
       weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    },
+  )
+}
+
+function formatShortDate(value: string) {
+  return getDateFromKey(value).toLocaleDateString(
+    "de-CH",
+    {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -72,48 +76,185 @@ function formatBookingDate(date: string) {
   )
 }
 
+// =====================================================
+// STATUS
+// =====================================================
+
+const statusLabels: Record<
+  BookingStatus,
+  string
+> = {
+  pending: "Offen",
+  confirmed: "Bestätigt",
+  rejected: "Abgelehnt",
+}
+
+const statusClasses: Record<
+  BookingStatus,
+  string
+> = {
+  pending:
+    "border-[var(--warn)] text-[var(--warn)]",
+
+  confirmed:
+    "border-[var(--ok)] text-[var(--ok)]",
+
+  rejected:
+    "border-[var(--bad)] text-[var(--bad)]",
+}
+
+function StatusIcon({
+  status,
+}: {
+  status: BookingStatus
+}) {
+  if (status === "confirmed") {
+    return (
+      <CheckCircle2 className="h-4 w-4" />
+    )
+  }
+
+  if (status === "rejected") {
+    return (
+      <XCircle className="h-4 w-4" />
+    )
+  }
+
+  return (
+    <AlertCircle className="h-4 w-4" />
+  )
+}
+
+// =====================================================
+// KALENDER
+// =====================================================
+
 export function BookingCalendar({
   bookings,
 }: BookingCalendarProps) {
+  // ===================================================
+  // HEUTIGES DATUM
+  // ===================================================
+
   const today = new Date()
 
-  const [currentMonth, setCurrentMonth] = useState(
-    new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      1,
-    ),
-  )
+  const todayKey = getDateKey(today)
+
+  // ===================================================
+  // AUSGEWÄHLTER TAG
+  // ===================================================
 
   const [selectedDate, setSelectedDate] =
-    useState<string | null>(null)
+    useState(todayKey)
 
-  const daysInMonth =
-    getDaysInMonth(currentMonth)
+  // ===================================================
+  // AKTUELLER MONAT
+  // ===================================================
 
-  const firstDay =
-    getFirstDayOfMonth(currentMonth)
+  const [currentMonth, setCurrentMonth] =
+    useState(
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1,
+      ),
+    )
+
+  // ===================================================
+  // MONAT NAME
+  // ===================================================
+
+  const monthTitle =
+    currentMonth.toLocaleDateString(
+      "de-CH",
+      {
+        month: "long",
+        year: "numeric",
+      },
+    )
+
+  // ===================================================
+  // TAGE DES MONATS
+  // ===================================================
 
   const calendarDays = useMemo(() => {
-    const days: Array<number | null> = []
+    const year =
+      currentMonth.getFullYear()
 
-    for (let i = 0; i < firstDay; i++) {
+    const month =
+      currentMonth.getMonth()
+
+    const firstDay = new Date(
+      year,
+      month,
+      1,
+    )
+
+    const lastDay = new Date(
+      year,
+      month + 1,
+      0,
+    )
+
+    // Montag = 0
+    const firstWeekday =
+      (firstDay.getDay() + 6) % 7
+
+    const totalDays =
+      lastDay.getDate()
+
+    const days: Array<
+      Date | null
+    > = []
+
+    // Leere Felder vor dem 1.
+    for (
+      let i = 0;
+      i < firstWeekday;
+      i++
+    ) {
       days.push(null)
     }
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push(day)
+    // Tage
+    for (
+      let day = 1;
+      day <= totalDays;
+      day++
+    ) {
+      days.push(
+        new Date(
+          year,
+          month,
+          day,
+        ),
+      )
+    }
+
+    // Auf volle Wochen auffüllen
+    while (days.length % 7 !== 0) {
+      days.push(null)
     }
 
     return days
-  }, [firstDay, daysInMonth])
+  }, [currentMonth])
+
+  // ===================================================
+  // BUCHUNGEN NACH DATUM
+  // ===================================================
 
   const bookingsByDate = useMemo(() => {
-    const map = new Map<string, Booking[]>()
+    const map =
+      new Map<
+        string,
+        Booking[]
+      >()
 
     for (const booking of bookings) {
       const existing =
-        map.get(booking.booking_date) ?? []
+        map.get(
+          booking.booking_date,
+        ) ?? []
 
       existing.push(booking)
 
@@ -123,12 +264,29 @@ export function BookingCalendar({
       )
     }
 
+    for (const [, items] of map) {
+      items.sort((a, b) =>
+        a.booking_time.localeCompare(
+          b.booking_time,
+        ),
+      )
+    }
+
     return map
   }, [bookings])
 
-  const selectedBookings = selectedDate
-    ? bookingsByDate.get(selectedDate) ?? []
-    : []
+  // ===================================================
+  // AUSGEWÄHLTE BUCHUNGEN
+  // ===================================================
+
+  const selectedBookings =
+    bookingsByDate.get(
+      selectedDate,
+    ) ?? []
+
+  // ===================================================
+  // MONAT WECHSELN
+  // ===================================================
 
   function previousMonth() {
     setCurrentMonth(
@@ -138,8 +296,6 @@ export function BookingCalendar({
         1,
       ),
     )
-
-    setSelectedDate(null)
   }
 
   function nextMonth() {
@@ -150,379 +306,588 @@ export function BookingCalendar({
         1,
       ),
     )
-
-    setSelectedDate(null)
   }
 
+  // ===================================================
+  // HEUTE
+  // ===================================================
+
   function goToToday() {
+    const now = new Date()
+
     setCurrentMonth(
       new Date(
-        today.getFullYear(),
-        today.getMonth(),
+        now.getFullYear(),
+        now.getMonth(),
         1,
       ),
     )
 
-    setSelectedDate(formatDate(today))
+    setSelectedDate(
+      getDateKey(now),
+    )
   }
 
-  return (
-    <section className="mt-10 border border-border bg-card">
-      {/* HEADER */}
+  // ===================================================
+  // STATUS DES TAGES
+  // ===================================================
 
-      <div className="border-b border-border p-5 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center border border-border">
-              <CalendarDays className="h-5 w-5" />
-            </div>
+  function getStatusesForDate(
+    dateKey: string,
+  ) {
+    const dayBookings =
+      bookingsByDate.get(
+        dateKey,
+      ) ?? []
+
+    const statuses =
+      new Set<BookingStatus>()
+
+    for (const booking of dayBookings) {
+      statuses.add(
+        booking.status,
+      )
+    }
+
+    return Array.from(statuses)
+  }
+
+  // ===================================================
+  // RETURN
+  // ===================================================
+
+  return (
+    <section className="mt-8">
+
+      {/* =================================================
+          KALENDER + INFO
+      ================================================= */}
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+
+        {/* =================================================
+            LINKE SEITE
+        ================================================= */}
+
+        <div className="border border-border bg-card">
+
+          {/* HEADER */}
+
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-5">
 
             <div>
-              <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                Kalender
+              <div className="flex items-center gap-2">
+
+                <CalendarDays className="h-5 w-5" />
+
+                <h2 className="font-display text-lg font-semibold uppercase tracking-wide">
+                  Kalender
+                </h2>
+
+              </div>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Termine nach Datum
               </p>
+            </div>
 
-              <h2 className="mt-1 font-display text-2xl font-bold uppercase">
-                {getMonthName(currentMonth)}
-              </h2>
+            {/* MONATS NAVIGATION */}
+
+            <div className="flex items-center gap-2">
+
+              <button
+                type="button"
+                onClick={goToToday}
+                className="border border-border px-3 py-2 font-display text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                Heute
+              </button>
+
+              <button
+                type="button"
+                onClick={previousMonth}
+                aria-label="Vorheriger Monat"
+                className="flex h-9 w-9 items-center justify-center border border-border transition-colors hover:bg-secondary"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={nextMonth}
+                aria-label="Nächster Monat"
+                className="flex h-9 w-9 items-center justify-center border border-border transition-colors hover:bg-secondary"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={goToToday}
-              className="border border-border px-3 py-2 font-display text-xs uppercase tracking-widest hover:bg-secondary"
-            >
-              Heute
-            </button>
+          {/* MONAT */}
 
-            <button
-              type="button"
-              onClick={previousMonth}
-              className="flex h-9 w-9 items-center justify-center border border-border hover:bg-secondary"
-              aria-label="Vorheriger Monat"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+          <div className="border-b border-border px-5 py-4">
 
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="flex h-9 w-9 items-center justify-center border border-border hover:bg-secondary"
-              aria-label="Nächster Monat"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+            <h3 className="font-display text-2xl font-bold uppercase tracking-wide">
+              {monthTitle}
+            </h3>
 
-        {/* LEGENDE */}
-
-        <div className="mt-5 flex flex-wrap gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 bg-[var(--warn)]" />
-            Offen
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 bg-[var(--ok)]" />
-            Bestätigt
+          {/* WOCHENTAGE */}
+
+          <div className="grid grid-cols-7 border-b border-border">
+
+            {[
+              "Mo",
+              "Di",
+              "Mi",
+              "Do",
+              "Fr",
+              "Sa",
+              "So",
+            ].map((day) => (
+              <div
+                key={day}
+                className="border-r border-border px-2 py-3 text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground last:border-r-0"
+              >
+                {day}
+              </div>
+            ))}
+
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 bg-[var(--bad)]" />
-            Abgelehnt
-          </div>
-        </div>
-      </div>
+          {/* TAGE */}
 
-      {/* KALENDER */}
+          <div className="grid grid-cols-7">
 
-      <div className="p-3 sm:p-5">
-        {/* WOCHENTAGE */}
+            {calendarDays.map(
+              (date, index) => {
 
-        <div className="grid grid-cols-7 border-b border-border">
-          {WEEKDAYS.map((day) => (
-            <div
-              key={day}
-              className="py-3 text-center font-display text-[10px] uppercase tracking-widest text-muted-foreground sm:text-xs"
-            >
-              {day}
-            </div>
-          ))}
-        </div>
+                // Leeres Feld
+                if (!date) {
+                  return (
+                    <div
+                      key={`empty-${index}`}
+                      className="min-h-[90px] border-r border-b border-border bg-background/30"
+                    />
+                  )
+                }
 
-        {/* TAGE */}
+                const dateKey =
+                  getDateKey(date)
 
-        <div className="grid grid-cols-7">
-          {calendarDays.map(
-            (day, index) => {
-              if (day === null) {
+                const dayBookings =
+                  bookingsByDate.get(
+                    dateKey,
+                  ) ?? []
+
+                const statuses =
+                  getStatusesForDate(
+                    dateKey,
+                  )
+
+                const isToday =
+                  dateKey ===
+                  todayKey
+
+                const isSelected =
+                  dateKey ===
+                  selectedDate
+
                 return (
-                  <div
-                    key={`empty-${index}`}
-                    className="min-h-[70px] border-b border-r border-border bg-background/40 sm:min-h-[100px]"
-                  />
-                )
-              }
-
-              const date = new Date(
-                currentMonth.getFullYear(),
-                currentMonth.getMonth(),
-                day,
-              )
-
-              const dateString =
-                formatDate(date)
-
-              const dayBookings =
-                bookingsByDate.get(
-                  dateString,
-                ) ?? []
-
-              const isToday =
-                dateString ===
-                formatDate(today)
-
-              const isSelected =
-                selectedDate ===
-                dateString
-
-              const pendingCount =
-                dayBookings.filter(
-                  (booking) =>
-                    booking.status ===
-                    "pending",
-                ).length
-
-              const confirmedCount =
-                dayBookings.filter(
-                  (booking) =>
-                    booking.status ===
-                    "confirmed",
-                ).length
-
-              const rejectedCount =
-                dayBookings.filter(
-                  (booking) =>
-                    booking.status ===
-                    "rejected",
-                ).length
-
-              return (
-                <button
-                  key={dateString}
-                  type="button"
-                  onClick={() =>
-                    setSelectedDate(
-                      dateString,
-                    )
-                  }
-                  className={[
-                    "relative min-h-[70px] border-b border-r border-border p-2 text-left transition-colors hover:bg-secondary sm:min-h-[100px] sm:p-3",
-                    isSelected
-                      ? "bg-secondary"
-                      : "",
-                  ].join(" ")}
-                >
-                  {/* DATUM */}
-
-                  <div
+                  <button
+                    key={dateKey}
+                    type="button"
+                    onClick={() =>
+                      setSelectedDate(
+                        dateKey,
+                      )
+                    }
                     className={[
-                      "flex h-7 w-7 items-center justify-center font-display text-sm",
-                      isToday
-                        ? "bg-primary text-primary-foreground"
-                        : "",
+                      "relative min-h-[90px]",
+                      "border-r border-b border-border",
+                      "p-2 text-left",
+                      "transition-colors",
+                      "hover:bg-secondary",
+
+                      isSelected
+                        ? "bg-secondary"
+                        : "bg-card",
                     ].join(" ")}
                   >
-                    {day}
-                  </div>
 
-                  {/* TERMINE */}
+                    {/* TAG */}
 
-                  {dayBookings.length >
-                    0 && (
-                    <div className="mt-2 space-y-1">
-                      {pendingCount >
-                        0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 bg-[var(--warn)]" />
+                    <div
+                      className={[
+                        "flex h-7 w-7 items-center justify-center",
+                        "text-sm font-semibold",
 
-                          <span className="hidden text-[9px] uppercase text-muted-foreground sm:inline">
-                            {pendingCount}
-                            {" "}
-                            offen
-                          </span>
-                        </div>
-                      )}
+                        isToday
+                          ? "bg-primary text-primary-foreground"
+                          : "",
 
-                      {confirmedCount >
-                        0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 bg-[var(--ok)]" />
-
-                          <span className="hidden text-[9px] uppercase text-muted-foreground sm:inline">
-                            {confirmedCount}
-                            {" "}
-                            bestätigt
-                          </span>
-                        </div>
-                      )}
-
-                      {rejectedCount >
-                        0 && (
-                        <div className="flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 bg-[var(--bad)]" />
-
-                          <span className="hidden text-[9px] uppercase text-muted-foreground sm:inline">
-                            {rejectedCount}
-                            {" "}
-                            abgelehnt
-                          </span>
-                        </div>
-                      )}
-
-                      {/* MOBILE PUNKTE */}
-
-                      <div className="flex gap-1 sm:hidden">
-                        {pendingCount >
-                          0 && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--warn)]" />
-                        )}
-
-                        {confirmedCount >
-                          0 && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--ok)]" />
-                        )}
-
-                        {rejectedCount >
-                          0 && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--bad)]" />
-                        )}
-                      </div>
+                        isSelected &&
+                        !isToday
+                          ? "border border-primary"
+                          : "",
+                      ].join(" ")}
+                    >
+                      {date.getDate()}
                     </div>
-                  )}
-                </button>
-              )
-            },
-          )}
-        </div>
-      </div>
 
-      {/* AUSGEWÄHLTER TAG */}
+                    {/* TERMINE */}
 
-      {selectedDate && (
-        <div className="border-t border-border">
-          <div className="p-5 sm:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                  Ausgewählter Tag
-                </p>
+                    {dayBookings.length >
+                      0 && (
 
-                <h3 className="mt-1 font-display text-xl font-bold uppercase">
-                  {formatBookingDate(
-                    selectedDate,
-                  )}
-                </h3>
-              </div>
+                      <div className="mt-2">
 
-              <div className="text-sm text-muted-foreground">
-                {selectedBookings.length}{" "}
-                {selectedBookings.length ===
-                1
-                  ? "Termin"
-                  : "Termine"}
-              </div>
+                        {/* STATUS PUNKTE */}
+
+                        <div className="flex flex-wrap gap-1">
+
+                          {statuses.includes(
+                            "pending",
+                          ) && (
+                            <span
+                              title="Offener Termin"
+                              className="h-2 w-2 rounded-full bg-[var(--warn)]"
+                            />
+                          )}
+
+                          {statuses.includes(
+                            "confirmed",
+                          ) && (
+                            <span
+                              title="Bestätigter Termin"
+                              className="h-2 w-2 rounded-full bg-[var(--ok)]"
+                            />
+                          )}
+
+                          {statuses.includes(
+                            "rejected",
+                          ) && (
+                            <span
+                              title="Abgelehnter Termin"
+                              className="h-2 w-2 rounded-full bg-[var(--bad)]"
+                            />
+                          )}
+
+                        </div>
+
+                        {/* ANZAHL */}
+
+                        <p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">
+                          {dayBookings.length}{" "}
+                          {dayBookings.length ===
+                          1
+                            ? "Termin"
+                            : "Termine"}
+                        </p>
+
+                      </div>
+                    )}
+
+                  </button>
+                )
+              },
+            )}
+
+          </div>
+
+          {/* LEGENDE */}
+
+          <div className="flex flex-wrap gap-5 border-t border-border p-4">
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--warn)]" />
+              Offen
             </div>
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--ok)]" />
+              Bestätigt
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="h-2.5 w-2.5 rounded-full bg-[var(--bad)]" />
+              Abgelehnt
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* =================================================
+            RECHTE SEITE
+        ================================================= */}
+
+        <div className="border border-border bg-card">
+
+          {/* HEADER */}
+
+          <div className="border-b border-border p-5">
+
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">
+              Ausgewählter Tag
+            </p>
+
+            <h2 className="mt-2 font-display text-xl font-bold uppercase">
+              {formatLongDate(
+                selectedDate,
+              )}
+            </h2>
+
+            <p className="mt-1 text-sm text-muted-foreground">
+              {selectedBookings.length ===
+              0
+                ? "Keine Termine"
+                : `${selectedBookings.length} ${
+                    selectedBookings.length ===
+                    1
+                      ? "Termin"
+                      : "Termine"
+                  }`}
+            </p>
+
+          </div>
+
+          {/* TERMINE */}
+
+          <div className="max-h-[600px] overflow-y-auto">
 
             {selectedBookings.length ===
             0 ? (
-              <div className="mt-5 border border-border p-6 text-center">
-                <CalendarDays className="mx-auto h-6 w-6 text-muted-foreground" />
 
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Für diesen Tag sind keine
-                  Termine vorhanden.
+              <div className="p-8 text-center">
+
+                <CalendarDays className="mx-auto h-8 w-8 text-muted-foreground" />
+
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Keine Termine an diesem Tag.
                 </p>
+
               </div>
+
             ) : (
-              <div className="mt-5 space-y-3">
-                {selectedBookings
-                  .slice()
-                  .sort((a, b) =>
-                    a.booking_time.localeCompare(
-                      b.booking_time,
-                    ),
-                  )
-                  .map((booking) => (
+
+              <div className="divide-y divide-border">
+
+                {selectedBookings.map(
+                  (booking) => (
+
                     <div
                       key={booking.id}
-                      className="border border-border p-4"
+                      className="p-5"
                     >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
 
-                            <span className="font-display text-lg font-bold">
-                              {
-                                booking.booking_time
-                              }
-                            </span>
+                      {/* ZEIT */}
 
-                            <span
-                              className={[
-                                "border px-2 py-0.5 text-[9px] uppercase tracking-widest",
-                                booking.status ===
-                                  "pending"
-                                  ? "border-[var(--warn)] text-[var(--warn)]"
-                                  : "",
-                                booking.status ===
-                                  "confirmed"
-                                  ? "border-[var(--ok)] text-[var(--ok)]"
-                                  : "",
-                                booking.status ===
-                                  "rejected"
-                                  ? "border-[var(--bad)] text-[var(--bad)]"
-                                  : "",
-                              ].join(" ")}
-                            >
-                              {booking.status ===
-                                "pending" &&
-                                "Offen"}
+                      <div className="flex items-center justify-between gap-3">
 
-                              {booking.status ===
-                                "confirmed" &&
-                                "Bestätigt"}
+                        <div className="flex items-center gap-2 font-display text-lg font-bold">
 
-                              {booking.status ===
-                                "rejected" &&
-                                "Abgelehnt"}
-                            </span>
-                          </div>
+                          <Clock className="h-4 w-4" />
+
+                          {booking.booking_time}
+
                         </div>
 
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            {booking.name}
-                          </div>
+                        {/* STATUS */}
 
-                          <div className="flex items-center gap-2">
-                            <Car className="h-4 w-4" />
-                            {booking.car}
-                          </div>
-                        </div>
+                        <span
+                          className={[
+                            "flex items-center gap-1",
+                            "border px-2 py-1",
+                            "text-[9px]",
+                            "uppercase tracking-widest",
+                            statusClasses[
+                              booking.status
+                            ],
+                          ].join(" ")}
+                        >
+
+                          <StatusIcon
+                            status={
+                              booking.status
+                            }
+                          />
+
+                          {
+                            statusLabels[
+                              booking.status
+                            ]
+                          }
+
+                        </span>
+
                       </div>
+
+                      {/* NAME */}
+
+                      <div className="mt-4 flex items-center gap-2">
+
+                        <User className="h-4 w-4 text-muted-foreground" />
+
+                        <span className="font-semibold">
+                          {booking.name}
+                        </span>
+
+                      </div>
+
+                      {/* AUTO */}
+
+                      <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+
+                        <Car className="h-4 w-4" />
+
+                        {booking.car}
+
+                      </div>
+
+                      {/* PROBLEM */}
+
+                      {booking.problem && (
+
+                        <div className="mt-4 border-t border-border pt-4">
+
+                          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                            Anliegen
+                          </p>
+
+                          <p className="mt-1 text-sm leading-relaxed">
+                            {booking.problem}
+                          </p>
+
+                        </div>
+
+                      )}
+
+                      {/* KONTAKT */}
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+
+                        <a
+                          href={`tel:${booking.phone}`}
+                          className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        >
+                          {booking.phone}
+                        </a>
+
+                        <a
+                          href={`mailto:${booking.email}`}
+                          className="max-w-full truncate text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                        >
+                          {booking.email}
+                        </a>
+
+                      </div>
+
                     </div>
-                  ))}
+                  ),
+                )}
+
               </div>
             )}
+
           </div>
+
         </div>
-      )}
+
+      </div>
+
+      {/* =================================================
+          AUSGEWÄHLTER TAG UNTER DEM KALENDER
+      ================================================= */}
+
+      <div className="mt-6 border border-border bg-card p-5">
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+
+          <div>
+
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">
+              Tagesübersicht
+            </p>
+
+            <h3 className="mt-1 font-display text-lg font-semibold uppercase">
+              {formatLongDate(
+                selectedDate,
+              )}
+            </h3>
+
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            {formatShortDate(
+              selectedDate,
+            )}
+          </div>
+
+        </div>
+
+        {selectedBookings.length >
+        0 && (
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+
+            {selectedBookings.map(
+              (booking) => (
+
+                <div
+                  key={booking.id}
+                  className="border border-border p-4"
+                >
+
+                  <div className="flex items-center justify-between">
+
+                    <span className="font-display text-lg font-bold">
+                      {booking.booking_time}
+                    </span>
+
+                    <span
+                      className={[
+                        "h-2.5 w-2.5 rounded-full",
+
+                        booking.status ===
+                        "pending"
+                          ? "bg-[var(--warn)]"
+                          : "",
+
+                        booking.status ===
+                        "confirmed"
+                          ? "bg-[var(--ok)]"
+                          : "",
+
+                        booking.status ===
+                        "rejected"
+                          ? "bg-[var(--bad)]"
+                          : "",
+                      ].join(" ")}
+                    />
+
+                  </div>
+
+                  <p className="mt-2 text-sm font-semibold">
+                    {booking.name}
+                  </p>
+
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {booking.car}
+                  </p>
+
+                </div>
+
+              ),
+            )}
+
+          </div>
+        )}
+
+      </div>
+
     </section>
   )
 }
