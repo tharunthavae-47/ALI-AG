@@ -21,6 +21,10 @@ type SpeechRecognitionResultEvent = Event & {
   }
 }
 
+type SpeechRecognitionErrorEvent = Event & {
+  error: string
+}
+
 type SpeechRecognitionInstance = {
   lang: string
   continuous: boolean
@@ -28,10 +32,14 @@ type SpeechRecognitionInstance = {
   start: () => void
   stop: () => void
   abort: () => void
-  onresult: ((event: SpeechRecognitionResultEvent) => void) | null
+  onresult:
+    | ((event: SpeechRecognitionResultEvent) => void)
+    | null
   onstart: (() => void) | null
   onend: (() => void) | null
-  onerror: ((event: { error: string }) => void) | null
+  onerror:
+    | ((event: SpeechRecognitionErrorEvent) => void)
+    | null
 }
 
 type SpeechRecognitionConstructor =
@@ -60,6 +68,23 @@ export function Jarvis() {
     useRef<SpeechRecognitionInstance | null>(null)
 
   // =====================================================
+  // TEXT FÜR SPRACHAUSGABE BEREINIGEN
+  // =====================================================
+
+  function cleanTextForSpeech(text: string) {
+    return text
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .replace(/#{1,6}\s/g, "")
+      .replace(/`/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  // =====================================================
   // JARVIS SPRICHT
   // =====================================================
 
@@ -73,13 +98,11 @@ export function Jarvis() {
       return
     }
 
-    window.speechSynthesis.cancel()
+    const cleanText = cleanTextForSpeech(text)
 
-    const cleanText = text
-      .replace(/\*\*/g, "")
-      .replace(/\*/g, "")
-      .replace(/#{1,6}\s/g, "")
-      .replace(/`/g, "")
+    if (!cleanText) return
+
+    window.speechSynthesis.cancel()
 
     const utterance =
       new SpeechSynthesisUtterance(cleanText)
@@ -105,22 +128,32 @@ export function Jarvis() {
   }
 
   // =====================================================
-  // JARVIS FRAGEN
+  // JARVIS FRAGE
   // =====================================================
 
   async function askJarvis(text?: string) {
     const cleanMessage = (text ?? message).trim()
 
-    if (!cleanMessage || loading) return
+    if (!cleanMessage || loading) {
+      return
+    }
 
     // Mikrofon stoppen
     if (listening) {
-      recognitionRef.current?.stop()
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        recognitionRef.current?.abort()
+      }
+
       setListening(false)
     }
 
     // Aktuelle Sprachausgabe stoppen
-    if ("speechSynthesis" in window) {
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window
+    ) {
       window.speechSynthesis.cancel()
       setSpeaking(false)
     }
@@ -139,7 +172,18 @@ export function Jarvis() {
         }),
       })
 
-      const data = await response.json()
+      let data: {
+        answer?: string
+        error?: string
+      }
+
+      try {
+        data = await response.json()
+      } catch {
+        throw new Error(
+          `Ungültige Antwort vom Server (${response.status})`
+        )
+      }
 
       console.log("JARVIS API:", data)
 
@@ -174,20 +218,30 @@ export function Jarvis() {
   }
 
   // =====================================================
-  // MIKROFON STARTEN
+  // MIKROFON
   // =====================================================
 
   async function startListening() {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined") {
+      return
+    }
 
-    // Wenn JARVIS gerade zuhört -> stoppen
+    // Wenn JARVIS bereits zuhört -> stoppen
     if (listening) {
-      recognitionRef.current?.stop()
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        recognitionRef.current?.abort()
+      }
+
       setListening(false)
       return
     }
 
-    // Browser-Unterstützung prüfen
+    // ===================================================
+    // SPEECH RECOGNITION PRÜFEN
+    // ===================================================
+
     const SpeechRecognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition
@@ -199,21 +253,56 @@ export function Jarvis() {
       return
     }
 
-    // Aktuelle Sprachausgabe stoppen
+    // ===================================================
+    // HTTPS PRÜFEN
+    // ===================================================
+
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+
+    const isSecure =
+      window.location.protocol === "https:"
+
+    if (!isSecure && !isLocalhost) {
+      setAnswer(
+        "Das Mikrofon benötigt eine sichere HTTPS-Verbindung."
+      )
+      return
+    }
+
+    // ===================================================
+    // SPRACHAUSGABE STOPPEN
+    // ===================================================
+
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel()
       setSpeaking(false)
     }
 
-    // Mikrofon-Berechtigung prüfen
+    // ===================================================
+    // MIKROFON-BERECHTIGUNG
+    // ===================================================
+
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setAnswer(
+          "Dein Browser stellt keinen Mikrofonzugriff bereit."
+        )
+        return
+      }
+
       const stream =
         await navigator.mediaDevices.getUserMedia({
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
         })
 
-      // Stream sofort wieder schließen.
-      // Die eigentliche Spracherkennung übernimmt danach der Browser.
+      // Nur die Berechtigung prüfen.
+      // Danach wird der Stream geschlossen.
       stream.getTracks().forEach((track) => {
         track.stop()
       })
@@ -223,12 +312,52 @@ export function Jarvis() {
         error
       )
 
-      setAnswer(
-        "Ich kann dein Mikrofon nicht verwenden. Bitte erlaube dieser Website den Mikrofonzugriff in den Browser-Einstellungen."
-      )
+      if (error instanceof DOMException) {
+        switch (error.name) {
+          case "NotAllowedError":
+          case "PermissionDeniedError":
+            setAnswer(
+              "Der Mikrofonzugriff wurde blockiert. Erlaube den Mikrofonzugriff für diese Website in den Browser-Einstellungen und versuche es erneut."
+            )
+            break
+
+          case "NotFoundError":
+          case "DevicesNotFoundError":
+            setAnswer(
+              "Ich konnte kein Mikrofon finden. Überprüfe, ob dein Mikrofon angeschlossen und aktiviert ist."
+            )
+            break
+
+          case "NotReadableError":
+          case "TrackStartError":
+            setAnswer(
+              "Das Mikrofon wird gerade von einer anderen Anwendung verwendet. Schließe andere Programme, die dein Mikrofon verwenden."
+            )
+            break
+
+          case "SecurityError":
+            setAnswer(
+              "Der Browser verhindert den Mikrofonzugriff aus Sicherheitsgründen. Verwende HTTPS."
+            )
+            break
+
+          default:
+            setAnswer(
+              "Der Mikrofonzugriff konnte nicht gestartet werden. Bitte überprüfe die Browser-Berechtigungen."
+            )
+        }
+      } else {
+        setAnswer(
+          "Der Mikrofonzugriff konnte nicht gestartet werden."
+        )
+      }
 
       return
     }
+
+    // ===================================================
+    // RECOGNITION ERSTELLEN
+    // ===================================================
 
     const recognition = new SpeechRecognition()
 
@@ -236,28 +365,40 @@ export function Jarvis() {
     recognition.continuous = false
     recognition.interimResults = false
 
+    // ===================================================
+    // START
+    // ===================================================
+
     recognition.onstart = () => {
+      console.log(
+        "JARVIS MICROPHONE: START"
+      )
+
       setListening(true)
 
       setAnswer(
-        "Ich höre zu. Sprich jetzt..."
+        "🎤 Ich höre zu. Sprich jetzt..."
       )
     }
+
+    // ===================================================
+    // SPRACHE ERKANNT
+    // ===================================================
 
     recognition.onresult = (
       event: SpeechRecognitionResultEvent
     ) => {
       const transcript =
-        event.results[0][0].transcript.trim()
+        event.results?.[0]?.[0]?.transcript?.trim()
 
       console.log(
-        "SPRACHE ERKANNT:",
+        "JARVIS SPRACHE ERKANNT:",
         transcript
       )
 
       if (!transcript) {
         setAnswer(
-          "Ich habe leider nichts verstanden."
+          "Ich habe leider nichts verstanden. Bitte versuche es erneut."
         )
         return
       }
@@ -268,13 +409,27 @@ export function Jarvis() {
       askJarvis(transcript)
     }
 
+    // ===================================================
+    // ENDE
+    // ===================================================
+
     recognition.onend = () => {
+      console.log(
+        "JARVIS MICROPHONE: END"
+      )
+
       setListening(false)
     }
 
-    recognition.onerror = (event) => {
+    // ===================================================
+    // FEHLER
+    // ===================================================
+
+    recognition.onerror = (
+      event: SpeechRecognitionErrorEvent
+    ) => {
       console.error(
-        "SPEECH RECOGNITION ERROR:",
+        "JARVIS SPEECH ERROR:",
         event.error
       )
 
@@ -282,20 +437,21 @@ export function Jarvis() {
 
       switch (event.error) {
         case "not-allowed":
+        case "service-not-allowed":
           setAnswer(
-            "Der Mikrofonzugriff wurde blockiert. Erlaube Mikrofonzugriff für diese Website und versuche es erneut."
+            "Der Browser hat den Mikrofonzugriff für die Spracherkennung blockiert. Erlaube den Mikrofonzugriff für diese Website."
           )
           break
 
         case "no-speech":
           setAnswer(
-            "Ich habe keine Sprache erkannt. Bitte versuche es erneut."
+            "Ich habe keine Sprache erkannt. Sprich bitte etwas lauter und versuche es erneut."
           )
           break
 
         case "audio-capture":
           setAnswer(
-            "Ich konnte kein Mikrofon finden. Überprüfe, ob dein Mikrofon angeschlossen und aktiviert ist."
+            "Ich konnte dein Mikrofon nicht erreichen. Überprüfe dein Mikrofon und die Windows-Mikrofoneinstellungen."
           )
           break
 
@@ -305,27 +461,39 @@ export function Jarvis() {
           )
           break
 
+        case "aborted":
+          // Benutzer hat die Erkennung selbst beendet.
+          break
+
         default:
           setAnswer(
-            `Mikrofonfehler: ${event.error}`
+            `Die Spracherkennung ist fehlgeschlagen: ${event.error}`
           )
       }
     }
 
     recognitionRef.current = recognition
 
+    // ===================================================
+    // RECOGNITION STARTEN
+    // ===================================================
+
     try {
       recognition.start()
+
+      console.log(
+        "JARVIS MICROPHONE: STARTING"
+      )
     } catch (error) {
       console.error(
-        "MICROPHONE START ERROR:",
+        "JARVIS RECOGNITION START ERROR:",
         error
       )
 
       setListening(false)
 
       setAnswer(
-        "Das Mikrofon konnte nicht gestartet werden. Bitte versuche es erneut."
+        "Die Spracherkennung konnte nicht gestartet werden. Bitte versuche es erneut."
       )
     }
   }
@@ -336,19 +504,37 @@ export function Jarvis() {
 
   useEffect(() => {
     return () => {
-      recognitionRef.current?.abort()
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        // Ignorieren
+      }
 
-      if ("speechSynthesis" in window) {
+      if (
+        typeof window !== "undefined" &&
+        "speechSynthesis" in window
+      ) {
         window.speechSynthesis.cancel()
       }
     }
   }, [])
 
+  // =====================================================
+  // JARVIS GESCHLOSSEN
+  // =====================================================
+
   useEffect(() => {
     if (!open) {
-      recognitionRef.current?.abort()
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        // Ignorieren
+      }
 
-      if ("speechSynthesis" in window) {
+      if (
+        typeof window !== "undefined" &&
+        "speechSynthesis" in window
+      ) {
         window.speechSynthesis.cancel()
       }
 
