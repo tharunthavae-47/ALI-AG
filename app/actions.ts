@@ -8,6 +8,15 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 
 // =====================================================
+// KONFIGURATION
+// =====================================================
+
+const COMPANY_EMAIL = "mb-performance1@outlook.com"
+
+const OPEN_HOUR = 15
+const CLOSE_HOUR = 22
+
+// =====================================================
 // ABMELDEN
 // =====================================================
 
@@ -46,13 +55,6 @@ export type Booking = {
   created_at: string
   image_urls: string[]
 }
-
-// =====================================================
-// ÖFFNUNGSZEITEN
-// =====================================================
-
-const OPEN_HOUR = 15
-const CLOSE_HOUR = 22
 
 // =====================================================
 // HILFSFUNKTIONEN
@@ -135,6 +137,7 @@ export async function createBooking(input: {
   bookingId?: string
   error?: string
 }> {
+
   // ===================================================
   // WERTE BEREINIGEN
   // ===================================================
@@ -334,7 +337,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // AUTOMATISCHE E-MAIL AN KUNDEN
+  // E-MAILS
   // =====================================================
 
   try {
@@ -353,67 +356,176 @@ export async function createBooking(input: {
         "RESEND_FROM_EMAIL fehlt.",
       )
     } else {
+
       const resend = new Resend(resendApiKey)
 
-      const htmlContent =
+      // =================================================
+      // E-MAIL AN KUNDEN
+      // =================================================
+
+      const customerHtml =
         "<!DOCTYPE html>" +
         '<html lang="de">' +
         "<head>" +
         '<meta charset="UTF-8">' +
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        "<title>Terminanfrage ALI AG</title>" +
+        "<title>Terminanfrage MB-Performance</title>" +
         "</head>" +
+
         '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+
         '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+
         "<h1>Vielen Dank, " +
         escapeHtml(name) +
         "!</h1>" +
+
         "<p>Wir haben Ihre Terminanfrage erhalten.</p>" +
-        "<p>Ihre Anfrage wird nun geprüft.</p>" +
+
+        "<p>Ihre Anfrage wird nun geprüft. Sie erhalten eine weitere E-Mail, sobald der Termin bestätigt oder abgelehnt wurde.</p>" +
+
         "<h2>Ihre Angaben</h2>" +
+
         "<p><strong>Datum:</strong> " +
         escapeHtml(input.booking_date) +
         "</p>" +
+
         "<p><strong>Uhrzeit:</strong> " +
         escapeHtml(input.booking_time) +
         "</p>" +
+
         "<p><strong>Fahrzeug:</strong> " +
         escapeHtml(car) +
         "</p>" +
+
         "<p><strong>Telefon:</strong> " +
         escapeHtml(phone) +
         "</p>" +
+
         "<p><strong>E-Mail:</strong> " +
         escapeHtml(email) +
         "</p>" +
+
         "<p><strong>Anliegen:</strong><br>" +
         escapeHtml(problem).replace(/\n/g, "<br>") +
         "</p>" +
+
         "<hr>" +
+
         "<p>Freundliche Grüsse</p>" +
-        "<p><strong>ALI AG</strong></p>" +
+
+        "<p><strong>MB-Performance</strong></p>" +
+
         "</div>" +
         "</body>" +
         "</html>"
 
-      const { error: emailError } =
+      const customerResult =
         await resend.emails.send({
           from: fromEmail,
           to: email,
+          replyTo: COMPANY_EMAIL,
           subject:
-            "Ihre Terminanfrage bei ALI AG",
-          html: htmlContent,
+            "Ihre Terminanfrage bei MB-Performance",
+          html: customerHtml,
         })
 
-      if (emailError) {
+      if (customerResult.error) {
         console.error(
-          "Resend email error:",
-          emailError,
+          "Fehler beim Senden an Kunden:",
+          customerResult.error,
         )
       } else {
         console.log(
-          "E-Mail erfolgreich gesendet an:",
-          email,
+          "Kunden-E-Mail erfolgreich gesendet:",
+          customerResult.data,
+        )
+      }
+
+      // =================================================
+      // E-MAIL AN MB-PERFORMANCE
+      // =================================================
+
+      const companyHtml =
+        "<!DOCTYPE html>" +
+        '<html lang="de">' +
+        "<head>" +
+        '<meta charset="UTF-8">' +
+        "</head>" +
+
+        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+
+        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+
+        "<h1>🔔 Neue Terminanfrage</h1>" +
+
+        "<p>Es wurde eine neue Terminanfrage über die MB-Performance Website erstellt.</p>" +
+
+        "<hr>" +
+
+        "<h2>Kunde</h2>" +
+
+        "<p><strong>Name:</strong> " +
+        escapeHtml(name) +
+        "</p>" +
+
+        "<p><strong>Telefon:</strong> " +
+        escapeHtml(phone) +
+        "</p>" +
+
+        "<p><strong>E-Mail:</strong> " +
+        escapeHtml(email) +
+        "</p>" +
+
+        "<h2>Termin</h2>" +
+
+        "<p><strong>Datum:</strong> " +
+        escapeHtml(input.booking_date) +
+        "</p>" +
+
+        "<p><strong>Uhrzeit:</strong> " +
+        escapeHtml(input.booking_time) +
+        "</p>" +
+
+        "<h2>Fahrzeug</h2>" +
+
+        "<p>" +
+        escapeHtml(car) +
+        "</p>" +
+
+        "<h2>Anliegen</h2>" +
+
+        "<p>" +
+        escapeHtml(problem).replace(/\n/g, "<br>") +
+        "</p>" +
+
+        "<hr>" +
+
+        "<p><strong>Die Buchung wartet auf Bestätigung.</strong></p>" +
+
+        "</div>" +
+        "</body>" +
+        "</html>"
+
+      const companyResult =
+        await resend.emails.send({
+          from: fromEmail,
+          to: COMPANY_EMAIL,
+          replyTo: email,
+          subject:
+            "🔔 Neue Terminanfrage – " + name,
+          html: companyHtml,
+        })
+
+      if (companyResult.error) {
+        console.error(
+          "Fehler beim Senden an MB-Performance:",
+          companyResult.error,
+        )
+      } else {
+        console.log(
+          "E-Mail an MB-Performance erfolgreich gesendet:",
+          companyResult.data,
         )
       }
     }
@@ -425,7 +537,7 @@ export async function createBooking(input: {
   }
 
   // ===================================================
-  // AKTUALISIEREN
+  // SEITEN AKTUALISIEREN
   // ===================================================
 
   revalidatePath("/")
@@ -448,6 +560,7 @@ export async function saveBookingImages(
   ok: boolean
   error?: string
 }> {
+
   if (!bookingId) {
     return {
       ok: false,
@@ -505,10 +618,11 @@ export async function saveBookingImages(
 }
 
 // =====================================================
-// ALLE BUCHUNGEN FÜR BESITZER
+// ALLE BUCHUNGEN
 // =====================================================
 
 export async function listBookings(): Promise<Booking[]> {
+
   const auth = await createClient()
 
   const {
@@ -554,6 +668,7 @@ export async function updateBookingStatus(
   ok: boolean
   error?: string
 }> {
+
   // ===================================================
   // BESITZER PRÜFEN
   // ===================================================
@@ -595,14 +710,16 @@ export async function updateBookingStatus(
   // BUCHUNG LADEN
   // ===================================================
 
-  const { data: booking, error: bookingError } =
-    await supabase
-      .from("bookings")
-      .select(
-        "id, booking_date, booking_time, name, email, car, problem",
-      )
-      .eq("id", id)
-      .single()
+  const {
+    data: booking,
+    error: bookingError,
+  } = await supabase
+    .from("bookings")
+    .select(
+      "id, booking_date, booking_time, name, email, car, problem",
+    )
+    .eq("id", id)
+    .single()
 
   if (bookingError || !booking) {
     console.error(
@@ -640,167 +757,184 @@ export async function updateBookingStatus(
   }
 
   // ===================================================
-// E-MAIL AN KUNDEN
-// ===================================================
+  // E-MAIL AN KUNDEN
+  // ===================================================
 
-try {
-  const resendApiKey = process.env.RESEND_API_KEY
-  const fromEmail = process.env.RESEND_FROM_EMAIL
+  try {
 
-  console.log("====================================")
-  console.log("E-MAIL VERSAND START")
-  console.log("Booking ID:", booking.id)
-  console.log("Kunde:", booking.name)
-  console.log("E-Mail:", booking.email)
-  console.log("Status:", status)
-  console.log("From:", fromEmail)
-  console.log("API KEY vorhanden:", !!resendApiKey)
+    const resendApiKey =
+      process.env.RESEND_API_KEY
 
-  if (!resendApiKey) {
-    console.error("FEHLER: RESEND_API_KEY fehlt.")
-  } else if (!fromEmail) {
-    console.error("FEHLER: RESEND_FROM_EMAIL fehlt.")
-  } else if (!booking.email) {
-    console.error("FEHLER: Kunde hat keine E-Mail-Adresse.")
-  } else {
-    const resend = new Resend(resendApiKey)
+    const fromEmail =
+      process.env.RESEND_FROM_EMAIL
 
-    let subject = ""
-    let htmlContent = ""
-
-    // =================================================
-    // BESTÄTIGT
-    // =================================================
-
-    if (status === "confirmed") {
-      subject = "Ihr Termin bei ALI AG wurde bestätigt"
-
-      htmlContent =
-        "<!DOCTYPE html>" +
-        '<html lang="de">' +
-        "<head>" +
-        '<meta charset="UTF-8">' +
-        "</head>" +
-        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-        "<h1>Termin bestätigt</h1>" +
-
-        "<p>Hallo " +
-        escapeHtml(booking.name) +
-        ",</p>" +
-
-        "<p>Ihre Terminanfrage bei der <strong>ALI AG</strong> wurde bestätigt.</p>" +
-
-        "<h2>Ihr Termin</h2>" +
-
-        "<p><strong>Datum:</strong> " +
-        escapeHtml(booking.booking_date) +
-        "</p>" +
-
-        "<p><strong>Uhrzeit:</strong> " +
-        escapeHtml(booking.booking_time) +
-        "</p>" +
-
-        "<p><strong>Fahrzeug:</strong> " +
-        escapeHtml(booking.car) +
-        "</p>" +
-
-        "<hr>" +
-
-        "<p>Wir freuen uns auf Ihren Besuch.</p>" +
-
-        "<p>Freundliche Grüsse</p>" +
-        "<p><strong>ALI AG</strong></p>" +
-
-        "</div>" +
-        "</body>" +
-        "</html>"
-    }
-
-    // =================================================
-    // ABGELEHNT
-    // =================================================
-
-    if (status === "rejected") {
-      subject = "Ihre Terminanfrage bei ALI AG"
-
-      htmlContent =
-        "<!DOCTYPE html>" +
-        '<html lang="de">' +
-        "<head>" +
-        '<meta charset="UTF-8">' +
-        "</head>" +
-        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-        "<h1>Terminanfrage</h1>" +
-
-        "<p>Hallo " +
-        escapeHtml(booking.name) +
-        ",</p>" +
-
-        "<p>leider konnten wir Ihre Terminanfrage bei der <strong>ALI AG</strong> nicht bestätigen.</p>" +
-
-        "<h2>Angefragter Termin</h2>" +
-
-        "<p><strong>Datum:</strong> " +
-        escapeHtml(booking.booking_date) +
-        "</p>" +
-
-        "<p><strong>Uhrzeit:</strong> " +
-        escapeHtml(booking.booking_time) +
-        "</p>" +
-
-        "<p><strong>Fahrzeug:</strong> " +
-        escapeHtml(booking.car) +
-        "</p>" +
-
-        "<hr>" +
-
-        "<p>Bitte kontaktieren Sie uns gerne, um einen anderen Termin zu vereinbaren.</p>" +
-
-        "<p>Freundliche Grüsse</p>" +
-        "<p><strong>ALI AG</strong></p>" +
-
-        "</div>" +
-        "</body>" +
-        "</html>"
-    }
-
-    console.log("Betreff:", subject)
-    console.log("Sende jetzt an:", booking.email)
-
-    const result = await resend.emails.send({
-      from: fromEmail,
-      to: booking.email,
-      subject,
-      html: htmlContent,
-    })
-
-    console.log("RESEND RESULT:")
-    console.log(result)
-
-    if (result.error) {
+    if (!resendApiKey) {
       console.error(
-        "RESEND FEHLER:",
-        result.error,
+        "RESEND_API_KEY fehlt.",
+      )
+    } else if (!fromEmail) {
+      console.error(
+        "RESEND_FROM_EMAIL fehlt.",
+      )
+    } else if (!booking.email) {
+      console.error(
+        "Kunde hat keine E-Mail-Adresse.",
       )
     } else {
-      console.log(
-        "E-MAIL ERFOLGREICH AN RESEND ÜBERGEBEN:",
-        result.data,
-      )
+
+      const resend = new Resend(resendApiKey)
+
+      let subject = ""
+      let htmlContent = ""
+
+      // =================================================
+      // BESTÄTIGT
+      // =================================================
+
+      if (status === "confirmed") {
+
+        subject =
+          "Ihr Termin bei MB-Performance wurde bestätigt"
+
+        htmlContent =
+          "<!DOCTYPE html>" +
+          '<html lang="de">' +
+          "<head>" +
+          '<meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          "</head>" +
+
+          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+
+          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+
+          "<h1>Termin bestätigt ✅</h1>" +
+
+          "<p>Hallo " +
+          escapeHtml(booking.name) +
+          ",</p>" +
+
+          "<p>Ihre Terminanfrage bei <strong>MB-Performance</strong> wurde bestätigt.</p>" +
+
+          "<h2>Ihr Termin</h2>" +
+
+          "<p><strong>Datum:</strong> " +
+          escapeHtml(booking.booking_date) +
+          "</p>" +
+
+          "<p><strong>Uhrzeit:</strong> " +
+          escapeHtml(booking.booking_time) +
+          "</p>" +
+
+          "<p><strong>Fahrzeug:</strong> " +
+          escapeHtml(booking.car) +
+          "</p>" +
+
+          "<hr>" +
+
+          "<p>Wir freuen uns auf Ihren Besuch.</p>" +
+
+          "<p>Freundliche Grüsse</p>" +
+
+          "<p><strong>MB-Performance</strong></p>" +
+
+          "</div>" +
+          "</body>" +
+          "</html>"
+      }
+
+      // =================================================
+      // ABGELEHNT
+      // =================================================
+
+      if (status === "rejected") {
+
+        subject =
+          "Ihre Terminanfrage bei MB-Performance"
+
+        htmlContent =
+          "<!DOCTYPE html>" +
+          '<html lang="de">' +
+          "<head>" +
+          '<meta charset="UTF-8">' +
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+          "</head>" +
+
+          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
+
+          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
+
+          "<h1>Terminanfrage</h1>" +
+
+          "<p>Hallo " +
+          escapeHtml(booking.name) +
+          ",</p>" +
+
+          "<p>leider konnten wir Ihre Terminanfrage bei <strong>MB-Performance</strong> nicht bestätigen.</p>" +
+
+          "<h2>Angefragter Termin</h2>" +
+
+          "<p><strong>Datum:</strong> " +
+          escapeHtml(booking.booking_date) +
+          "</p>" +
+
+          "<p><strong>Uhrzeit:</strong> " +
+          escapeHtml(booking.booking_time) +
+          "</p>" +
+
+          "<p><strong>Fahrzeug:</strong> " +
+          escapeHtml(booking.car) +
+          "</p>" +
+
+          "<hr>" +
+
+          "<p>Bitte kontaktieren Sie uns gerne, um einen anderen Termin zu vereinbaren.</p>" +
+
+          "<p>Freundliche Grüsse</p>" +
+
+          "<p><strong>MB-Performance</strong></p>" +
+
+          "</div>" +
+          "</body>" +
+          "</html>"
+      }
+
+      // =================================================
+      // E-MAIL SENDEN
+      // =================================================
+
+      if (subject && htmlContent) {
+
+        const result =
+          await resend.emails.send({
+            from: fromEmail,
+            to: booking.email,
+            replyTo: COMPANY_EMAIL,
+            subject,
+            html: htmlContent,
+          })
+
+        if (result.error) {
+          console.error(
+            "Resend Fehler:",
+            result.error,
+          )
+        } else {
+          console.log(
+            "Status-E-Mail erfolgreich gesendet:",
+            result.data,
+          )
+        }
+      }
     }
 
-    console.log("====================================")
+  } catch (emailError) {
+
+    console.error(
+      "E-Mail Fehler:",
+      emailError,
+    )
   }
-} catch (emailError) {
-  console.error(
-    "E-MAIL FEHLER:",
-    emailError,
-  )
-}
 
   // ===================================================
   // SEITEN AKTUALISIEREN
