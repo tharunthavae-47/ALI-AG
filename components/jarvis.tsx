@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react"
 
-type SpeechRecognitionResultEvent = Event & {
+type SpeechRecognitionEvent = Event & {
   results: {
     [index: number]: {
       [index: number]: {
@@ -21,29 +21,18 @@ type SpeechRecognitionResultEvent = Event & {
   }
 }
 
-type SpeechRecognitionErrorEvent = Event & {
-  error: string
-}
-
 type SpeechRecognitionInstance = {
   lang: string
   continuous: boolean
   interimResults: boolean
   start: () => void
   stop: () => void
-  abort: () => void
-  onresult:
-    | ((event: SpeechRecognitionResultEvent) => void)
-    | null
-  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionEvent) => void) | null
   onend: (() => void) | null
-  onerror:
-    | ((event: SpeechRecognitionErrorEvent) => void)
-    | null
+  onerror: ((event: Event) => void) | null
 }
 
-type SpeechRecognitionConstructor =
-  new () => SpeechRecognitionInstance
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
 
 declare global {
   interface Window {
@@ -55,61 +44,87 @@ declare global {
 export function Jarvis() {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState("")
-  const [answer, setAnswer] = useState(
-    "Hallo. Ich bin JARVIS. Wie kann ich dir helfen?"
-  )
-
+  const [answer, setAnswer] = useState("")
   const [loading, setLoading] = useState(false)
+
   const [listening, setListening] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
 
-  const recognitionRef =
-    useRef<SpeechRecognitionInstance | null>(null)
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
 
-  // =====================================================
-  // TEXT FÜR SPRACHAUSGABE BEREINIGEN
-  // =====================================================
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
 
-  function cleanTextForSpeech(text: string) {
-    return text
-      .replace(/\*\*/g, "")
-      .replace(/\*/g, "")
-      .replace(/#{1,6}\s/g, "")
-      .replace(/`/g, "")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/https?:\/\/\S+/g, "")
-      .replace(/\n+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  }
+  // Stimmen laden
+  useEffect(() => {
+    if (typeof window === "undefined") return
 
-  // =====================================================
-  // JARVIS SPRICHT
-  // =====================================================
-
-  function speak(text: string) {
-    if (!voiceEnabled) return
-
-    if (
-      typeof window === "undefined" ||
-      !("speechSynthesis" in window)
-    ) {
-      return
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices()
+      setVoices(availableVoices)
     }
 
-    const cleanText = cleanTextForSpeech(text)
+    loadVoices()
 
-    if (!cleanText) return
+    window.speechSynthesis.onvoiceschanged = loadVoices
+
+    return () => {
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.onvoiceschanged = null
+    }
+  }, [])
+
+  // Beste weibliche deutsche Stimme auswählen
+  function getFemaleGermanVoice() {
+    if (!voices.length) return null
+
+    const germanVoices = voices.filter((voice) =>
+      voice.lang.toLowerCase().startsWith("de")
+    )
+
+    const femaleNames = [
+      "female",
+      "anna",
+      "petra",
+      "helena",
+      "katja",
+      "vicki",
+      "google deutsch",
+      "google german",
+      "microsoft katja",
+      "microsoft helena",
+      "microsoft sabina",
+    ]
+
+    const femaleVoice = germanVoices.find((voice) => {
+      const name = voice.name.toLowerCase()
+
+      return femaleNames.some((femaleName) =>
+        name.includes(femaleName)
+      )
+    })
+
+    return femaleVoice || germanVoices[0] || voices[0]
+  }
+
+  // Antwort vorlesen
+  function speak(text: string) {
+    if (!voiceEnabled) return
+    if (typeof window === "undefined") return
 
     window.speechSynthesis.cancel()
 
-    const utterance =
-      new SpeechSynthesisUtterance(cleanText)
+    const utterance = new SpeechSynthesisUtterance(text)
+
+    const voice = getFemaleGermanVoice()
+
+    if (voice) {
+      utterance.voice = voice
+    }
 
     utterance.lang = "de-DE"
     utterance.rate = 0.95
-    utterance.pitch = 0.9
+    utterance.pitch = 1.08
     utterance.volume = 1
 
     utterance.onstart = () => {
@@ -127,38 +142,70 @@ export function Jarvis() {
     window.speechSynthesis.speak(utterance)
   }
 
-  // =====================================================
-  // JARVIS FRAGE
-  // =====================================================
+  // Spracheingabe starten
+  function startListening() {
+    if (typeof window === "undefined") return
 
-  async function askJarvis(text?: string) {
-    const cleanMessage = (text ?? message).trim()
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition
 
-    if (!cleanMessage || loading) {
+    if (!SpeechRecognition) {
+      setAnswer(
+        "Die Spracheingabe wird von diesem Browser nicht unterstützt."
+      )
       return
     }
 
-    // Mikrofon stoppen
     if (listening) {
-      try {
-        recognitionRef.current?.stop()
-      } catch {
-        recognitionRef.current?.abort()
-      }
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
 
+    const recognition = new SpeechRecognition()
+
+    recognition.lang = "de-DE"
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (event) => {
+      const transcript =
+        event.results[0]?.[0]?.transcript || ""
+
+      setMessage(transcript)
+
+      // Direkt absenden
+      setTimeout(() => {
+        sendMessage(transcript)
+      }, 200)
+    }
+
+    recognition.onend = () => {
       setListening(false)
     }
 
-    // Aktuelle Sprachausgabe stoppen
-    if (
-      typeof window !== "undefined" &&
-      "speechSynthesis" in window
-    ) {
-      window.speechSynthesis.cancel()
-      setSpeaking(false)
+    recognition.onerror = () => {
+      setListening(false)
+      setAnswer("Ich konnte deine Stimme leider nicht verstehen.")
     }
 
-    setMessage("")
+    recognitionRef.current = recognition
+
+    try {
+      recognition.start()
+      setListening(true)
+    } catch {
+      setListening(false)
+    }
+  }
+
+  // Nachricht an Gemini senden
+  async function sendMessage(text?: string) {
+    const userMessage = (text ?? message).trim()
+
+    if (!userMessage || loading) return
+
     setLoading(true)
 
     try {
@@ -168,646 +215,278 @@ export function Jarvis() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: cleanMessage,
+          message: userMessage,
         }),
       })
 
-      let data: {
-        answer?: string
-        error?: string
-      }
-
-      try {
-        data = await response.json()
-      } catch {
-        throw new Error(
-          `Ungültige Antwort vom Server (${response.status})`
-        )
-      }
-
-      console.log("JARVIS API:", data)
+      const data = await response.json()
 
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            `Serverfehler: ${response.status}`
+            "JARVIS konnte nicht antworten."
         )
       }
 
-      const jarvisAnswer =
+      const newAnswer =
         data?.answer ||
-        "Ich konnte leider keine Antwort erzeugen."
+        "Ich habe leider keine Antwort erhalten."
 
-      setAnswer(jarvisAnswer)
+      setAnswer(newAnswer)
+      setMessage("")
 
-      speak(jarvisAnswer)
+      // Antwort sprechen
+      speak(newAnswer)
     } catch (error) {
-      console.error("JARVIS ERROR:", error)
-
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Unbekannter Fehler."
+          : "JARVIS konnte nicht erreicht werden."
 
-      setAnswer(
-        `JARVIS konnte die Anfrage nicht verarbeiten.\n\nFehler: ${errorMessage}`
-      )
+      setAnswer(errorMessage)
     } finally {
       setLoading(false)
     }
   }
 
-  // =====================================================
-  // MIKROFON
-  // =====================================================
+  function stopSpeaking() {
+    if (typeof window === "undefined") return
 
-  async function startListening() {
-    if (typeof window === "undefined") {
-      return
-    }
+    window.speechSynthesis.cancel()
+    setSpeaking(false)
+  }
 
-    // Wenn JARVIS bereits zuhört -> stoppen
-    if (listening) {
-      try {
-        recognitionRef.current?.stop()
-      } catch {
-        recognitionRef.current?.abort()
-      }
-
-      setListening(false)
-      return
-    }
-
-    // ===================================================
-    // SPEECH RECOGNITION PRÜFEN
-    // ===================================================
-
-    const SpeechRecognition =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition
-
-    if (!SpeechRecognition) {
-      setAnswer(
-        "Dein Browser unterstützt leider keine Spracherkennung. Bitte verwende Google Chrome oder Microsoft Edge."
-      )
-      return
-    }
-
-    // ===================================================
-    // HTTPS PRÜFEN
-    // ===================================================
-
-    const isLocalhost =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1"
-
-    const isSecure =
-      window.location.protocol === "https:"
-
-    if (!isSecure && !isLocalhost) {
-      setAnswer(
-        "Das Mikrofon benötigt eine sichere HTTPS-Verbindung."
-      )
-      return
-    }
-
-    // ===================================================
-    // SPRACHAUSGABE STOPPEN
-    // ===================================================
-
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel()
-      setSpeaking(false)
-    }
-
-    // ===================================================
-    // MIKROFON-BERECHTIGUNG
-    // ===================================================
-
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setAnswer(
-          "Dein Browser stellt keinen Mikrofonzugriff bereit."
-        )
-        return
-      }
-
-      const stream =
-        await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
-
-      // Nur die Berechtigung prüfen.
-      // Danach wird der Stream geschlossen.
-      stream.getTracks().forEach((track) => {
-        track.stop()
-      })
-    } catch (error) {
-      console.error(
-        "MICROPHONE PERMISSION ERROR:",
-        error
-      )
-
-      if (error instanceof DOMException) {
-        switch (error.name) {
-          case "NotAllowedError":
-          case "PermissionDeniedError":
-            setAnswer(
-              "Der Mikrofonzugriff wurde blockiert. Erlaube den Mikrofonzugriff für diese Website in den Browser-Einstellungen und versuche es erneut."
-            )
-            break
-
-          case "NotFoundError":
-          case "DevicesNotFoundError":
-            setAnswer(
-              "Ich konnte kein Mikrofon finden. Überprüfe, ob dein Mikrofon angeschlossen und aktiviert ist."
-            )
-            break
-
-          case "NotReadableError":
-          case "TrackStartError":
-            setAnswer(
-              "Das Mikrofon wird gerade von einer anderen Anwendung verwendet. Schließe andere Programme, die dein Mikrofon verwenden."
-            )
-            break
-
-          case "SecurityError":
-            setAnswer(
-              "Der Browser verhindert den Mikrofonzugriff aus Sicherheitsgründen. Verwende HTTPS."
-            )
-            break
-
-          default:
-            setAnswer(
-              "Der Mikrofonzugriff konnte nicht gestartet werden. Bitte überprüfe die Browser-Berechtigungen."
-            )
-        }
-      } else {
-        setAnswer(
-          "Der Mikrofonzugriff konnte nicht gestartet werden."
-        )
-      }
-
-      return
-    }
-
-    // ===================================================
-    // RECOGNITION ERSTELLEN
-    // ===================================================
-
-    const recognition = new SpeechRecognition()
-
-    recognition.lang = "de-DE"
-    recognition.continuous = false
-    recognition.interimResults = false
-
-    // ===================================================
-    // START
-    // ===================================================
-
-    recognition.onstart = () => {
-      console.log(
-        "JARVIS MICROPHONE: START"
-      )
-
-      setListening(true)
-
-      setAnswer(
-        "🎤 Ich höre zu. Sprich jetzt..."
-      )
-    }
-
-    // ===================================================
-    // SPRACHE ERKANNT
-    // ===================================================
-
-    recognition.onresult = (
-      event: SpeechRecognitionResultEvent
-    ) => {
-      const transcript =
-        event.results?.[0]?.[0]?.transcript?.trim()
-
-      console.log(
-        "JARVIS SPRACHE ERKANNT:",
-        transcript
-      )
-
-      if (!transcript) {
-        setAnswer(
-          "Ich habe leider nichts verstanden. Bitte versuche es erneut."
-        )
-        return
-      }
-
-      setMessage(transcript)
-
-      // Erkannte Sprache direkt an JARVIS senden
-      askJarvis(transcript)
-    }
-
-    // ===================================================
-    // ENDE
-    // ===================================================
-
-    recognition.onend = () => {
-      console.log(
-        "JARVIS MICROPHONE: END"
-      )
-
-      setListening(false)
-    }
-
-    // ===================================================
-    // FEHLER
-    // ===================================================
-
-    recognition.onerror = (
-      event: SpeechRecognitionErrorEvent
-    ) => {
-      console.error(
-        "JARVIS SPEECH ERROR:",
-        event.error
-      )
-
-      setListening(false)
-
-      switch (event.error) {
-        case "not-allowed":
-        case "service-not-allowed":
-          setAnswer(
-            "Der Browser hat den Mikrofonzugriff für die Spracherkennung blockiert. Erlaube den Mikrofonzugriff für diese Website."
-          )
-          break
-
-        case "no-speech":
-          setAnswer(
-            "Ich habe keine Sprache erkannt. Sprich bitte etwas lauter und versuche es erneut."
-          )
-          break
-
-        case "audio-capture":
-          setAnswer(
-            "Ich konnte dein Mikrofon nicht erreichen. Überprüfe dein Mikrofon und die Windows-Mikrofoneinstellungen."
-          )
-          break
-
-        case "network":
-          setAnswer(
-            "Die Spracherkennung konnte keine Verbindung herstellen. Überprüfe deine Internetverbindung."
-          )
-          break
-
-        case "aborted":
-          // Benutzer hat die Erkennung selbst beendet.
-          break
-
-        default:
-          setAnswer(
-            `Die Spracherkennung ist fehlgeschlagen: ${event.error}`
-          )
-      }
-    }
-
-    recognitionRef.current = recognition
-
-    // ===================================================
-    // RECOGNITION STARTEN
-    // ===================================================
-
-    try {
-      recognition.start()
-
-      console.log(
-        "JARVIS MICROPHONE: STARTING"
-      )
-    } catch (error) {
-      console.error(
-        "JARVIS RECOGNITION START ERROR:",
-        error
-      )
-
-      setListening(false)
-
-      setAnswer(
-        "Die Spracherkennung konnte nicht gestartet werden. Bitte versuche es erneut."
-      )
+  function toggleVoice() {
+    if (voiceEnabled) {
+      stopSpeaking()
+      setVoiceEnabled(false)
+    } else {
+      setVoiceEnabled(true)
     }
   }
 
-  // =====================================================
-  // AUFRÄUMEN
-  // =====================================================
-
-  useEffect(() => {
-    return () => {
-      try {
-        recognitionRef.current?.abort()
-      } catch {
-        // Ignorieren
-      }
-
-      if (
-        typeof window !== "undefined" &&
-        "speechSynthesis" in window
-      ) {
-        window.speechSynthesis.cancel()
-      }
-    }
-  }, [])
-
-  // =====================================================
-  // JARVIS GESCHLOSSEN
-  // =====================================================
-
-  useEffect(() => {
-    if (!open) {
-      try {
-        recognitionRef.current?.abort()
-      } catch {
-        // Ignorieren
-      }
-
-      if (
-        typeof window !== "undefined" &&
-        "speechSynthesis" in window
-      ) {
-        window.speechSynthesis.cancel()
-      }
-
-      setListening(false)
-      setSpeaking(false)
-    }
-  }, [open])
-
-  // =====================================================
-  // JARVIS BUTTON
-  // =====================================================
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="JARVIS öffnen"
-        className="fixed bottom-6 right-6 z-[9999] flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-black text-white shadow-[0_0_40px_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-110"
-      >
-        <span className="absolute inset-0 animate-ping rounded-full border border-white/20" />
-
-        <Bot
-          size={28}
-          className="relative"
-        />
-      </button>
-    )
+  function handleClose() {
+    setOpen(false)
+    recognitionRef.current?.stop()
+    stopSpeaking()
   }
-
-  // =====================================================
-  // JARVIS FENSTER
-  // =====================================================
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex h-[620px] w-[390px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#090909] text-white shadow-[0_20px_80px_rgba(0,0,0,0.6)]">
+    <>
+      {/* JARVIS Button */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="JARVIS öffnen"
+          className="fixed bottom-6 right-6 z-50 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-400/40 bg-black text-cyan-300 shadow-[0_0_30px_rgba(34,211,238,0.35)] transition-all duration-300 hover:scale-110 hover:shadow-[0_0_45px_rgba(34,211,238,0.6)]"
+        >
+          <Bot size={30} />
+        </button>
+      )}
 
-      {/* HEADER */}
+      {/* JARVIS Fenster */}
+      {open && (
+        <div className="fixed bottom-6 right-6 z-50 w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-3xl border border-cyan-400/30 bg-black/95 text-white shadow-[0_0_60px_rgba(34,211,238,0.25)] backdrop-blur-xl">
+          
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-cyan-400/20 px-5 py-4">
+            <div className="flex items-center gap-3">
+              
+              {/* JARVIS Animation */}
+              <div className="relative flex h-11 w-11 items-center justify-center">
+                <div
+                  className={`absolute inset-0 rounded-full border border-cyan-400/30 ${
+                    speaking || listening
+                      ? "animate-ping"
+                      : ""
+                  }`}
+                />
 
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                <div
+                  className={`absolute inset-1 rounded-full border ${
+                    speaking || listening
+                      ? "border-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.8)]"
+                      : "border-cyan-400/50"
+                  }`}
+                />
 
-        <div className="flex items-center gap-3">
+                <Bot
+                  size={22}
+                  className={`relative z-10 text-cyan-300 ${
+                    speaking
+                      ? "animate-pulse"
+                      : ""
+                  }`}
+                />
+              </div>
 
-          <div className="relative flex h-11 w-11 items-center justify-center">
+              <div>
+                <div className="font-bold tracking-wider">
+                  JARVIS
+                </div>
 
-            <div
-              className={`absolute inset-0 rounded-full border border-white/30 ${
-                loading ||
-                speaking ||
-                listening
-                  ? "animate-ping"
-                  : ""
-              }`}
-            />
+                <div className="flex items-center gap-1 text-xs text-green-400">
+                  <span className="animate-pulse">
+                    ●
+                  </span>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/5">
-              <Bot size={20} />
+                  {listening
+                    ? " HÖRT ZU"
+                    : speaking
+                    ? " SPRICHT"
+                    : " ONLINE"}
+                </div>
+              </div>
             </div>
 
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleVoice}
+                aria-label={
+                  voiceEnabled
+                    ? "Stimme ausschalten"
+                    : "Stimme einschalten"
+                }
+                className="rounded-lg p-2 text-cyan-300 transition hover:bg-cyan-400/10"
+              >
+                {voiceEnabled ? (
+                  <Volume2 size={19} />
+                ) : (
+                  <VolumeX size={19} />
+                )}
+              </button>
+
+              <button
+                onClick={handleClose}
+                aria-label="JARVIS schließen"
+                className="rounded-lg p-2 text-gray-400 transition hover:bg-white/10 hover:text-white"
+              >
+                <X size={19} />
+              </button>
+            </div>
           </div>
 
-          <div>
-
-            <div className="font-semibold tracking-wider">
-              JARVIS
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-white/50">
-
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  loading
-                    ? "animate-pulse bg-yellow-400"
-                    : listening
-                      ? "animate-pulse bg-red-400"
-                      : speaking
-                        ? "animate-pulse bg-blue-400"
-                        : "bg-green-400"
+          {/* Animation */}
+          <div className="flex h-28 items-center justify-center">
+            <div className="relative flex h-20 w-20 items-center justify-center">
+              
+              <div
+                className={`absolute inset-0 rounded-full border border-cyan-400/20 ${
+                  speaking || listening
+                    ? "animate-ping"
+                    : ""
                 }`}
               />
 
-              {loading
-                ? "DENKT..."
-                : listening
-                  ? "HÖRT ZU..."
-                  : speaking
-                    ? "SPRICHT..."
-                    : "ONLINE"}
+              <div
+                className={`absolute h-14 w-14 rounded-full border border-cyan-300/40 ${
+                  speaking || listening
+                    ? "animate-pulse shadow-[0_0_35px_rgba(34,211,238,0.6)]"
+                    : ""
+                }`}
+              />
 
+              <div className="h-5 w-5 rounded-full bg-cyan-300 shadow-[0_0_25px_rgba(34,211,238,1)]" />
+            </div>
+          </div>
+
+          {/* Chat */}
+          <div className="h-[300px] overflow-y-auto px-4 pb-4">
+            
+            <div className="rounded-2xl border border-cyan-400/10 bg-cyan-400/5 p-3 text-sm text-gray-200">
+              Hallo. Ich bin JARVIS.
+              <br />
+              Wie kann ich dir helfen?
             </div>
 
-          </div>
+            {answer && (
+              <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-3 text-sm leading-relaxed text-cyan-50">
+                <div className="mb-1 text-xs font-semibold text-cyan-300">
+                  JARVIS
+                </div>
 
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="JARVIS schließen"
-          className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"
-        >
-          <X size={20} />
-        </button>
-
-      </div>
-
-      {/* ANIMATION */}
-
-      <div className="relative flex h-40 items-center justify-center overflow-hidden border-b border-white/10">
-
-        <div
-          className={`absolute h-32 w-32 rounded-full border border-white/10 ${
-            loading ||
-            listening ||
-            speaking
-              ? "animate-pulse"
-              : ""
-          }`}
-        />
-
-        <div
-          className={`absolute h-24 w-24 rounded-full border border-white/20 ${
-            listening
-              ? "animate-ping"
-              : ""
-          }`}
-        />
-
-        <div
-          className={`relative flex h-16 w-16 items-center justify-center rounded-full border border-white/30 bg-white/5 ${
-            loading ||
-            speaking
-              ? "animate-pulse"
-              : ""
-          }`}
-        >
-          <Bot size={30} />
-        </div>
-
-      </div>
-
-      {/* CHAT */}
-
-      <div className="flex-1 overflow-y-auto p-5">
-
-        <div className="whitespace-pre-wrap rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/80">
-          {answer}
-        </div>
-
-        {loading && (
-          <div className="mt-4 flex items-center gap-2 text-xs text-white/40">
-
-            <span className="h-2 w-2 animate-bounce rounded-full bg-white/50" />
-
-            <span className="h-2 w-2 animate-bounce rounded-full bg-white/50 [animation-delay:150ms]" />
-
-            <span className="h-2 w-2 animate-bounce rounded-full bg-white/50 [animation-delay:300ms]" />
-
-            JARVIS verarbeitet deine Anfrage...
-
-          </div>
-        )}
-
-      </div>
-
-      {/* INPUT */}
-
-      <div className="border-t border-white/10 p-4">
-
-        <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
-
-          <input
-            type="text"
-            value={message}
-            onChange={(event) =>
-              setMessage(event.target.value)
-            }
-            onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.shiftKey
-              ) {
-                event.preventDefault()
-                askJarvis()
-              }
-            }}
-            placeholder="JARVIS fragen..."
-            disabled={loading}
-            className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/30"
-          />
-
-          {/* MIKROFON */}
-
-          <button
-            type="button"
-            onClick={startListening}
-            disabled={loading}
-            aria-label={
-              listening
-                ? "Mikrofon stoppen"
-                : "Mikrofon starten"
-            }
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
-              listening
-                ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]"
-                : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"
-            }`}
-          >
-            {listening ? (
-              <MicOff size={18} />
-            ) : (
-              <Mic size={18} />
-            )}
-          </button>
-
-          {/* SENDEN */}
-
-          <button
-            type="button"
-            onClick={() => askJarvis()}
-            disabled={
-              loading ||
-              !message.trim()
-            }
-            aria-label="Nachricht senden"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            <Send size={18} />
-          </button>
-
-        </div>
-
-        {/* STIMME */}
-
-        <div className="mt-3 flex items-center justify-between">
-
-          <span className="text-[11px] text-white/30">
-            MB-PERFORMANCE AI
-          </span>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                voiceEnabled &&
-                "speechSynthesis" in window
-              ) {
-                window.speechSynthesis.cancel()
-                setSpeaking(false)
-              }
-
-              setVoiceEnabled(
-                (value) => !value
-              )
-            }}
-            className="flex items-center gap-2 text-xs text-white/40 transition hover:text-white"
-          >
-
-            {voiceEnabled ? (
-              <Volume2 size={15} />
-            ) : (
-              <VolumeX size={15} />
+                {answer}
+              </div>
             )}
 
-            {voiceEnabled
-              ? "Stimme an"
-              : "Stimme aus"}
+            {loading && (
+              <div className="mt-4 flex items-center gap-2 text-sm text-cyan-300">
+                <span className="h-2 w-2 animate-bounce rounded-full bg-cyan-300" />
+                <span
+                  className="h-2 w-2 animate-bounce rounded-full bg-cyan-300"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-2 w-2 animate-bounce rounded-full bg-cyan-300"
+                  style={{ animationDelay: "300ms" }}
+                />
+                <span className="ml-1">
+                  JARVIS denkt...
+                </span>
+              </div>
+            )}
+          </div>
 
-          </button>
+          {/* Eingabe */}
+          <div className="border-t border-cyan-400/20 p-3">
+            <div className="flex items-center gap-2 rounded-2xl border border-cyan-400/20 bg-white/5 p-2">
+              
+              {/* Mikrofon */}
+              <button
+                onClick={startListening}
+                disabled={loading}
+                aria-label={
+                  listening
+                    ? "Mikrofon stoppen"
+                    : "Mikrofon starten"
+                }
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
+                  listening
+                    ? "bg-red-500/20 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.3)]"
+                    : "text-cyan-300 hover:bg-cyan-400/10"
+                }`}
+              >
+                {listening ? (
+                  <MicOff size={19} />
+                ) : (
+                  <Mic size={19} />
+                )}
+              </button>
 
+              <input
+                value={message}
+                onChange={(e) =>
+                  setMessage(e.target.value)
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    sendMessage()
+                  }
+                }}
+                placeholder="JARVIS fragen..."
+                disabled={loading}
+                className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-white outline-none placeholder:text-gray-500"
+              />
+
+              {/* Senden */}
+              <button
+                onClick={() => sendMessage()}
+                disabled={
+                  loading || !message.trim()
+                }
+                aria-label="Nachricht senden"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400 text-black transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <Send size={18} />
+              </button>
+            </div>
+
+            <div className="mt-2 text-center text-[10px] tracking-wider text-gray-600">
+              JARVIS • MB PERFORMANCE AI
+            </div>
+          </div>
         </div>
-
-      </div>
-    </div>
+      )}
+    </>
   )
 }
