@@ -1,26 +1,23 @@
 import { NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
+export const runtime = "nodejs"
+
 export async function POST(request: Request) {
   try {
-    // Gemini API-Key prüfen
     const apiKey = process.env.GEMINI_API_KEY
 
     if (!apiKey) {
-      console.error("GEMINI_API_KEY fehlt")
-
       return NextResponse.json(
         {
-          error: "GEMINI_API_KEY fehlt in Vercel.",
+          error: "GEMINI_API_KEY ist nicht in Vercel eingerichtet.",
         },
-        {
-          status: 500,
-        }
+        { status: 500 }
       )
     }
 
-    // Anfrage lesen
     const body = await request.json()
+
     const message = body?.message
 
     if (!message || typeof message !== "string") {
@@ -28,89 +25,94 @@ export async function POST(request: Request) {
         {
           error: "Keine Nachricht erhalten.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       )
     }
 
-    console.log("JARVIS Anfrage:", message)
-
-    // Gemini initialisieren
     const ai = new GoogleGenAI({
       apiKey,
     })
 
-    // Gemini aufrufen
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+    const responseStream =
+      await ai.models.generateContentStream({
+        model: "gemini-2.5-flash-lite",
 
-      contents: message,
+        contents: message,
 
-      config: {
-        systemInstruction: `
+        config: {
+          systemInstruction: `
 Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
 
-Deine Aufgaben:
+Antworte auf Deutsch.
 
-- Antworte immer auf Deutsch.
-- Sei freundlich, professionell und verständlich.
-- Halte normale Antworten relativ kurz.
-- Hilf bei Fragen rund um MB-Performance.
-- Unterstütze bei Fragen zu Fahrzeugen, Reparaturen, Inspektionen,
-  MFK, Ölwechsel, Reifenservice und Terminvereinbarungen.
-- Erfinde niemals Termine, Kunden oder andere Daten.
+Regeln:
+- Antworte sehr schnell und direkt.
+- Verwende normalerweise nur 1 bis 3 kurze Sätze.
+- Bei einfachen Fragen reicht ein kurzer Satz.
+- Sei freundlich, professionell und natürlich.
+- Keine unnötigen langen Erklärungen.
+- Keine erfundenen Informationen.
+- Erfinde niemals Termine, Kundendaten oder Fahrzeugdaten.
 - Wenn du etwas nicht weißt, sage ehrlich, dass du es nicht weißt.
-- Wenn du keine Daten aus der MB-Performance-Datenbank erhalten hast,
-  behaupte niemals, dass du einen bestimmten Termin gesehen hast.
-- Du bist der digitale Assistent von MB-Performance und heißt JARVIS.
+- Du bist der digitale Assistent von MB-Performance.
+- Wenn der Benutzer nach MB-Performance fragt, bleibe professionell.
+- Schreibe keine Markdown-Überschriften, wenn die Antwort gesprochen werden soll.
+- Verwende möglichst natürliche deutsche Sprache.
+          `,
+          temperature: 0.4,
+          maxOutputTokens: 300,
+        },
+      })
 
-WICHTIGES FORMAT:
+    const encoder = new TextEncoder()
 
-- Verwende niemals Markdown.
-- Verwende niemals Sternchen (*) in deinen Antworten.
-- Verwende keine Markdown-Überschriften.
-- Verwende keine Markdown-Tabellen.
-- Verwende keine Markdown-Codeblöcke.
-- Verwende keine Zeichen wie ** für Hervorhebungen.
-- Verwende für Aufzählungen stattdessen das Zeichen "•".
-- Schreibe normalen, sauberen Klartext.
-- Verwende keine unnötigen Sonderzeichen.
-- Formatiere Antworten übersichtlich mit normalen Absätzen.
-        `,
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of responseStream) {
+            const text = chunk.text
+
+            if (text) {
+              controller.enqueue(
+                encoder.encode(text)
+              )
+            }
+          }
+
+          controller.close()
+        } catch (error) {
+          console.error(
+            "GEMINI STREAM ERROR:",
+            error
+          )
+
+          controller.error(error)
+        }
       },
     })
 
-    const answer = response.text
-
-    if (!answer) {
-      throw new Error(
-        "Gemini hat keine Antwort zurückgegeben."
-      )
-    }
-
-    console.log("JARVIS Antwort:", answer)
-
-    return NextResponse.json({
-      answer,
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+      },
     })
   } catch (error) {
-    console.error("========== JARVIS GEMINI ERROR ==========")
-    console.error(error)
-    console.error("==========================================")
-
-    const errorMessage =
-      error instanceof Error
-        ? error.message
-        : "Unbekannter Gemini-Fehler."
+    console.error(
+      "JARVIS API ERROR:",
+      error
+    )
 
     return NextResponse.json(
       {
-        error: errorMessage,
+        error:
+          error instanceof Error
+            ? error.message
+            : "JARVIS konnte die Anfrage nicht verarbeiten.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     )
   }
 }
