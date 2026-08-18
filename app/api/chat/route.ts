@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     const responseStream =
       await ai.models.generateContentStream({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-3.5-flash-lite",
 
         contents: message,
 
