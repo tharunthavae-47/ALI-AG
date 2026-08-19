@@ -14,7 +14,13 @@ export default async function OwnerPage() {
     redirect("/auth/login")
   }
 
-  const bookings = await listBookings()
+  const result = await listBookings()
+
+if (!result.ok) {
+  console.error("LIST BOOKINGS ERROR:", result.error)
+}
+
+const bookings = result.bookings
 
   return (
     <main className="min-h-screen bg-background">
