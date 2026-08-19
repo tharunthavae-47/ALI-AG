@@ -46,33 +46,51 @@ export type PublicSlot = {
 // =====================================================
 
 export async function signOut() {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const { error } =
-    await supabase.auth.signOut()
+    const { error } =
+      await supabase.auth.signOut()
 
-  if (error) {
+    if (error) {
+      console.error(
+        "SIGN OUT ERROR:",
+        error,
+      )
+
+      return {
+        ok: false,
+        error: error.message,
+      }
+    }
+
+    revalidatePath("/")
+    revalidatePath("/besitzer")
+
+    return {
+      ok: true,
+    }
+  } catch (error) {
     console.error(
-      "SIGN OUT ERROR:",
+      "SIGN OUT EXCEPTION:",
       error,
     )
 
     return {
       ok: false,
-      error: error.message,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Abmelden fehlgeschlagen.",
     }
-  }
-
-  revalidatePath("/")
-  revalidatePath("/besitzer")
-
-  return {
-    ok: true,
   }
 }
 
 // =====================================================
 // CREATE BOOKING
+// =====================================================
+// Wird von JARVIS und deiner normalen Buchungsfunktion
+// verwendet.
 // =====================================================
 
 export async function createBooking(
@@ -82,9 +100,9 @@ export async function createBooking(
     const supabase =
       await createClient()
 
-    // -------------------------------------------------
-    // DATEN PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Pflichtfelder prüfen
+    // -----------------------------------------------
 
     if (
       !data.booking_date ||
@@ -102,30 +120,60 @@ export async function createBooking(
       }
     }
 
-    // -------------------------------------------------
-    // TERMINZEIT PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Datum prüfen
+    // -----------------------------------------------
 
-    const timeMatch =
-      /^(\d{2}):(\d{2})$/.exec(
-        data.booking_time,
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        data.booking_date,
       )
-
-    if (!timeMatch) {
+    ) {
       return {
         ok: false,
         error:
-          "Die Uhrzeit hat ein ungültiges Format.",
+          "Das Termin-Datum ist ungültig.",
       }
     }
 
+    // -----------------------------------------------
+    // Uhrzeit prüfen
+    // -----------------------------------------------
+
+    if (
+      !/^\d{2}:\d{2}$/.test(
+        data.booking_time,
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          "Die Termin-Uhrzeit ist ungültig.",
+      }
+    }
+
+    // -----------------------------------------------
+    // Öffnungszeiten prüfen
+    // -----------------------------------------------
+
     const hour = Number(
-      timeMatch[1],
+      data.booking_time.slice(0, 2),
     )
 
     const minute = Number(
-      timeMatch[2],
+      data.booking_time.slice(3, 5),
     )
+
+    if (
+      Number.isNaN(hour) ||
+      Number.isNaN(minute)
+    ) {
+      return {
+        ok: false,
+        error:
+          "Die Termin-Uhrzeit ist ungültig.",
+      }
+    }
 
     if (
       hour < 15 ||
@@ -135,13 +183,13 @@ export async function createBooking(
       return {
         ok: false,
         error:
-          "Termine sind nur zwischen 15:00 und 22:00 Uhr möglich.",
+          "Termine sind zwischen 15:00 und 22:00 Uhr möglich.",
       }
     }
 
-    // -------------------------------------------------
-    // PRÜFEN OB TERMIN BEREITS EXISTIERT
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Prüfen, ob Termin bereits vergeben ist
+    // -----------------------------------------------
 
     const {
       data: existingBooking,
@@ -161,6 +209,7 @@ export async function createBooking(
         "pending",
         "confirmed",
       ])
+      .limit(1)
       .maybeSingle()
 
     if (checkError) {
@@ -184,56 +233,9 @@ export async function createBooking(
       }
     }
 
-    // -------------------------------------------------
+    // -----------------------------------------------
     // TERMIN ERSTELLEN
-    // -------------------------------------------------
-
-    console.log(
-      "========================================",
-    )
-
-    console.log(
-      "JARVIS → SUPABASE: TERMIN WIRD ERSTELLT",
-    )
-
-    console.log(
-      "Datum:",
-      data.booking_date,
-    )
-
-    console.log(
-      "Uhrzeit:",
-      data.booking_time,
-    )
-
-    console.log(
-      "Name:",
-      data.name,
-    )
-
-    console.log(
-      "Telefon:",
-      data.phone,
-    )
-
-    console.log(
-      "E-Mail:",
-      data.email,
-    )
-
-    console.log(
-      "Fahrzeug:",
-      data.car,
-    )
-
-    console.log(
-      "Anliegen:",
-      data.problem,
-    )
-
-    console.log(
-      "========================================",
-    )
+    // -----------------------------------------------
 
     const {
       data: booking,
@@ -248,61 +250,31 @@ export async function createBooking(
           data.booking_time,
 
         name:
-          data.name,
+          data.name.trim(),
 
         phone:
-          data.phone,
+          data.phone.trim(),
 
         email:
-          data.email,
+          data.email
+            .trim()
+            .toLowerCase(),
 
         car:
-          data.car,
+          data.car.trim(),
 
         problem:
-          data.problem,
+          data.problem.trim(),
 
-        status:
-          "pending",
+        status: "pending",
       })
-      .select()
+      .select("*")
       .single()
-
-    // -------------------------------------------------
-    // INSERT FEHLER
-    // -------------------------------------------------
 
     if (error) {
       console.error(
-        "========================================",
-      )
-
-      console.error(
-        "CREATE BOOKING ERROR",
-      )
-
-      console.error(
-        "Message:",
-        error.message,
-      )
-
-      console.error(
-        "Code:",
-        error.code,
-      )
-
-      console.error(
-        "Details:",
-        error.details,
-      )
-
-      console.error(
-        "Hint:",
-        error.hint,
-      )
-
-      console.error(
-        "========================================",
+        "CREATE BOOKING ERROR:",
+        error,
       )
 
       return {
@@ -313,35 +285,18 @@ export async function createBooking(
       }
     }
 
-    // -------------------------------------------------
-    // ERFOLGREICH
-    // -------------------------------------------------
-
-    console.log(
-      "========================================",
-    )
-
-    console.log(
-      "TERMIN ERFOLGREICH ERSTELLT",
-    )
-
-    console.log(
-      "Booking ID:",
-      booking.id,
-    )
-
-    console.log(
-      "========================================",
-    )
+    // -----------------------------------------------
+    // Seiten aktualisieren
+    // -----------------------------------------------
 
     revalidatePath("/")
     revalidatePath("/besitzer")
 
     return {
       ok: true,
-      bookingId:
-        booking.id,
-      booking,
+      bookingId: booking.id,
+      booking:
+        booking as Booking,
     }
   } catch (error) {
     console.error(
@@ -354,13 +309,16 @@ export async function createBooking(
       error:
         error instanceof Error
           ? error.message
-          : "Unbekannter Fehler beim Erstellen des Termins.",
+          : "Der Termin konnte nicht erstellt werden.",
     }
   }
 }
 
 // =====================================================
 // GET BOOKED SLOTS
+// =====================================================
+// Wird von JARVIS verwendet, damit belegte Zeiten
+// nicht erneut gebucht werden.
 // =====================================================
 
 export async function getBookedSlots(): Promise<
@@ -428,6 +386,9 @@ export async function getBookedSlots(): Promise<
 // =====================================================
 // LIST BOOKINGS
 // =====================================================
+// Wird auf /besitzer verwendet.
+// Nur angemeldete Benutzer dürfen Buchungen sehen.
+// =====================================================
 
 export async function listBookings(): Promise<{
   ok: boolean
@@ -438,13 +399,16 @@ export async function listBookings(): Promise<{
     const supabase =
       await createClient()
 
+    // -----------------------------------------------
+    // Benutzer prüfen
+    // -----------------------------------------------
+
     const {
       data: {
         user,
       },
       error: userError,
-    } =
-      await supabase.auth.getUser()
+    } = await supabase.auth.getUser()
 
     if (
       userError ||
@@ -457,6 +421,10 @@ export async function listBookings(): Promise<{
           "Du bist nicht angemeldet.",
       }
     }
+
+    // -----------------------------------------------
+    // Buchungen laden
+    // -----------------------------------------------
 
     const {
       data,
@@ -487,15 +455,15 @@ export async function listBookings(): Promise<{
         ok: false,
         bookings: [],
         error:
-          error.message,
+          error.message ||
+          "Buchungen konnten nicht geladen werden.",
       }
     }
 
     return {
       ok: true,
       bookings:
-        (data as Booking[]) ||
-        [],
+        (data as Booking[]) || [],
     }
   } catch (error) {
     console.error(
@@ -517,6 +485,8 @@ export async function listBookings(): Promise<{
 // =====================================================
 // UPDATE BOOKING STATUS
 // =====================================================
+// Besitzer kann Termin bestätigen oder ablehnen.
+// =====================================================
 
 export async function updateBookingStatus(
   bookingId: string,
@@ -526,15 +496,21 @@ export async function updateBookingStatus(
     const supabase =
       await createClient()
 
-    // -------------------------------------------------
-    // STATUS PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Eingaben prüfen
+    // -----------------------------------------------
+
+    if (!bookingId) {
+      return {
+        ok: false,
+        error:
+          "Keine Buchungs-ID angegeben.",
+      }
+    }
 
     if (
-      status !==
-        "confirmed" &&
-      status !==
-        "rejected"
+      status !== "confirmed" &&
+      status !== "rejected"
     ) {
       return {
         ok: false,
@@ -543,17 +519,16 @@ export async function updateBookingStatus(
       }
     }
 
-    // -------------------------------------------------
-    // BENUTZER PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Benutzer prüfen
+    // -----------------------------------------------
 
     const {
       data: {
         user,
       },
       error: userError,
-    } =
-      await supabase.auth.getUser()
+    } = await supabase.auth.getUser()
 
     if (
       userError ||
@@ -566,9 +541,9 @@ export async function updateBookingStatus(
       }
     }
 
-    // -------------------------------------------------
-    // STATUS ÄNDERN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Buchung aktualisieren
+    // -----------------------------------------------
 
     const {
       data,
@@ -582,7 +557,7 @@ export async function updateBookingStatus(
         "id",
         bookingId,
       )
-      .select()
+      .select("*")
       .single()
 
     if (error) {
@@ -626,6 +601,8 @@ export async function updateBookingStatus(
 // =====================================================
 // SAVE BOOKING IMAGES
 // =====================================================
+// Speichert die URLs der Bilder in der bookings-Tabelle.
+// =====================================================
 
 export async function saveBookingImages(
   bookingId: string,
@@ -635,17 +612,16 @@ export async function saveBookingImages(
     const supabase =
       await createClient()
 
-    // -------------------------------------------------
-    // BENUTZER PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Benutzer prüfen
+    // -----------------------------------------------
 
     const {
       data: {
         user,
       },
       error: userError,
-    } =
-      await supabase.auth.getUser()
+    } = await supabase.auth.getUser()
 
     if (
       userError ||
@@ -658,14 +634,20 @@ export async function saveBookingImages(
       }
     }
 
-    // -------------------------------------------------
-    // BILDDATEN PRÜFEN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Daten prüfen
+    // -----------------------------------------------
+
+    if (!bookingId) {
+      return {
+        ok: false,
+        error:
+          "Keine Buchungs-ID angegeben.",
+      }
+    }
 
     if (
-      !Array.isArray(
-        imageUrls,
-      )
+      !Array.isArray(imageUrls)
     ) {
       return {
         ok: false,
@@ -674,9 +656,20 @@ export async function saveBookingImages(
       }
     }
 
-    // -------------------------------------------------
-    // BILDER SPEICHERN
-    // -------------------------------------------------
+    // -----------------------------------------------
+    // Nur gültige Strings speichern
+    // -----------------------------------------------
+
+    const cleanImageUrls =
+      imageUrls.filter(
+        (url) =>
+          typeof url === "string" &&
+          url.trim().length > 0,
+      )
+
+    // -----------------------------------------------
+    // Bilder speichern
+    // -----------------------------------------------
 
     const {
       data,
@@ -685,13 +678,13 @@ export async function saveBookingImages(
       .from("bookings")
       .update({
         image_urls:
-          imageUrls,
+          cleanImageUrls,
       })
       .eq(
         "id",
         bookingId,
       )
-      .select()
+      .select("*")
       .single()
 
     if (error) {
