@@ -135,45 +135,51 @@ export async function createBooking(
     }
   }
 
-  // -----------------------------------------------
-  // Termin erstellen
-  // -----------------------------------------------
+  // =====================================================
+  // TERMIN IN SUPABASE ERSTELLEN
+  // =====================================================
+
+  console.log("========================================")
+  console.log("JARVIS → SUPABASE: TERMIN WIRD ERSTELLT")
+  console.log("========================================")
+
+  console.log("Datum:", data.booking_date)
+  console.log("Uhrzeit:", data.booking_time)
+  console.log("Name:", data.name)
+  console.log("Telefon:", data.phone)
+  console.log("E-Mail:", data.email)
+  console.log("Fahrzeug:", data.car)
+  console.log("Anliegen:", data.problem)
 
   const { data: booking, error } =
     await supabase
       .from("bookings")
       .insert({
-        booking_date:
-          data.booking_date,
-
-        booking_time:
-          data.booking_time,
-
-        name:
-          data.name,
-
-        phone:
-          data.phone,
-
-        email:
-          data.email,
-
-        car:
-          data.car,
-
-        problem:
-          data.problem,
-
+        booking_date: data.booking_date,
+        booking_time: data.booking_time,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        car: data.car,
+        problem: data.problem,
         status: "pending",
       })
       .select()
       .single()
 
+  // =====================================================
+  // SUPABASE FEHLER
+  // =====================================================
+
   if (error) {
-    console.error(
-      "CREATE BOOKING ERROR:",
-      error,
-    )
+    console.error("========================================")
+    console.error("CREATE BOOKING ERROR")
+    console.error("========================================")
+    console.error("Message:", error.message)
+    console.error("Code:", error.code)
+    console.error("Details:", error.details)
+    console.error("Hint:", error.hint)
+    console.error("========================================")
 
     return {
       ok: false,
@@ -183,6 +189,15 @@ export async function createBooking(
     }
   }
 
+  // =====================================================
+  // ERFOLGREICH
+  // =====================================================
+
+  console.log("========================================")
+  console.log("TERMIN ERFOLGREICH ERSTELLT")
+  console.log("Booking ID:", booking.id)
+  console.log("========================================")
+
   revalidatePath("/")
   revalidatePath("/besitzer")
 
@@ -191,7 +206,6 @@ export async function createBooking(
     bookingId: booking.id,
     booking,
   }
-}
 
 // =====================================================
 // GET BOOKED SLOTS
