@@ -6,44 +6,101 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
-  // With Fluid compute, don't put this client in a global environment
-  // variable. Always create a new one on each request.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      // Secure cookies in production; not in dev, so localhost still works.
-      cookieOptions: { secure: process.env.NODE_ENV === "production" },
+      cookieOptions: {
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+      },
+
       cookies: {
         getAll() {
           return request.cookies.getAll()
         },
+
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
+          /*
+           * Cookies zuerst im Request aktualisieren.
+           * Dadurch kann Supabase die neue Session
+           * innerhalb derselben Request-Kette verwenden.
+           */
+          cookiesToSet.forEach(
+            ({ name, value }) => {
+              request.cookies.set(
+                name,
+                value,
+              )
+            },
+          )
+
+          /*
+           * Neue Response erzeugen.
+           */
+          supabaseResponse =
+            NextResponse.next({
+              request,
+            })
+
+          /*
+           * Supabase-Cookies an den Browser weitergeben.
+           */
+          cookiesToSet.forEach(
+            ({
+              name,
+              value,
+              options,
+            }) => {
+              supabaseResponse.cookies.set(
+                name,
+                value,
+                options,
+              )
+            },
+          )
         },
       },
     },
   )
 
-  // Do not run code between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
+  /*
+   * WICHTIG:
+   * Keine Logik zwischen createServerClient()
+   * und getUser().
+   */
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
 
-  if (request.nextUrl.pathname.startsWith("/besitzer") && !user) {
-    // no user, redirect to the login page
-    const url = request.nextUrl.clone()
+  /*
+   * Besitzerbereich schützen.
+   */
+  if (
+    request.nextUrl.pathname.startsWith(
+      "/besitzer",
+    ) &&
+    (!user || error)
+  ) {
+    const url =
+      request.nextUrl.clone()
+
     url.pathname = "/auth/login"
-    return NextResponse.redirect(url)
+
+    /*
+     * Alte Query-Parameter entfernen.
+     */
+    url.search = ""
+
+    return NextResponse.redirect(
+      url,
+    )
   }
 
-  // IMPORTANT: You *must* return the supabaseResponse object as it is.
+  /*
+   * Supabase-Response unverändert zurückgeben.
+   */
   return supabaseResponse
 }
