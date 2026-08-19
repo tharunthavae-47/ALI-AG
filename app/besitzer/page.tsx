@@ -4,38 +4,55 @@ import { listBookings, signOut } from "@/app/actions"
 import { BookingsManager } from "@/components/bookings-manager"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export default async function OwnerPage() {
+  // ============================================================
+  // SUPABASE AUTH
+  // ============================================================
+
   const supabase = await createClient()
 
-  // Prüfen, ob der Besitzer eingeloggt ist
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser()
 
-  // Wenn nicht eingeloggt → Login
-  if (!user) {
+  // ============================================================
+  // NICHT EINGELOGGT
+  // ============================================================
+
+  if (userError || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="w-full max-w-md border border-border bg-card p-8 text-center">
-          <h1 className="font-display text-2xl font-bold uppercase tracking-wide">
-            Besitzerbereich
-          </h1>
+          <div className="mb-6">
+            <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">
+              MB-Performance
+            </p>
 
-          <p className="mt-3 text-sm text-muted-foreground">
-            Sie müssen angemeldet sein, um diesen Bereich zu öffnen.
+            <h1 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide">
+              Besitzerbereich
+            </h1>
+          </div>
+
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Sie sind nicht angemeldet.
+            <br />
+            Bitte melden Sie sich an, um die
+            Terminanfragen zu verwalten.
           </p>
 
           <Link
             href="/auth/login"
-            className="mt-6 inline-flex w-full items-center justify-center bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground"
+            className="mt-8 flex w-full items-center justify-center bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90"
           >
-            Zum Login
+            Zum Besitzer-Login
           </Link>
 
           <Link
             href="/"
-            className="mt-3 inline-flex w-full items-center justify-center border border-border px-6 py-4 text-sm hover:bg-secondary"
+            className="mt-3 flex w-full items-center justify-center border border-border px-6 py-4 text-sm transition-colors hover:bg-secondary"
           >
             Zur Startseite
           </Link>
@@ -44,32 +61,62 @@ export default async function OwnerPage() {
     )
   }
 
-  // Buchungen laden
+  // ============================================================
+  // BUCHUNGEN LADEN
+  // ============================================================
+
   const bookings = await listBookings()
+
+  // ============================================================
+  // STATISTIK
+  // ============================================================
+
+  const pendingCount = bookings.filter(
+    (booking) => booking.status === "pending",
+  ).length
+
+  const confirmedCount = bookings.filter(
+    (booking) => booking.status === "confirmed",
+  ).length
+
+  const cancelledCount = bookings.filter(
+    (booking) => booking.status === "cancelled",
+  ).length
+
+  // ============================================================
+  // OWNER PAGE
+  // ============================================================
 
   return (
     <main className="min-h-screen bg-background">
-      {/* HEADER */}
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-          <div>
-            <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
+
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          {/* LOGO / TITEL */}
+
+          <div className="min-w-0">
+            <p className="font-display text-[10px] uppercase tracking-[0.35em] text-muted-foreground sm:text-xs">
               MB-Performance
             </p>
 
-            <h1 className="mt-1 font-display text-2xl font-bold uppercase tracking-wide">
+            <h1 className="mt-1 truncate font-display text-xl font-bold uppercase tracking-wide sm:text-2xl">
               Besitzerbereich
             </h1>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              Angemeldet als {user.email}
+            <p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block">
+              {user.email}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* NAVIGATION */}
+
+          <div className="flex shrink-0 items-center gap-2">
             <Link
               href="/"
-              className="hidden border border-border px-4 py-2 text-sm hover:bg-secondary sm:inline-flex"
+              className="hidden border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary sm:inline-flex"
             >
               Website
             </Link>
@@ -77,7 +124,7 @@ export default async function OwnerPage() {
             <form action={signOut}>
               <button
                 type="submit"
-                className="border border-border px-4 py-2 text-sm hover:bg-secondary"
+                className="border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary"
               >
                 Abmelden
               </button>
@@ -86,25 +133,130 @@ export default async function OwnerPage() {
         </div>
       </header>
 
-      {/* CONTENT */}
-      <section className="mx-auto max-w-7xl px-6 py-10">
+      {/* ======================================================
+          HAUPTINHALT
+      ====================================================== */}
+
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        {/* TITEL */}
+
         <div className="mb-8">
-          <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">
+          <p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">
             Verwaltung
           </p>
 
-          <h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide">
-            Termine
+          <h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">
+            Terminanfragen
           </h2>
 
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Hier können Sie eingehende Terminanfragen ansehen,
-            bestätigen, stornieren oder löschen.
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Hier sehen Sie alle eingegangenen Terminanfragen.
+            Sie können Termine bestätigen, stornieren oder löschen.
           </p>
         </div>
 
-        {/* BUCHUNGEN */}
-        <BookingsManager initialBookings={bookings} />
+        {/* ====================================================
+            STATISTIK
+        ==================================================== */}
+
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* OFFEN */}
+
+          <div className="border border-border bg-card p-5">
+            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+              Offen
+            </p>
+
+            <p className="mt-2 font-display text-3xl font-bold">
+              {pendingCount}
+            </p>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              Neue Terminanfragen
+            </p>
+          </div>
+
+          {/* BESTÄTIGT */}
+
+          <div className="border border-border bg-card p-5">
+            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+              Bestätigt
+            </p>
+
+            <p className="mt-2 font-display text-3xl font-bold">
+              {confirmedCount}
+            </p>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              Bestätigte Termine
+            </p>
+          </div>
+
+          {/* STORNIERT */}
+
+          <div className="border border-border bg-card p-5">
+            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+              Storniert
+            </p>
+
+            <p className="mt-2 font-display text-3xl font-bold">
+              {cancelledCount}
+            </p>
+
+            <p className="mt-1 text-xs text-muted-foreground">
+              Stornierte Termine
+            </p>
+          </div>
+        </div>
+
+        {/* ====================================================
+            DEBUG / STATUS
+        ==================================================== */}
+
+        <div className="mb-6 border border-border bg-card px-5 py-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-display text-xs font-bold uppercase tracking-widest">
+                Buchungen geladen
+              </p>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Die Daten werden direkt aus Supabase geladen.
+              </p>
+            </div>
+
+            <p className="font-display text-sm font-bold">
+              {bookings.length} insgesamt
+            </p>
+          </div>
+        </div>
+
+        {/* ====================================================
+            BUCHUNGEN
+        ==================================================== */}
+
+        {bookings.length === 0 ? (
+          <div className="border border-border bg-card px-6 py-16 text-center">
+            <p className="font-display text-lg font-bold uppercase tracking-wide">
+              Keine Buchungen
+            </p>
+
+            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Aktuell sind keine Terminanfragen vorhanden.
+              Sobald ein Kunde einen Termin anfragt, erscheint
+              dieser hier.
+            </p>
+
+            <Link
+              href="/"
+              className="mt-6 inline-flex border border-border px-5 py-3 text-xs font-medium uppercase tracking-widest transition-colors hover:bg-secondary"
+            >
+              Zur Website
+            </Link>
+          </div>
+        ) : (
+          <BookingsManager initialBookings={bookings} />
+        )}
       </section>
     </main>
   )
