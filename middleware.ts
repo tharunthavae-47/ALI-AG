@@ -1,18 +1,18 @@
+import { updateSession } from "@/lib/supabase/proxy"
 import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
 
-export function middleware(
-  request: NextRequest
-) {
-  return NextResponse.next()
+export async function middleware(request: NextRequest) {
+  return await updateSession(request)
 }
 
 export const config = {
   matcher: [
     /*
-     * Alle Seiten verarbeiten,
-     * außer statische Next.js-Dateien,
-     * Bilder und Favicon.
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
      */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
