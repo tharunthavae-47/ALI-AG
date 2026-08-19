@@ -822,8 +822,8 @@ export function Jarvis() {
           }`}
         >
           <Image
-            src="/jarvis-logo.png"
-            alt="JARVIS"
+            src="/tharun.jpg"
+            alt="NURAHT47"
             width={48}
             height={48}
             className="object-contain"
