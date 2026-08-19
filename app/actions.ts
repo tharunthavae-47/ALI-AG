@@ -1,49 +1,23 @@
-"use server"
+import { NextResponse } from "next/server"
+import { GoogleGenAI } from "@google/genai"
+import { createBooking, getBookedSlots } from "@/app/actions"
 
-import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
-import { Resend } from "resend"
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+const apiKey = process.env.GEMINI_API_KEY
 
-// =====================================================
-// KONFIGURATION
-// =====================================================
-
-const COMPANY_EMAIL = "mb-performance1@outlook.com"
-
-const OPEN_HOUR = 15
-const CLOSE_HOUR = 22
-
-// =====================================================
-// ABMELDEN
-// =====================================================
-
-export async function signOut() {
-  const supabase = await createClient()
-
-  await supabase.auth.signOut()
-
-  redirect("/auth/login")
+type ChatMessage = {
+  role: "user" | "assistant"
+  content: string
 }
 
-// =====================================================
-// TYPES
-// =====================================================
+type JarvisAction =
+  | "chat"
+  | "booking_question"
+  | "create_booking"
 
-export type BookingStatus =
-  | "pending"
-  | "confirmed"
-  | "rejected"
-
-export type PublicSlot = {
-  booking_date: string
-  booking_time: string
-}
-
-export type Booking = {
-  id: string
+type BookingData = {
   booking_date: string
   booking_time: string
   name: string
@@ -51,899 +25,619 @@ export type Booking = {
   email: string
   car: string
   problem: string
-  status: BookingStatus
-  created_at: string
-  image_urls: string[]
 }
 
-// =====================================================
-// HILFSFUNKTIONEN
-// =====================================================
+function getZurichDate() {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date())
+}
+
+function getZurichDateTime() {
+  return new Intl.DateTimeFormat("de-CH", {
+    timeZone: "Europe/Zurich",
+    dateStyle: "full",
+    timeStyle: "short",
+  }).format(new Date())
+}
+
+function cleanJson(text: string) {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim()
+}
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false
   }
 
-  const date = new Date(value + "T00:00:00")
+  const date = new Date(`${value}T00:00:00`)
 
   return !Number.isNaN(date.getTime())
 }
 
 function isValidTime(value: string) {
-  const match = /^(\d{2}):00$/.exec(value)
-
-  if (!match) {
+  if (!/^\d{2}:00$/.test(value)) {
     return false
   }
 
-  const hour = Number(match[1])
+  const hour = Number(value.slice(0, 2))
 
-  return hour >= OPEN_HOUR && hour <= CLOSE_HOUR
+  return hour >= 15 && hour <= 22
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
+function emptyBooking(): BookingData {
+  return {
+    booking_date: "",
+    booking_time: "",
+    name: "",
+    phone: "",
+    email: "",
+    car: "",
+    problem: "",
+  }
 }
 
-// =====================================================
-// BELEGTE TERMINE
-// =====================================================
+function normalizeBooking(
+  input: Partial<BookingData> | undefined,
+): BookingData {
+  const booking = emptyBooking()
 
-export async function getBookedSlots(): Promise<PublicSlot[]> {
-  const supabase = createAdminClient()
-
-  const today = new Date()
-    .toISOString()
-    .slice(0, 10)
-
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("booking_date, booking_time")
-    .neq("status", "rejected")
-    .gte("booking_date", today)
-
-  if (error) {
-    console.error(
-      "getBookedSlots error:",
-      error.message,
-    )
-
-    return []
+  if (!input) {
+    return booking
   }
 
-  return data ?? []
+  booking.booking_date =
+    typeof input.booking_date === "string"
+      ? input.booking_date.trim()
+      : ""
+
+  booking.booking_time =
+    typeof input.booking_time === "string"
+      ? input.booking_time.trim()
+      : ""
+
+  booking.name =
+    typeof input.name === "string"
+      ? input.name.trim()
+      : ""
+
+  booking.phone =
+    typeof input.phone === "string"
+      ? input.phone.trim()
+      : ""
+
+  booking.email =
+    typeof input.email === "string"
+      ? input.email.trim().toLowerCase()
+      : ""
+
+  booking.car =
+    typeof input.car === "string"
+      ? input.car.trim()
+      : ""
+
+  booking.problem =
+    typeof input.problem === "string"
+      ? input.problem.trim()
+      : ""
+
+  return booking
 }
 
-// =====================================================
-// TERMIN ERSTELLEN
-// =====================================================
-
-export async function createBooking(input: {
-  booking_date: string
-  booking_time: string
-  name: string
-  phone: string
-  email: string
-  car: string
-  problem: string
-}): Promise<{
-  ok: boolean
-  bookingId?: string
-  error?: string
-}> {
-
-  // ===================================================
-  // WERTE BEREINIGEN
-  // ===================================================
-
-  const name = input.name?.trim() ?? ""
-  const phone = input.phone?.trim() ?? ""
-  const email = input.email?.trim().toLowerCase() ?? ""
-  const car = input.car?.trim() ?? ""
-  const problem = input.problem?.trim() ?? ""
-
-  // ===================================================
-  // DATUM PRÜFEN
-  // ===================================================
-
-  if (!isValidDate(input.booking_date)) {
-    return {
-      ok: false,
-      error: "Ungültiges Datum.",
-    }
+function getMissingField(
+  booking: BookingData,
+): keyof BookingData | null {
+  if (!booking.booking_date) {
+    return "booking_date"
   }
 
-  // ===================================================
-  // UHRZEIT PRÜFEN
-  // ===================================================
-
-  if (!isValidTime(input.booking_time)) {
-    return {
-      ok: false,
-      error: "Ungültige Uhrzeit.",
-    }
+  if (!booking.booking_time) {
+    return "booking_time"
   }
 
-  // ===================================================
-  // PFLICHTFELDER
-  // ===================================================
-
-  if (!name) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie Ihren Namen ein.",
-    }
+  if (!booking.name) {
+    return "name"
   }
 
-  if (!phone) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie Ihre Telefonnummer ein.",
-    }
+  if (!booking.phone) {
+    return "phone"
   }
 
-  if (!email) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie Ihre E-Mail-Adresse ein.",
-    }
+  if (!booking.email) {
+    return "email"
   }
 
-  if (!car) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie Ihr Fahrzeug ein.",
-    }
+  if (!booking.car) {
+    return "car"
   }
 
-  if (!problem) {
-    return {
-      ok: false,
-      error: "Bitte beschreiben Sie Ihr Anliegen.",
-    }
+  if (!booking.problem) {
+    return "problem"
   }
 
-  // ===================================================
-  // E-MAIL PRÜFEN
-  // ===================================================
+  return null
+}
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie eine gültige E-Mail-Adresse ein.",
-    }
+function questionForField(
+  field: keyof BookingData,
+) {
+  switch (field) {
+    case "booking_date":
+      return "Gerne. Für welchen Tag möchtest du den Termin?"
+
+    case "booking_time":
+      return "Welche Uhrzeit möchtest du? Unsere Termine sind zwischen 15:00 und 22:00 Uhr möglich."
+
+    case "name":
+      return "Gerne. Wie lautet dein Name?"
+
+    case "phone":
+      return "Welche Telefonnummer soll ich für den Termin hinterlegen?"
+
+    case "email":
+      return "Welche E-Mail-Adresse soll ich für die Terminbestätigung verwenden?"
+
+    case "car":
+      return "Welches Fahrzeug hast du? Zum Beispiel BMW M4, Baujahr 2021."
+
+    case "problem":
+      return "Was soll an deinem Fahrzeug gemacht werden?"
+
+    default:
+      return "Welche Information fehlt noch?"
   }
+}
 
-  // ===================================================
-  // TELEFON PRÜFEN
-  // ===================================================
+function buildConversation(
+  messages: ChatMessage[],
+) {
+  return messages
+    .map((message) => {
+      const role =
+        message.role === "assistant"
+          ? "JARVIS"
+          : "BENUTZER"
 
-  const phoneDigits = phone.replace(/\D/g, "")
-
-  if (phoneDigits.length < 7) {
-    return {
-      ok: false,
-      error: "Bitte geben Sie eine gültige Telefonnummer ein.",
-    }
-  }
-
-  // ===================================================
-  // VERGANGENES DATUM
-  // ===================================================
-
-  const today = new Date()
-    .toISOString()
-    .slice(0, 10)
-
-  if (input.booking_date < today) {
-    return {
-      ok: false,
-      error: "Bitte wählen Sie ein Datum in der Zukunft.",
-    }
-  }
-
-  // ===================================================
-  // MAXIMALE LÄNGEN
-  // ===================================================
-
-  if (name.length > 200) {
-    return {
-      ok: false,
-      error: "Der Name ist zu lang.",
-    }
-  }
-
-  if (phone.length > 50) {
-    return {
-      ok: false,
-      error: "Die Telefonnummer ist zu lang.",
-    }
-  }
-
-  if (email.length > 320) {
-    return {
-      ok: false,
-      error: "Die E-Mail-Adresse ist zu lang.",
-    }
-  }
-
-  if (car.length > 200) {
-    return {
-      ok: false,
-      error: "Die Fahrzeugangabe ist zu lang.",
-    }
-  }
-
-  if (problem.length > 2000) {
-    return {
-      ok: false,
-      error: "Die Beschreibung ist zu lang.",
-    }
-  }
-
-  // ===================================================
-  // SUPABASE
-  // ===================================================
-
-  const supabase = createAdminClient()
-
-  // ===================================================
-  // TERMIN SPEICHERN
-  // ===================================================
-
-  const { data, error } = await supabase
-    .from("bookings")
-    .insert({
-      booking_date: input.booking_date,
-      booking_time: input.booking_time,
-      name,
-      phone,
-      email,
-      car,
-      problem,
-      status: "pending",
-      image_urls: [],
+      return `${role}: ${message.content}`
     })
-    .select("id")
-    .single()
+    .join("\n\n")
+}
 
-  // ===================================================
-  // FEHLER BEIM SPEICHERN
-  // ===================================================
-
-  if (error) {
-    console.error(
-      "createBooking error:",
-      error,
-    )
-
-    if (error.code === "23505") {
-      return {
-        ok: false,
-        error: "Dieser Termin ist leider bereits vergeben.",
-      }
-    }
-
-    return {
-      ok: false,
-      error: "Anfrage konnte nicht gespeichert werden.",
-    }
-  }
-
-  // ===================================================
-  // E-MAILS
-  // =====================================================
-
+export async function POST(request: Request) {
   try {
-    const resendApiKey =
-      process.env.RESEND_API_KEY
-
-    const fromEmail =
-      process.env.RESEND_FROM_EMAIL
-
-    if (!resendApiKey) {
-      console.error(
-        "RESEND_API_KEY fehlt.",
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error:
+            "GEMINI_API_KEY fehlt in .env.local.",
+        },
+        {
+          status: 500,
+        },
       )
-    } else if (!fromEmail) {
-      console.error(
-        "RESEND_FROM_EMAIL fehlt.",
-      )
-    } else {
-
-      const resend = new Resend(resendApiKey)
-
-      // =================================================
-      // E-MAIL AN KUNDEN
-      // =================================================
-
-      const customerHtml =
-        "<!DOCTYPE html>" +
-        '<html lang="de">' +
-        "<head>" +
-        '<meta charset="UTF-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-        "<title>Terminanfrage MB-Performance</title>" +
-        "</head>" +
-
-        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-
-        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-        "<h1>Vielen Dank, " +
-        escapeHtml(name) +
-        "!</h1>" +
-
-        "<p>Wir haben Ihre Terminanfrage erhalten.</p>" +
-
-        "<p>Ihre Anfrage wird nun geprüft. Sie erhalten eine weitere E-Mail, sobald der Termin bestätigt oder abgelehnt wurde.</p>" +
-
-        "<h2>Ihre Angaben</h2>" +
-
-        "<p><strong>Datum:</strong> " +
-        escapeHtml(input.booking_date) +
-        "</p>" +
-
-        "<p><strong>Uhrzeit:</strong> " +
-        escapeHtml(input.booking_time) +
-        "</p>" +
-
-        "<p><strong>Fahrzeug:</strong> " +
-        escapeHtml(car) +
-        "</p>" +
-
-        "<p><strong>Telefon:</strong> " +
-        escapeHtml(phone) +
-        "</p>" +
-
-        "<p><strong>E-Mail:</strong> " +
-        escapeHtml(email) +
-        "</p>" +
-
-        "<p><strong>Anliegen:</strong><br>" +
-        escapeHtml(problem).replace(/\n/g, "<br>") +
-        "</p>" +
-
-        "<hr>" +
-
-        "<p>Freundliche Grüsse</p>" +
-
-        "<p><strong>MB-Performance</strong></p>" +
-
-        "</div>" +
-        "</body>" +
-        "</html>"
-
-      const customerResult =
-        await resend.emails.send({
-          from: fromEmail,
-          to: email,
-          replyTo: COMPANY_EMAIL,
-          subject:
-            "Ihre Terminanfrage bei MB-Performance",
-          html: customerHtml,
-        })
-
-      if (customerResult.error) {
-        console.error(
-          "Fehler beim Senden an Kunden:",
-          customerResult.error,
-        )
-      } else {
-        console.log(
-          "Kunden-E-Mail erfolgreich gesendet:",
-          customerResult.data,
-        )
-      }
-
-      // =================================================
-      // E-MAIL AN MB-PERFORMANCE
-      // =================================================
-
-      const companyHtml =
-        "<!DOCTYPE html>" +
-        '<html lang="de">' +
-        "<head>" +
-        '<meta charset="UTF-8">' +
-        "</head>" +
-
-        '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-
-        '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-        "<h1>🔔 Neue Terminanfrage</h1>" +
-
-        "<p>Es wurde eine neue Terminanfrage über die MB-Performance Website erstellt.</p>" +
-
-        "<hr>" +
-
-        "<h2>Kunde</h2>" +
-
-        "<p><strong>Name:</strong> " +
-        escapeHtml(name) +
-        "</p>" +
-
-        "<p><strong>Telefon:</strong> " +
-        escapeHtml(phone) +
-        "</p>" +
-
-        "<p><strong>E-Mail:</strong> " +
-        escapeHtml(email) +
-        "</p>" +
-
-        "<h2>Termin</h2>" +
-
-        "<p><strong>Datum:</strong> " +
-        escapeHtml(input.booking_date) +
-        "</p>" +
-
-        "<p><strong>Uhrzeit:</strong> " +
-        escapeHtml(input.booking_time) +
-        "</p>" +
-
-        "<h2>Fahrzeug</h2>" +
-
-        "<p>" +
-        escapeHtml(car) +
-        "</p>" +
-
-        "<h2>Anliegen</h2>" +
-
-        "<p>" +
-        escapeHtml(problem).replace(/\n/g, "<br>") +
-        "</p>" +
-
-        "<hr>" +
-
-        "<p><strong>Die Buchung wartet auf Bestätigung.</strong></p>" +
-
-        "</div>" +
-        "</body>" +
-        "</html>"
-
-      const companyResult =
-        await resend.emails.send({
-          from: fromEmail,
-          to: COMPANY_EMAIL,
-          replyTo: email,
-          subject:
-            "🔔 Neue Terminanfrage – " + name,
-          html: companyHtml,
-        })
-
-      if (companyResult.error) {
-        console.error(
-          "Fehler beim Senden an MB-Performance:",
-          companyResult.error,
-        )
-      } else {
-        console.log(
-          "E-Mail an MB-Performance erfolgreich gesendet:",
-          companyResult.data,
-        )
-      }
     }
-  } catch (emailError) {
-    console.error(
-      "E-Mail konnte nicht gesendet werden:",
-      emailError,
+
+    const body = await request.json()
+
+    const messages =
+      body?.messages as ChatMessage[]
+
+    if (
+      !Array.isArray(messages) ||
+      messages.length === 0
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Keine Chatnachrichten erhalten.",
+        },
+        {
+          status: 400,
+        },
+      )
+    }
+
+    const validMessages = messages.filter(
+      (message) =>
+        message &&
+        (message.role === "user" ||
+          message.role === "assistant") &&
+        typeof message.content === "string" &&
+        message.content.trim(),
     )
-  }
 
-  // ===================================================
-  // SEITEN AKTUALISIEREN
-  // ===================================================
+    if (validMessages.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Keine gültigen Nachrichten erhalten.",
+        },
+        {
+          status: 400,
+        },
+      )
+    }
 
-  revalidatePath("/")
-  revalidatePath("/besitzer")
+    const conversation =
+      buildConversation(validMessages)
 
-  return {
-    ok: true,
-    bookingId: data.id,
+    const currentDate =
+      getZurichDate()
+
+    const currentDateTime =
+      getZurichDateTime()
+
+    // =====================================================
+    // GEMINI
+    // =====================================================
+
+    const ai = new GoogleGenAI({
+      apiKey,
+    })
+
+    const extractionPrompt = `
+Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
+
+Aktuelles Datum in der Schweiz:
+${currentDate}
+
+Aktuelles Datum und Uhrzeit:
+${currentDateTime}
+
+Zeitzone:
+Europe/Zurich
+
+Öffnungszeiten für Termine:
+15:00 bis 22:00 Uhr
+
+Du musst entscheiden, ob der Benutzer:
+1. nur eine normale Frage stellt,
+2. einen Termin erstellen möchte,
+3. Informationen für einen bereits begonnenen Terminwunsch liefert.
+
+WICHTIG:
+
+- Antworte NICHT mit normalem Text.
+- Antworte ausschließlich mit gültigem JSON.
+- Erfinde niemals persönliche Daten.
+- Wenn eine Information nicht im Gespräch vorhanden ist, lasse sie leer.
+- "morgen", "übermorgen", "nächsten Freitag" usw. müssen anhand des aktuellen Datums berechnet werden.
+- booking_date muss immer YYYY-MM-DD sein.
+- booking_time muss immer HH:00 sein.
+- Wenn der Benutzer z.B. "15 Uhr" sagt, ist booking_time "15:00".
+- Wenn der Benutzer "halb vier" sagt, ist booking_time "15:00".
+- Termine sind nur von 15:00 bis 22:00 möglich.
+- Bei einer Terminabsicht action = "booking_question" oder "create_booking".
+- Wenn noch Angaben fehlen, action = "booking_question".
+- Wenn alle Angaben vorhanden sind, action = "create_booking".
+- Eine normale Frage hat action = "chat".
+
+Für einen Termin werden benötigt:
+
+booking_date
+booking_time
+name
+phone
+email
+car
+problem
+
+Das Anliegen kann beispielsweise sein:
+"Ölwechsel"
+"Reifenwechsel"
+"Bremsen prüfen"
+"Diagnose"
+"Inspektion"
+"MFK"
+oder eine freie Beschreibung.
+
+JSON-Format:
+
+{
+  "action": "chat" | "booking_question" | "create_booking",
+  "answer": "kurze Antwort",
+  "booking": {
+    "booking_date": "",
+    "booking_time": "",
+    "name": "",
+    "phone": "",
+    "email": "",
+    "car": "",
+    "problem": ""
   }
 }
 
-// =====================================================
-// BILDER SPEICHERN
-// =====================================================
+Hier ist der komplette bisherige Chat:
 
-export async function saveBookingImages(
-  bookingId: string,
-  imageUrls: string[],
-): Promise<{
-  ok: boolean
-  error?: string
-}> {
+${conversation}
 
-  if (!bookingId) {
-    return {
-      ok: false,
-      error: "Buchungs-ID fehlt.",
+Analysiere jetzt die letzte Nachricht.
+`
+
+    const response =
+      await ai.models.generateContent({
+        model: "gemini-3.5-flash-lite",
+
+        contents: extractionPrompt,
+
+        config: {
+          temperature: 0.1,
+          maxOutputTokens: 500,
+          responseMimeType: "application/json",
+        },
+      })
+
+    const raw =
+      response.text?.trim() ?? ""
+
+    if (!raw) {
+      return NextResponse.json(
+        {
+          error:
+            "JARVIS konnte keine Antwort erzeugen.",
+        },
+        {
+          status: 500,
+        },
+      )
     }
-  }
 
-  if (!Array.isArray(imageUrls)) {
-    return {
-      ok: false,
-      error: "Ungültige Bilddaten.",
+    let parsed: {
+      action?: JarvisAction
+      answer?: string
+      booking?: Partial<BookingData>
     }
-  }
 
-  if (imageUrls.length > 5) {
-    return {
-      ok: false,
-      error: "Es sind maximal 5 Bilder erlaubt.",
+    try {
+      parsed = JSON.parse(
+        cleanJson(raw),
+      )
+    } catch (error) {
+      console.error(
+        "Gemini JSON Fehler:",
+        error,
+        raw,
+      )
+
+      return NextResponse.json(
+        {
+          error:
+            "JARVIS konnte die Antwort nicht verarbeiten.",
+        },
+        {
+          status: 500,
+        },
+      )
     }
-  }
 
-  const validImageUrls = imageUrls.filter(
-    (url): url is string =>
-      typeof url === "string" &&
-      url.trim() !== "",
-  )
+    // =====================================================
+    // NORMALE FRAGE
+    // =====================================================
 
-  const supabase = createAdminClient()
+    if (
+      parsed.action === "chat"
+    ) {
+      return NextResponse.json({
+        answer:
+          parsed.answer ||
+          "Wie kann ich dir helfen?",
+        action: "chat",
+      })
+    }
 
-  const { error } = await supabase
-    .from("bookings")
-    .update({
-      image_urls: validImageUrls,
+    // =====================================================
+    // TERMIN
+    // =====================================================
+
+    const booking =
+      normalizeBooking(
+        parsed.booking,
+      )
+
+    const missing =
+      getMissingField(booking)
+
+    // =====================================================
+    // FEHLENDE ANGABE
+    // =====================================================
+
+    if (
+      parsed.action ===
+        "booking_question" ||
+      missing
+    ) {
+      let answer =
+        parsed.answer?.trim()
+
+      if (!answer) {
+        answer = questionForField(
+          missing || "booking_date",
+        )
+      }
+
+      if (missing) {
+        answer =
+          questionForField(missing)
+      }
+
+      return NextResponse.json({
+        answer,
+        action: "booking_question",
+        booking,
+        missing,
+      })
+    }
+
+    // =====================================================
+    // DATUM PRÜFEN
+    // =====================================================
+
+    if (
+      !isValidDate(
+        booking.booking_date,
+      )
+    ) {
+      return NextResponse.json({
+        answer:
+          "Das Datum konnte ich nicht richtig erkennen. Für welchen Tag möchtest du den Termin?",
+        action: "booking_question",
+        booking: {
+          ...booking,
+          booking_date: "",
+        },
+        missing: "booking_date",
+      })
+    }
+
+    // =====================================================
+    // UHRZEIT PRÜFEN
+    // =====================================================
+
+    if (
+      !isValidTime(
+        booking.booking_time,
+      )
+    ) {
+      return NextResponse.json({
+        answer:
+          "Diese Uhrzeit liegt außerhalb unserer Terminzeiten. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
+        action: "booking_question",
+        booking: {
+          ...booking,
+          booking_time: "",
+        },
+        missing: "booking_time",
+      })
+    }
+
+    // =====================================================
+    // VERGANGENES DATUM
+    // =====================================================
+
+    if (
+      booking.booking_date <
+      currentDate
+    ) {
+      return NextResponse.json({
+        answer:
+          "Dieser Termin liegt bereits in der Vergangenheit. Welchen zukünftigen Tag möchtest du?",
+        action: "booking_question",
+        booking: {
+          ...booking,
+          booking_date: "",
+        },
+        missing: "booking_date",
+      })
+    }
+
+    // =====================================================
+    // BELEGTE TERMINE
+    // =====================================================
+
+    const bookedSlots =
+      await getBookedSlots()
+
+    const alreadyBooked =
+      bookedSlots.some(
+        (slot) =>
+          slot.booking_date ===
+            booking.booking_date &&
+          slot.booking_time ===
+            booking.booking_time,
+      )
+
+    if (alreadyBooked) {
+      return NextResponse.json({
+        answer:
+          `Der Termin am ${booking.booking_date} um ${booking.booking_time} ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
+        action: "booking_question",
+        booking: {
+          ...booking,
+          booking_time: "",
+        },
+        missing: "booking_time",
+      })
+    }
+
+    // =====================================================
+    // TERMIN ERSTELLEN
+    // =====================================================
+
+    const result =
+      await createBooking({
+        booking_date:
+          booking.booking_date,
+
+        booking_time:
+          booking.booking_time,
+
+        name:
+          booking.name,
+
+        phone:
+          booking.phone,
+
+        email:
+          booking.email,
+
+        car:
+          booking.car,
+
+        problem:
+          booking.problem,
+      })
+
+    // =====================================================
+    // FEHLER
+    // =====================================================
+
+    if (!result.ok) {
+      return NextResponse.json({
+        answer:
+          result.error ||
+          "Der Termin konnte leider nicht erstellt werden.",
+        action: "booking_error",
+      })
+    }
+
+    // =====================================================
+    // ERFOLG
+    // =====================================================
+
+    return NextResponse.json({
+      answer:
+        `Alles klar, ${booking.name}. Ich habe deine Terminanfrage für den ${booking.booking_date} um ${booking.booking_time} Uhr für ${booking.car} aufgenommen. Das Anliegen ist: ${booking.problem}. Der Termin wartet jetzt auf die Bestätigung von MB-Performance.`,
+
+      action: "booking_created",
+
+      bookingId:
+        result.bookingId,
+
+      booking,
     })
-    .eq("id", bookingId)
-
-  if (error) {
+  } catch (error) {
     console.error(
-      "saveBookingImages error:",
+      "JARVIS CHAT ERROR:",
       error,
     )
 
-    return {
-      ok: false,
-      error: "Die Bilder konnten nicht gespeichert werden.",
-    }
-  }
-
-  revalidatePath("/")
-  revalidatePath("/besitzer")
-
-  return {
-    ok: true,
-  }
-}
-
-// =====================================================
-// ALLE BUCHUNGEN
-// =====================================================
-
-export async function listBookings(): Promise<Booking[]> {
-
-  const auth = await createClient()
-
-  const {
-    data: { user },
-  } = await auth.auth.getUser()
-
-  if (!user) {
-    return []
-  }
-
-  const supabase = createAdminClient()
-
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("*")
-    .order("booking_date", {
-      ascending: true,
-    })
-    .order("booking_time", {
-      ascending: true,
-    })
-
-  if (error) {
-    console.error(
-      "listBookings error:",
-      error,
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "JARVIS konnte die Anfrage nicht verarbeiten.",
+      },
+      {
+        status: 500,
+      },
     )
-
-    return []
-  }
-
-  return (data ?? []) as Booking[]
-}
-
-// =====================================================
-// TERMIN BESTÄTIGEN / ABLEHNEN
-// =====================================================
-
-export async function updateBookingStatus(
-  id: string,
-  status: Exclude<BookingStatus, "pending">,
-): Promise<{
-  ok: boolean
-  error?: string
-}> {
-
-  // ===================================================
-  // BESITZER PRÜFEN
-  // ===================================================
-
-  const auth = await createClient()
-
-  const {
-    data: { user },
-  } = await auth.auth.getUser()
-
-  if (!user) {
-    return {
-      ok: false,
-      error: "Nicht autorisiert.",
-    }
-  }
-
-  // ===================================================
-  // STATUS PRÜFEN
-  // ===================================================
-
-  if (
-    status !== "confirmed" &&
-    status !== "rejected"
-  ) {
-    return {
-      ok: false,
-      error: "Ungültiger Status.",
-    }
-  }
-
-  // ===================================================
-  // SUPABASE
-  // ===================================================
-
-  const supabase = createAdminClient()
-
-  // ===================================================
-  // BUCHUNG LADEN
-  // ===================================================
-
-  const {
-    data: booking,
-    error: bookingError,
-  } = await supabase
-    .from("bookings")
-    .select(
-      "id, booking_date, booking_time, name, email, car, problem",
-    )
-    .eq("id", id)
-    .single()
-
-  if (bookingError || !booking) {
-    console.error(
-      "Buchung konnte nicht geladen werden:",
-      bookingError,
-    )
-
-    return {
-      ok: false,
-      error: "Die Buchung konnte nicht gefunden werden.",
-    }
-  }
-
-  // ===================================================
-  // STATUS ÄNDERN
-  // ===================================================
-
-  const { error } = await supabase
-    .from("bookings")
-    .update({
-      status,
-    })
-    .eq("id", id)
-
-  if (error) {
-    console.error(
-      "updateBookingStatus error:",
-      error,
-    )
-
-    return {
-      ok: false,
-      error: "Aktualisierung fehlgeschlagen.",
-    }
-  }
-
-  // ===================================================
-  // E-MAIL AN KUNDEN
-  // ===================================================
-
-  try {
-
-    const resendApiKey =
-      process.env.RESEND_API_KEY
-
-    const fromEmail =
-      process.env.RESEND_FROM_EMAIL
-
-    if (!resendApiKey) {
-      console.error(
-        "RESEND_API_KEY fehlt.",
-      )
-    } else if (!fromEmail) {
-      console.error(
-        "RESEND_FROM_EMAIL fehlt.",
-      )
-    } else if (!booking.email) {
-      console.error(
-        "Kunde hat keine E-Mail-Adresse.",
-      )
-    } else {
-
-      const resend = new Resend(resendApiKey)
-
-      let subject = ""
-      let htmlContent = ""
-
-      // =================================================
-      // BESTÄTIGT
-      // =================================================
-
-      if (status === "confirmed") {
-
-        subject =
-          "Ihr Termin bei MB-Performance wurde bestätigt"
-
-        htmlContent =
-          "<!DOCTYPE html>" +
-          '<html lang="de">' +
-          "<head>" +
-          '<meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          "</head>" +
-
-          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-
-          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-          "<h1>Termin bestätigt ✅</h1>" +
-
-          "<p>Hallo " +
-          escapeHtml(booking.name) +
-          ",</p>" +
-
-          "<p>Ihre Terminanfrage bei <strong>MB-Performance</strong> wurde bestätigt.</p>" +
-
-          "<h2>Ihr Termin</h2>" +
-
-          "<p><strong>Datum:</strong> " +
-          escapeHtml(booking.booking_date) +
-          "</p>" +
-
-          "<p><strong>Uhrzeit:</strong> " +
-          escapeHtml(booking.booking_time) +
-          "</p>" +
-
-          "<p><strong>Fahrzeug:</strong> " +
-          escapeHtml(booking.car) +
-          "</p>" +
-
-          "<hr>" +
-
-          "<p>Wir freuen uns auf Ihren Besuch.</p>" +
-
-          "<p>Freundliche Grüsse</p>" +
-
-          "<p><strong>MB-Performance</strong></p>" +
-
-          "</div>" +
-          "</body>" +
-          "</html>"
-      }
-
-      // =================================================
-      // ABGELEHNT
-      // =================================================
-
-      if (status === "rejected") {
-
-        subject =
-          "Ihre Terminanfrage bei MB-Performance"
-
-        htmlContent =
-          "<!DOCTYPE html>" +
-          '<html lang="de">' +
-          "<head>" +
-          '<meta charset="UTF-8">' +
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
-          "</head>" +
-
-          '<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:30px;">' +
-
-          '<div style="max-width:600px;margin:auto;background:white;padding:30px;border-radius:12px;">' +
-
-          "<h1>Terminanfrage</h1>" +
-
-          "<p>Hallo " +
-          escapeHtml(booking.name) +
-          ",</p>" +
-
-          "<p>leider konnten wir Ihre Terminanfrage bei <strong>MB-Performance</strong> nicht bestätigen.</p>" +
-
-          "<h2>Angefragter Termin</h2>" +
-
-          "<p><strong>Datum:</strong> " +
-          escapeHtml(booking.booking_date) +
-          "</p>" +
-
-          "<p><strong>Uhrzeit:</strong> " +
-          escapeHtml(booking.booking_time) +
-          "</p>" +
-
-          "<p><strong>Fahrzeug:</strong> " +
-          escapeHtml(booking.car) +
-          "</p>" +
-
-          "<hr>" +
-
-          "<p>Bitte kontaktieren Sie uns gerne, um einen anderen Termin zu vereinbaren.</p>" +
-
-          "<p>Freundliche Grüsse</p>" +
-
-          "<p><strong>MB-Performance</strong></p>" +
-
-          "</div>" +
-          "</body>" +
-          "</html>"
-      }
-
-      // =================================================
-      // E-MAIL SENDEN
-      // =================================================
-
-      if (subject && htmlContent) {
-
-        const result =
-          await resend.emails.send({
-            from: fromEmail,
-            to: booking.email,
-            replyTo: COMPANY_EMAIL,
-            subject,
-            html: htmlContent,
-          })
-
-        if (result.error) {
-          console.error(
-            "Resend Fehler:",
-            result.error,
-          )
-        } else {
-          console.log(
-            "Status-E-Mail erfolgreich gesendet:",
-            result.data,
-          )
-        }
-      }
-    }
-
-  } catch (emailError) {
-
-    console.error(
-      "E-Mail Fehler:",
-      emailError,
-    )
-  }
-
-  // ===================================================
-  // SEITEN AKTUALISIEREN
-  // ===================================================
-
-  revalidatePath("/")
-  revalidatePath("/besitzer")
-
-  return {
-    ok: true,
   }
 }
