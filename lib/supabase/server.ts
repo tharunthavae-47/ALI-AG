@@ -2,8 +2,7 @@ import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
 export async function createClient() {
-  const cookieStore =
-    await cookies()
+  const cookieStore = await cookies()
 
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -13,13 +12,13 @@ export async function createClient() {
 
   if (!supabaseUrl) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL fehlt.",
+      "NEXT_PUBLIC_SUPABASE_URL fehlt."
     )
   }
 
   if (!supabaseAnonKey) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY fehlt.",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY fehlt."
     )
   }
 
@@ -32,41 +31,24 @@ export async function createClient() {
           return cookieStore.getAll()
         },
 
-        setAll(
-          cookiesToSet,
-        ) {
+        setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(
-              ({
-                name,
-                value,
-                options,
-              }) => {
+              ({ name, value, options }) => {
                 cookieStore.set(
                   name,
                   value,
-                  options,
+                  options
                 )
-              },
+              }
             )
           } catch {
-            // Server Components können
-            // Cookies nicht immer setzen.
-            // Die Session wird durch proxy.ts
-            // aktualisiert.
+            // In Server Components können
+            // Cookies nicht immer gesetzt werden.
+            // Der Proxy aktualisiert die Session.
           }
         },
       },
-
-      cookieOptions: {
-        secure:
-          process.env.NODE_ENV ===
-          "production",
-
-        sameSite: "lax",
-
-        path: "/",
-      },
-    },
+    }
   )
 }
