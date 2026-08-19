@@ -193,14 +193,14 @@ export async function createBooking(
     if (
       Number.isNaN(hour) ||
       Number.isNaN(minute) ||
-      hour < 0 ||
-      hour > 23 ||
-      minute < 0 ||
-      minute > 59
+      minute !== 0 ||
+      hour < 15 ||
+      hour > 22
     ) {
       return {
         ok: false,
-        error: "Die Uhrzeit ist ungültig.",
+        error:
+          "Bitte wähle eine gültige Terminzeit zwischen 15:00 und 22:00 Uhr.",
       }
     }
 
@@ -263,7 +263,7 @@ export async function createBooking(
     }
 
     // ----------------------------------------------------------
-    // Prüfen ob Termin bereits vergeben
+    // Termin bereits vergeben?
     // ----------------------------------------------------------
 
     const {
@@ -338,8 +338,7 @@ export async function createBooking(
       )
 
       if (
-        insertError.code ===
-        "23505"
+        insertError.code === "23505"
       ) {
         return {
           ok: false,
@@ -511,8 +510,9 @@ export async function listBookings() {
       return []
     }
 
-    return (data ??
-      []) as Booking[]
+    return (
+      data ?? []
+    ) as Booking[]
   } catch (error) {
     console.error(
       "listBookings Fehler:",
@@ -557,8 +557,8 @@ export async function updateBookingStatus(
       }
     }
 
-    const allowedStatuses: BookingStatus[] =
-      [
+    const allowedStatuses:
+      BookingStatus[] = [
         "pending",
         "confirmed",
         "cancelled",
@@ -699,79 +699,75 @@ export async function deleteBooking(
 // ============================================================
 // GET BOOKED SLOTS
 // ============================================================
+//
+// WICHTIG:
+// Diese Funktion gibt IMMER ein Array zurück.
+// booking-form.tsx verwendet:
+// bookedSlots.filter(...)
+//
 
 export async function getBookedSlots(
-  date: string
+  date?: string
 ) {
   try {
     const supabase =
       await createClient()
 
-    if (!date) {
-      return {
-        ok: false,
-        error:
-          "Kein Datum angegeben.",
-        slots: [],
-      }
-    }
-
-    const {
-      data,
-      error,
-    } = await supabase
+    let query = supabase
       .from("bookings")
       .select(
-        "booking_time, status"
-      )
-      .eq(
-        "booking_date",
-        date
+        "id, booking_date, booking_time, status"
       )
       .in("status", [
         "pending",
         "confirmed",
       ])
 
+    if (date) {
+      query = query.eq(
+        "booking_date",
+        date
+      )
+    }
+
+    const {
+      data,
+      error,
+    } = await query
+      .order(
+        "booking_date",
+        {
+          ascending: true,
+        }
+      )
+      .order(
+        "booking_time",
+        {
+          ascending: true,
+        }
+      )
+
     if (error) {
       console.error(
-        "Fehler beim Laden der Zeiten:",
+        "Fehler beim Laden der belegten Termine:",
         error
       )
 
-      return {
-        ok: false,
-        error:
-          error.message ||
-          "Die belegten Zeiten konnten nicht geladen werden.",
-        slots: [],
-      }
+      return []
     }
 
-    const slots =
-      (data ?? [])
-        .map(
-          (booking) =>
-            booking.booking_time
-        )
-        .filter(Boolean)
-
-    return {
-      ok: true,
-      slots,
+    if (!Array.isArray(data)) {
+      return []
     }
+
+    return data
   } catch (error) {
     console.error(
       "getBookedSlots Fehler:",
       error
     )
 
-    return {
-      ok: false,
-      error:
-        "Ein unerwarteter Fehler ist aufgetreten.",
-      slots: [],
-    }
+    return []
   }
 }
 
