@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
-import { createBooking } from "@/app/actions"
+import {
+  createBooking,
+  getBookedSlots,
+} from "@/app/actions"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const apiKey = process.env.GEMINI_API_KEY
+
+// =====================================================
+// TYPES
+// =====================================================
 
 type ChatMessage = {
   role: "user" | "assistant"
@@ -28,6 +35,10 @@ type JarvisAnalysis = {
   answer: string
 }
 
+// =====================================================
+// EMPTY BOOKING
+// =====================================================
+
 const EMPTY_BOOKING: BookingData = {
   booking_date: null,
   booking_time: null,
@@ -39,25 +50,12 @@ const EMPTY_BOOKING: BookingData = {
 }
 
 // =====================================================
-// DATUM / ZEIT
+// GEMINI
 // =====================================================
 
-function getZurichDate(): string {
-  return new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Zurich",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date())
-}
-
-function getZurichDateTime(): string {
-  return new Intl.DateTimeFormat("de-CH", {
-    timeZone: "Europe/Zurich",
-    dateStyle: "full",
-    timeStyle: "short",
-  }).format(new Date())
-}
+const ai = new GoogleGenAI({
+  apiKey: apiKey || "",
+})
 
 // =====================================================
 // JSON BEREINIGEN
@@ -72,115 +70,172 @@ function cleanJson(text: string) {
 }
 
 // =====================================================
-// BOOKING LEER
+// SCHLAFEN
 // =====================================================
 
-function emptyBooking(): BookingData {
-  return {
-    booking_date: null,
-    booking_time: null,
-    name: null,
-    phone: null,
-    email: null,
-    car: null,
-    problem: null,
-  }
+function sleep(ms: number) {
+  return new Promise((resolve) =>
+    setTimeout(resolve, ms),
+  )
 }
 
 // =====================================================
-// BOOKING NORMALISIEREN
+// GEMINI MIT RETRY
 // =====================================================
 
-function normalizeBooking(
-  input: Partial<BookingData> | null | undefined,
-): BookingData {
-  const booking = emptyBooking()
+async function generateWithRetry(
+  prompt: string,
+) {
+  const models = [
+    "gemini-3.1-flash",
+    "gemini-3-flash",
+  ]
 
-  if (!input) {
-    return booking
+  let lastError: unknown = null
+
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        console.log(
+          `JARVIS Gemini Versuch: ${model} / ${attempt + 1}`,
+        )
+
+        const response =
+          await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              temperature: 0.1,
+              maxOutputTokens: 700,
+              responseMimeType:
+                "application/json",
+            },
+          })
+
+        return response
+      } catch (error) {
+        lastError = error
+
+        console.error(
+          `GEMINI ERROR ${model} Versuch ${attempt + 1}:`,
+          error,
+        )
+
+        const errorText =
+          error instanceof Error
+            ? error.message
+            : JSON.stringify(error)
+
+        const retryable =
+          errorText.includes("503") ||
+          errorText.includes("UNAVAILABLE") ||
+          errorText.includes("429") ||
+          errorText.includes("RESOURCE_EXHAUSTED") ||
+          errorText.includes("500") ||
+          errorText.includes("INTERNAL")
+
+        if (!retryable) {
+          break
+        }
+
+        if (attempt < 2) {
+          await sleep(
+            1000 * Math.pow(2, attempt),
+          )
+        }
+      }
+    }
   }
 
-  booking.booking_date =
-    typeof input.booking_date === "string" &&
-    input.booking_date.trim()
-      ? input.booking_date.trim()
-      : null
-
-  booking.booking_time =
-    typeof input.booking_time === "string" &&
-    input.booking_time.trim()
-      ? input.booking_time.trim()
-      : null
-
-  booking.name =
-    typeof input.name === "string" &&
-    input.name.trim()
-      ? input.name.trim()
-      : null
-
-  booking.phone =
-    typeof input.phone === "string" &&
-    input.phone.trim()
-      ? input.phone.trim()
-      : null
-
-  booking.email =
-    typeof input.email === "string" &&
-    input.email.trim()
-      ? input.email.trim().toLowerCase()
-      : null
-
-  booking.car =
-    typeof input.car === "string" &&
-    input.car.trim()
-      ? input.car.trim()
-      : null
-
-  booking.problem =
-    typeof input.problem === "string" &&
-    input.problem.trim()
-      ? input.problem.trim()
-      : null
-
-  return booking
+  throw lastError
 }
 
 // =====================================================
-// DATEN ZUSAMMENFÜHREN
+// ZÜRICH DATUM
 // =====================================================
 
-function mergeBookingData(
-  oldData: BookingData,
-  newData: BookingData,
+function getZurichDate() {
+  return new Intl.DateTimeFormat(
+    "sv-SE",
+    {
+      timeZone: "Europe/Zurich",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    },
+  ).format(new Date())
+}
+
+// =====================================================
+// ZÜRICH DATUM + ZEIT
+// =====================================================
+
+function getZurichDateTime() {
+  return new Intl.DateTimeFormat(
+    "de-CH",
+    {
+      timeZone: "Europe/Zurich",
+      dateStyle: "full",
+      timeStyle: "short",
+    },
+  ).format(new Date())
+}
+
+// =====================================================
+// KONVERSATION
+// =====================================================
+
+function buildConversation(
+  messages: ChatMessage[],
+) {
+  return messages
+    .map((message) => {
+      const role =
+        message.role === "assistant"
+          ? "JARVIS"
+          : "BENUTZER"
+
+      return `${role}: ${message.content}`
+    })
+    .join("\n\n")
+}
+
+// =====================================================
+// BOOKING MERGEN
+// =====================================================
+
+function mergeBooking(
+  oldBooking: BookingData,
+  newBooking: Partial<BookingData>,
 ): BookingData {
   return {
     booking_date:
-      newData.booking_date ||
-      oldData.booking_date,
+      newBooking.booking_date ||
+      oldBooking.booking_date,
 
     booking_time:
-      newData.booking_time ||
-      oldData.booking_time,
+      newBooking.booking_time ||
+      oldBooking.booking_time,
 
     name:
-      newData.name ||
-      oldData.name,
+      newBooking.name ||
+      oldBooking.name,
 
     phone:
-      newData.phone ||
-      oldData.phone,
+      newBooking.phone ||
+      oldBooking.phone,
 
     email:
-      newData.email ||
-      oldData.email,
+      newBooking.email ||
+      oldBooking.email,
 
     car:
-      newData.car ||
-      oldData.car,
+      newBooking.car ||
+      oldBooking.car,
 
     problem:
-      newData.problem ||
-      oldData.problem,
+      newBooking.problem ||
+      oldBooking.problem,
   }
 }
 
@@ -191,42 +246,35 @@ function mergeBookingData(
 function getMissingField(
   booking: BookingData,
 ): keyof BookingData | null {
-  if (!booking.booking_date) {
+  if (!booking.booking_date)
     return "booking_date"
-  }
 
-  if (!booking.booking_time) {
+  if (!booking.booking_time)
     return "booking_time"
-  }
 
-  if (!booking.name) {
+  if (!booking.name)
     return "name"
-  }
 
-  if (!booking.phone) {
+  if (!booking.phone)
     return "phone"
-  }
 
-  if (!booking.email) {
+  if (!booking.email)
     return "email"
-  }
 
-  if (!booking.car) {
+  if (!booking.car)
     return "car"
-  }
 
-  if (!booking.problem) {
+  if (!booking.problem)
     return "problem"
-  }
 
   return null
 }
 
 // =====================================================
-// FRAGEN
+// FRAGE
 // =====================================================
 
-function questionForField(
+function getQuestion(
   field: keyof BookingData,
 ) {
   switch (field) {
@@ -237,13 +285,13 @@ function questionForField(
       return "Um welche Uhrzeit möchtest du den Termin? Termine sind zwischen 15:00 und 22:00 Uhr möglich."
 
     case "name":
-      return "Wie ist dein Name?"
+      return "Wie lautet dein Name?"
 
     case "phone":
-      return "Wie lautet deine Telefonnummer?"
+      return "Welche Telefonnummer soll ich für den Termin hinterlegen?"
 
     case "email":
-      return "Welche E-Mail-Adresse soll ich für die Terminbestätigung verwenden?"
+      return "Welche E-Mail-Adresse soll ich für die Bestätigung verwenden?"
 
     case "car":
       return "Welches Fahrzeug hast du? Zum Beispiel BMW M4, Baujahr 2021."
@@ -261,31 +309,25 @@ function questionForField(
 // =====================================================
 
 function isValidDate(
-  value: string | null,
+  date: string,
 ) {
-  if (!value) {
-    return false
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false
-  }
-
-  const date = new Date(
-    `${value}T00:00:00`,
-  )
-
-  if (Number.isNaN(date.getTime())) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return false
   }
 
   const [year, month, day] =
-    value.split("-").map(Number)
+    date.split("-").map(Number)
+
+  const test = new Date(
+    year,
+    month - 1,
+    day,
+  )
 
   return (
-    date.getFullYear() === year &&
-    date.getMonth() + 1 === month &&
-    date.getDate() === day
+    test.getFullYear() === year &&
+    test.getMonth() === month - 1 &&
+    test.getDate() === day
   )
 }
 
@@ -294,23 +336,14 @@ function isValidDate(
 // =====================================================
 
 function isValidTime(
-  value: string | null,
+  time: string,
 ) {
-  if (!value) {
+  if (!/^\d{2}:\d{2}$/.test(time)) {
     return false
   }
 
-  const match =
-    value.match(
-      /^(\d{2}):(\d{2})$/,
-    )
-
-  if (!match) {
-    return false
-  }
-
-  const hour = Number(match[1])
-  const minute = Number(match[2])
+  const [hour, minute] =
+    time.split(":").map(Number)
 
   if (
     hour < 15 ||
@@ -319,10 +352,10 @@ function isValidTime(
     return false
   }
 
-  if (
-    minute !== 0 &&
-    minute !== 30
-  ) {
+  // Nur volle Stunden erlaubt
+  // Falls du 18:30 möchtest,
+  // kannst du diese Prüfung später ändern.
+  if (minute !== 0) {
     return false
   }
 
@@ -333,45 +366,32 @@ function isValidTime(
 // DATUM FORMATIEREN
 // =====================================================
 
-function formatDateForUser(
-  value: string,
+function formatDate(
+  date: string,
 ) {
-  const [
-    year,
-    month,
-    day,
-  ] = value.split("-")
+  const [year, month, day] =
+    date.split("-")
 
   return `${day}.${month}.${year}`
 }
 
 // =====================================================
-// GEMINI
-// =====================================================
-
-const ai = apiKey
-  ? new GoogleGenAI({
-      apiKey,
-    })
-  : null
-
-// =====================================================
-// POST
+// HAUPT-FUNKTION
 // =====================================================
 
 export async function POST(
   request: Request,
 ) {
   try {
-    // -------------------------------------------------
+    // =================================================
     // API KEY
-    // -------------------------------------------------
+    // =================================================
 
-    if (!apiKey || !ai) {
+    if (!apiKey) {
       return NextResponse.json(
         {
           error:
-            "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
+            "GEMINI_API_KEY fehlt in den Environment Variables.",
         },
         {
           status: 500,
@@ -379,9 +399,9 @@ export async function POST(
       )
     }
 
-    // -------------------------------------------------
-    // REQUEST
-    // -------------------------------------------------
+    // =================================================
+    // BODY
+    // =================================================
 
     const body =
       await request.json()
@@ -404,19 +424,17 @@ export async function POST(
       )
     }
 
-    // -------------------------------------------------
-    // NUR GÜLTIGE NACHRICHTEN
-    // -------------------------------------------------
+    // =================================================
+    // NUR GÜLTIGE MESSAGES
+    // =================================================
 
     const validMessages =
       messages.filter(
         (message) =>
           message &&
           (
-            message.role ===
-              "user" ||
-            message.role ===
-              "assistant"
+            message.role === "user" ||
+            message.role === "assistant"
           ) &&
           typeof message.content ===
             "string" &&
@@ -437,18 +455,9 @@ export async function POST(
       )
     }
 
-    // -------------------------------------------------
-    // BISHERIGE BOOKING DATEN
-    // -------------------------------------------------
-
-    const previousBooking =
-      normalizeBooking(
-        body?.bookingData,
-      )
-
-    // -------------------------------------------------
-    // AKTUELLES DATUM
-    // -------------------------------------------------
+    // =================================================
+    // DATUM
+    // =================================================
 
     const currentDate =
       getZurichDate()
@@ -456,137 +465,103 @@ export async function POST(
     const currentDateTime =
       getZurichDateTime()
 
-    // -------------------------------------------------
+    // =================================================
+    // VORHERIGE BOOKING DATEN
+    // =================================================
+
+    const previousBooking =
+      body?.bookingData || EMPTY_BOOKING
+
+    // =================================================
     // KONVERSATION
-    // -------------------------------------------------
+    // =================================================
 
     const conversation =
-      validMessages
-        .map((message) => {
-          const role =
-            message.role === "user"
-              ? "BENUTZER"
-              : "JARVIS"
+      buildConversation(
+        validMessages,
+      )
 
-          return `${role}: ${message.content}`
-        })
-        .join("\n")
-
-    // -------------------------------------------------
-    // GEMINI PROMPT
-    // -------------------------------------------------
+    // =================================================
+    // PROMPT
+    // =================================================
 
     const prompt = `
 Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
 
 Du sprichst natürliches Deutsch.
 
-AKTUELLES DATUM IN DER SCHWEIZ:
+Aktuelles Datum:
 ${currentDate}
 
-AKTUELLES DATUM UND UHRZEIT:
+Aktuelles Datum und Uhrzeit:
 ${currentDateTime}
 
-ZEITZONE:
+Zeitzone:
 Europe/Zurich
 
-TERMINE:
-Montag bis Sonntag
-15:00 bis 22:00 Uhr
+TERMINZEITEN:
+15:00 bis 22:00 Uhr.
 
-==================================================
-SEHR WICHTIG
-==================================================
+DEINE AUFGABE:
 
-Der Benutzer kann einen Termin in mehreren Nachrichten erstellen.
+Du analysierst den kompletten Chat und erkennst,
+ob der Benutzer einen Werkstatttermin erstellen möchte.
 
-Du musst deshalb den GESAMTEN CHAT berücksichtigen.
+WICHTIG:
 
-Wenn der Benutzer zuerst sagt:
+- Gib ausschließlich gültiges JSON zurück.
+- Kein Markdown.
+- Keine Erklärungen außerhalb des JSON.
+- Erfinde niemals Kundendaten.
+- Nur Informationen aus BENUTZER-Nachrichten dürfen als Kundendaten verwendet werden.
+- Bereits vorhandene bookingData darf erhalten bleiben.
+- Wenn der Benutzer neue Informationen nennt, übernimm sie.
+- Wenn Informationen fehlen, setze sie auf null.
 
-"Ich möchte einen Termin"
+DATUM:
 
-und JARVIS fragt:
-
-"Für welchen Tag möchtest du den Termin?"
-
-und der Benutzer danach sagt:
-
-"am 15 september um 20 uhr"
-
-musst du daraus erkennen:
-
-booking_date = "2026-09-15"
-booking_time = "20:00"
-
-Das aktuelle Jahr ist 2026.
-
-==================================================
-DATUM
-==================================================
-
-Verstehe natürliche deutsche Datumsangaben.
+Du musst deutsche Datumsangaben verstehen.
 
 Beispiele:
 
-"15 september"
-=> 2026-09-15
+"18 Oktober"
+→ ${currentDate.slice(0, 4)}-10-18
 
-"15. September"
-=> 2026-09-15
-
-"15.09."
-=> 2026-09-15
+"15 September"
+→ ${currentDate.slice(0, 4)}-09-15
 
 "morgen"
-=> berechne das Datum anhand des aktuellen Datums
+→ berechne das tatsächliche Datum.
 
 "übermorgen"
-=> berechne das Datum anhand des aktuellen Datums
+→ berechne das tatsächliche Datum.
 
 "nächsten Freitag"
-=> berechne den nächsten Freitag
+→ berechne den nächsten Freitag.
 
-"Freitag"
-=> berechne den nächsten passenden Freitag
+Wenn ein Datum ohne Jahr genannt wird,
+verwende normalerweise das aktuelle Jahr.
 
-==================================================
-UHRZEIT
-==================================================
+ZEIT:
 
-Beispiele:
+"18 Uhr"
+→ "18:00"
 
 "20 Uhr"
-=> 20:00
-
-"20 uhr"
-=> 20:00
-
-"um acht"
-=> 20:00
-
-"acht Uhr abends"
-=> 20:00
+→ "20:00"
 
 "halb sieben"
-=> 18:30
+→ "18:30"
 
 "halb acht"
-=> 19:30
+→ "19:30"
 
-"viertel nach acht"
-=> 20:15
+"19:00"
+→ "19:00"
 
-"viertel vor neun"
-=> 20:45
+Der Benutzer darf nur Termine zwischen 15:00 und 22:00 buchen.
 
-Wenn die Uhrzeit nicht eindeutig ist, setze booking_time auf null.
-
-==================================================
-TERMIN-DATEN
-==================================================
-
-Für einen Termin benötigen wir:
+DATEN FÜR EINEN TERMIN:
 
 booking_date
 booking_time
@@ -596,57 +571,46 @@ email
 car
 problem
 
-==================================================
-WICHTIG ZU KUNDENDATEN
-==================================================
+INTENT:
 
-Erfinde NIEMALS:
-
-- Namen
-- Telefonnummern
-- E-Mail-Adressen
-- Fahrzeuge
-- Anliegen
-
-Wenn diese Informationen nicht im BENUTZER-Text vorhanden sind,
-setze sie auf null.
-
-Informationen aus JARVIS-Nachrichten dürfen nicht als neue
-Kundendaten verwendet werden.
-
-==================================================
-BISHER GESPEICHERTE TERMINDATEN
-==================================================
-
-${JSON.stringify(previousBooking)}
-
-==================================================
-CHAT
-==================================================
-
-${conversation}
-
-==================================================
-AUFGABE
-==================================================
-
-Erkenne die Absicht.
-
-Wenn es kein Terminwunsch ist:
-
-intent = "chat"
-
-Wenn der Benutzer einen Termin erstellen möchte oder gerade
-Informationen für einen Termin liefert:
-
+Wenn der Benutzer einen Termin möchte:
 intent = "booking"
 
-Sammle dabei die bereits gespeicherten Termindaten und die
-Informationen aus der letzten BENUTZER-Nachricht.
+Wenn der Benutzer nur eine normale Frage stellt:
+intent = "chat"
 
-Gib ausschließlich gültiges JSON zurück.
+BEISPIEL:
 
-FORMAT:
+Benutzer:
+"Mach mir einen Termin"
+
+→ booking
+
+Benutzer:
+"18 Oktober"
+
+Wenn vorher JARVIS gefragt hat:
+"Für welchen Tag möchtest du den Termin?"
+
+→ booking_date = "aktuelles Jahr-10-18"
+
+Benutzer:
+"20 Uhr"
+
+→ booking_time = "20:00"
+
+ANTWORT:
+
+Bei normalen Fragen:
+answer = natürliche deutsche Antwort
+
+Bei fehlenden Terminangaben:
+answer = kurze passende Frage
+
+Wenn alle Terminangaben vorhanden sind:
+answer = "TERMIN_BEREIT"
+
+JSON:
 
 {
   "intent": "chat",
@@ -659,73 +623,37 @@ FORMAT:
     "car": null,
     "problem": null
   },
-  "answer": "..."
-}
-
-oder:
-
-{
-  "intent": "booking",
-  "booking": {
-    "booking_date": "2026-09-15",
-    "booking_time": "20:00",
-    "name": null,
-    "phone": null,
-    "email": null,
-    "car": null,
-    "problem": null
-  },
   "answer": ""
 }
 
-Wenn alle benötigten Informationen vorhanden sind,
-setze answer auf:
+BISHERIGE BOOKING-DATEN:
 
-"TERMIN_BEREIT"
+${JSON.stringify(previousBooking)}
 
-NIEMALS Markdown.
-NIEMALS Codeblöcke.
-NUR JSON.
+BISHERIGER CHAT:
+
+${conversation}
+
+Analysiere jetzt die letzte Benutzernachricht.
 `
 
-    // -------------------------------------------------
-    // GEMINI AUFRUF
-    // -------------------------------------------------
+    // =================================================
+    // GEMINI
+    // =================================================
 
     const response =
-      await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-
-        contents: prompt,
-
-        config: {
-          temperature: 0.1,
-
-          maxOutputTokens: 1000,
-
-          responseMimeType:
-            "application/json",
-        },
-      })
+      await generateWithRetry(
+        prompt,
+      )
 
     const raw =
-      response.text?.trim() ||
-      ""
-
-    console.log(
-      "JARVIS GEMINI RAW:",
-      raw,
-    )
-
-    // -------------------------------------------------
-    // KEINE ANTWORT
-    // -------------------------------------------------
+      response.text?.trim() || ""
 
     if (!raw) {
       return NextResponse.json(
         {
           error:
-            "JARVIS konnte keine Antwort erzeugen.",
+            "JARVIS hat keine Antwort erhalten.",
         },
         {
           status: 500,
@@ -733,9 +661,9 @@ NUR JSON.
       )
     }
 
-    // -------------------------------------------------
-    // JSON PARSEN
-    // -------------------------------------------------
+    // =================================================
+    // JSON
+    // =================================================
 
     let parsed: any
 
@@ -757,7 +685,7 @@ NUR JSON.
       return NextResponse.json(
         {
           error:
-            "JARVIS konnte die Anfrage nicht verstehen.",
+            "JARVIS konnte die Gemini-Antwort nicht verstehen.",
         },
         {
           status: 500,
@@ -765,41 +693,16 @@ NUR JSON.
       )
     }
 
-    // -------------------------------------------------
-    // BOOKING AUS GEMINI
-    // -------------------------------------------------
-
-    const newBooking =
-      normalizeBooking(
-        parsed?.booking,
-      )
-
-    // -------------------------------------------------
-    // ALTE + NEUE DATEN
-    // -------------------------------------------------
-
-    const booking =
-      mergeBookingData(
-        previousBooking,
-        newBooking,
-      )
-
-    console.log(
-      "JARVIS BOOKING:",
-      booking,
-    )
-
-    // -------------------------------------------------
+    // =================================================
     // NORMALER CHAT
-    // -------------------------------------------------
+    // =================================================
 
     if (
-      parsed?.intent !==
-      "booking"
+      parsed.intent !== "booking"
     ) {
       return NextResponse.json({
         answer:
-          typeof parsed?.answer ===
+          typeof parsed.answer ===
           "string"
             ? parsed.answer
             : "Natürlich. Wie kann ich dir helfen?",
@@ -808,23 +711,62 @@ NUR JSON.
 
         bookingInProgress: false,
 
-        bookingData: EMPTY_BOOKING,
+        bookingData:
+          previousBooking,
       })
     }
 
-    // -------------------------------------------------
+    // =================================================
+    // BOOKING MERGEN
+    // =================================================
+
+    const booking =
+      mergeBooking(
+        previousBooking,
+        parsed.booking || {},
+      )
+
+    console.log(
+      "JARVIS BOOKING:",
+      booking,
+    )
+
+    // =================================================
+    // FEHLENDES FELD
+    // =================================================
+
+    const missing =
+      getMissingField(
+        booking,
+      )
+
+    if (missing) {
+      return NextResponse.json({
+        answer:
+          getQuestion(missing),
+
+        bookingCreated: false,
+
+        bookingInProgress: true,
+
+        bookingData: booking,
+
+        missing,
+      })
+    }
+
+    // =================================================
     // DATUM PRÜFEN
-    // -------------------------------------------------
+    // =================================================
 
     if (
-      booking.booking_date &&
       !isValidDate(
-        booking.booking_date,
+        booking.booking_date!,
       )
     ) {
       return NextResponse.json({
         answer:
-          "Ich konnte das Datum nicht eindeutig erkennen. Für welchen Tag möchtest du den Termin?",
+          "Das Datum konnte ich nicht richtig erkennen. Für welchen Tag möchtest du den Termin?",
 
         bookingCreated: false,
 
@@ -835,23 +777,23 @@ NUR JSON.
           booking_date: null,
         },
 
-        missing: "booking_date",
+        missing:
+          "booking_date",
       })
     }
 
-    // -------------------------------------------------
+    // =================================================
     // ZEIT PRÜFEN
-    // -------------------------------------------------
+    // =================================================
 
     if (
-      booking.booking_time &&
       !isValidTime(
-        booking.booking_time,
+        booking.booking_time!,
       )
     ) {
       return NextResponse.json({
         answer:
-          "Diese Uhrzeit ist nicht möglich. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
+          "Diese Uhrzeit ist nicht verfügbar. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
 
         bookingCreated: false,
 
@@ -862,18 +804,18 @@ NUR JSON.
           booking_time: null,
         },
 
-        missing: "booking_time",
+        missing:
+          "booking_time",
       })
     }
 
-    // -------------------------------------------------
-    // VERGANGENES DATUM
-    // -------------------------------------------------
+    // =================================================
+    // VERGANGENHEIT
+    // =================================================
 
     if (
-      booking.booking_date &&
-      booking.booking_date <
-        currentDate
+      booking.booking_date! <
+      currentDate
     ) {
       return NextResponse.json({
         answer:
@@ -888,39 +830,53 @@ NUR JSON.
           booking_date: null,
         },
 
-        missing: "booking_date",
+        missing:
+          "booking_date",
       })
     }
 
-    // -------------------------------------------------
-    // FEHLENDE INFORMATION
-    // -------------------------------------------------
+    // =================================================
+    // BELEGTE TERMINE
+    // =================================================
 
-    const missing =
-      getMissingField(
-        booking,
+    const bookedSlots =
+      await getBookedSlots()
+
+    const alreadyBooked =
+      bookedSlots.some(
+        (slot) =>
+          slot.booking_date ===
+            booking.booking_date &&
+          slot.booking_time ===
+            booking.booking_time,
       )
 
-    if (missing) {
+    if (alreadyBooked) {
       return NextResponse.json({
         answer:
-          questionForField(
-            missing,
-          ),
+          `Der Termin am ${formatDate(
+            booking.booking_date!,
+          )} um ${
+            booking.booking_time
+          } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
 
         bookingCreated: false,
 
         bookingInProgress: true,
 
-        bookingData: booking,
+        bookingData: {
+          ...booking,
+          booking_time: null,
+        },
 
-        missing,
+        missing:
+          "booking_time",
       })
     }
 
-    // -------------------------------------------------
+    // =================================================
     // TERMIN ERSTELLEN
-    // -------------------------------------------------
+    // =================================================
 
     const result =
       await createBooking({
@@ -946,22 +902,15 @@ NUR JSON.
           booking.problem!,
       })
 
-    // -------------------------------------------------
-    // FEHLER BEIM ERSTELLEN
-    // -------------------------------------------------
+    // =================================================
+    // CREATE FEHLER
+    // =================================================
 
     if (!result.ok) {
-      console.error(
-        "CREATE BOOKING ERROR:",
-        result.error,
-      )
-
       return NextResponse.json({
         answer:
-          `Ich konnte den Termin leider nicht erstellen. ${
-            result.error ||
-            "Bitte versuche es erneut."
-          }`,
+          result.error ||
+          "Der Termin konnte leider nicht erstellt werden.",
 
         bookingCreated: false,
 
@@ -971,18 +920,21 @@ NUR JSON.
       })
     }
 
-    // -------------------------------------------------
-    // ERFOLGREICH
-    // -------------------------------------------------
-
-    const dateText =
-      formatDateForUser(
-        booking.booking_date!,
-      )
+    // =================================================
+    // ERFOLG
+    // =================================================
 
     return NextResponse.json({
       answer:
-        `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich erstellt. 📅 ${dateText} um ${booking.booking_time} Uhr. Fahrzeug: ${booking.car}. Anliegen: ${booking.problem}. Du erhältst die Bestätigung zusätzlich per E-Mail.`,
+        `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich aufgenommen. 📅 ${formatDate(
+          booking.booking_date!,
+        )} um ${
+          booking.booking_time
+        } Uhr. Fahrzeug: ${
+          booking.car
+        }. Anliegen: ${
+          booking.problem
+        }. Deine Anfrage wartet jetzt auf die Bestätigung von MB-Performance.`,
 
       bookingCreated: true,
 
@@ -992,7 +944,8 @@ NUR JSON.
       bookingData:
         EMPTY_BOOKING,
 
-      bookingInProgress: false,
+      bookingInProgress:
+        false,
     })
   } catch (error) {
     console.error(
@@ -1000,12 +953,62 @@ NUR JSON.
       error,
     )
 
+    const errorText =
+      error instanceof Error
+        ? error.message
+        : JSON.stringify(error)
+
+    // =================================================
+    // GEMINI ÜBERLASTUNG
+    // =================================================
+
+    if (
+      errorText.includes("503") ||
+      errorText.includes(
+        "UNAVAILABLE",
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "JARVIS ist gerade stark ausgelastet. Bitte versuche es in einigen Sekunden erneut.",
+        },
+        {
+          status: 503,
+        },
+      )
+    }
+
+    // =================================================
+    // RATE LIMIT
+    // =================================================
+
+    if (
+      errorText.includes("429") ||
+      errorText.includes(
+        "RESOURCE_EXHAUSTED",
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "JARVIS hat gerade zu viele Anfragen erhalten. Bitte versuche es gleich erneut.",
+        },
+        {
+          status: 429,
+        },
+      )
+    }
+
+    // =================================================
+    // ALLGEMEINER FEHLER
+    // =================================================
+
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "JARVIS konnte die Anfrage nicht verarbeiten.",
+          errorText ||
+          "JARVIS konnte die Anfrage nicht verarbeiten.",
       },
       {
         status: 500,
