@@ -1,30 +1,72 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-/**
- * Especially important if using Fluid compute: Don't put this client in a
- * global variable. Always create a new client within each function when using
- * it.
- */
 export async function createClient() {
-  const cookieStore = await cookies()
+  const cookieStore =
+    await cookies()
 
-  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    // Secure cookies in production; not in dev, so localhost still works.
-    cookieOptions: { secure: process.env.NODE_ENV === "production" },
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl) {
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_URL fehlt.",
+    )
+  }
+
+  if (!supabaseAnonKey) {
+    throw new Error(
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY fehlt.",
+    )
+  }
+
+  return createServerClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+
+        setAll(
+          cookiesToSet,
+        ) {
+          try {
+            cookiesToSet.forEach(
+              ({
+                name,
+                value,
+                options,
+              }) => {
+                cookieStore.set(
+                  name,
+                  value,
+                  options,
+                )
+              },
+            )
+          } catch {
+            // Server Components können
+            // Cookies nicht immer setzen.
+            // Die Session wird durch proxy.ts
+            // aktualisiert.
+          }
+        },
       },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-        } catch {
-          // The "setAll" method was called from a Server Component.
-          // This can be ignored if you have proxy refreshing
-          // user sessions.
-        }
+
+      cookieOptions: {
+        secure:
+          process.env.NODE_ENV ===
+          "production",
+
+        sameSite: "lax",
+
+        path: "/",
       },
     },
-  })
+  )
 }
