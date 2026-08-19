@@ -358,15 +358,16 @@ ${conversation}
 `
 
     const response =
-      await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: extractionPrompt,
-        config: {
-          temperature: 0.1,
-          maxOutputTokens: 700,
-        },
-      })
+  await ai.models.generateContent({
+    model: "gemini-3.6-flash",
 
+    contents: extractionPrompt,
+
+    config: {
+      maxOutputTokens: 500,
+      responseMimeType: "application/json",
+    },
+  })
     const raw =
       response.text?.trim() || ""
 
