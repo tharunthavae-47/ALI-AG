@@ -31,26 +31,14 @@ export async function POST(request: Request) {
       .replace(/\s+/g, " ")
       .trim()
 
-    /*
-     * Microsoft Edge TTS
-     *
-     * Weibliche deutsche Stimme:
-     * de-DE-KatjaNeural
-     */
-
-    const voice = "de-DE-KatjaNeural"
-
     const ssml = `
 <speak version="1.0"
   xmlns="http://www.w3.org/2001/10/synthesis"
   xmlns:mstts="http://www.w3.org/2001/mstts"
   xml:lang="de-DE">
 
-  <voice name="${voice}">
-    <prosody
-      rate="+5%"
-      pitch="+2Hz"
-      volume="100">
+  <voice name="de-DE-KatjaNeural">
+    <prosody rate="+5%" pitch="+2Hz">
       ${escapeXml(cleanText)}
     </prosody>
   </voice>
@@ -62,18 +50,13 @@ export async function POST(request: Request) {
       "https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1",
       {
         method: "POST",
-
         headers: {
-          "Content-Type":
-            "application/ssml+xml",
-
+          "Content-Type": "application/ssml+xml",
           "X-Microsoft-OutputFormat":
             "audio-24khz-48kbitrate-mono-mp3",
-
           "User-Agent":
             "Mozilla/5.0",
         },
-
         body: ssml,
       }
     )
@@ -88,8 +71,14 @@ export async function POST(request: Request) {
         errorText
       )
 
-      throw new Error(
-        `Edge TTS Fehler: ${response.status}`
+      return NextResponse.json(
+        {
+          error:
+            `Edge TTS Fehler ${response.status}`,
+        },
+        {
+          status: 500,
+        }
       )
     }
 
@@ -98,16 +87,12 @@ export async function POST(request: Request) {
 
     return new NextResponse(audio, {
       status: 200,
-
       headers: {
-        "Content-Type":
-          "audio/mpeg",
-
+        "Content-Type": "audio/mpeg",
         "Content-Length":
           String(audio.byteLength),
-
         "Cache-Control":
-          "no-cache",
+          "no-store",
       },
     })
   } catch (error) {
@@ -130,16 +115,11 @@ export async function POST(request: Request) {
   }
 }
 
-function escapeXml(
-  text: string
-) {
+function escapeXml(text: string) {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(
-      /'/g,
-      "&apos;"
-    )
+    .replace(/'/g, "&apos;")
 }
