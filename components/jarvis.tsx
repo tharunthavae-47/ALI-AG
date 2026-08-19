@@ -35,14 +35,19 @@ type SpeechRecognitionInstance = {
   lang: string
   continuous: boolean
   interimResults: boolean
+
   start: () => void
   stop: () => void
   abort: () => void
+
   onresult:
     | ((event: SpeechRecognitionResultEvent) => void)
     | null
+
   onstart: (() => void) | null
+
   onend: (() => void) | null
+
   onerror:
     | ((event: SpeechRecognitionErrorEvent) => void)
     | null
@@ -60,7 +65,8 @@ declare global {
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Hallo. Ich bin JARVIS. Wie kann ich dir helfen?",
+  content:
+    "Hallo. Ich bin JARVIS. Wie kann ich dir helfen?",
 }
 
 export function Jarvis() {
@@ -77,38 +83,17 @@ export function Jarvis() {
   const [speaking, setSpeaking] = useState(false)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
 
-  const [voices, setVoices] = useState<
-    SpeechSynthesisVoice[]
-  >([])
-
   const recognitionRef =
     useRef<SpeechRecognitionInstance | null>(null)
 
-  const chatEndRef = useRef<HTMLDivElement | null>(null)
+  const audioRef =
+    useRef<HTMLAudioElement | null>(null)
 
-  // =====================================================
-  // STIMMEN LADEN
-  // =====================================================
+  const audioUrlRef =
+    useRef<string | null>(null)
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-
-    const loadVoices = () => {
-      const availableVoices =
-        window.speechSynthesis.getVoices()
-
-      setVoices(availableVoices)
-    }
-
-    loadVoices()
-
-    window.speechSynthesis.onvoiceschanged =
-      loadVoices
-
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null
-    }
-  }, [])
+  const chatEndRef =
+    useRef<HTMLDivElement | null>(null)
 
   // =====================================================
   // CHAT AUTOMATISCH NACH UNTEN SCROLLEN
@@ -166,40 +151,7 @@ export function Jarvis() {
   }, [messages])
 
   // =====================================================
-  // WEIBLICHE DEUTSCHE STIMME SUCHEN
-  // =====================================================
-
-  function getFemaleVoice() {
-    const germanVoices = voices.filter((voice) =>
-      voice.lang
-        .toLowerCase()
-        .startsWith("de")
-    )
-
-    const preferredVoice =
-      germanVoices.find((voice) => {
-        const name =
-          voice.name.toLowerCase()
-
-        return (
-          name.includes("katja") ||
-          name.includes("helena") ||
-          name.includes("anna") ||
-          name.includes("petra") ||
-          name.includes("vicki") ||
-          name.includes("female")
-        )
-      })
-
-    return (
-      preferredVoice ||
-      germanVoices[0] ||
-      voices[0]
-    )
-  }
-
-  // =====================================================
-  // TEXT FÜR SPRACHE BEREINIGEN
+  // TEXT FÜR TTS BEREINIGEN
   // =====================================================
 
   function cleanTextForSpeech(text: string) {
@@ -212,70 +164,169 @@ export function Jarvis() {
         /\[([^\]]+)\]\([^)]+\)/g,
         "$1"
       )
-      .replace(/https?:\/\/\S+/g, "")
+      .replace(
+        /https?:\/\/\S+/g,
+        ""
+      )
       .replace(/\n+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
   }
 
   // =====================================================
-  // JARVIS SPRICHT
+  // AKTUELLES AUDIO STOPPEN
   // =====================================================
 
-  function speak(text: string) {
-    if (!voiceEnabled) return
-
-    if (
-      typeof window === "undefined" ||
-      !("speechSynthesis" in window)
-    ) {
-      return
+  function stopSpeaking() {
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+        audioRef.current.src = ""
+        audioRef.current = null
+      }
+    } catch (error) {
+      console.error(
+        "AUDIO STOP ERROR:",
+        error
+      )
     }
+
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(
+        audioUrlRef.current
+      )
+
+      audioUrlRef.current = null
+    }
+
+    setSpeaking(false)
+  }
+
+  // =====================================================
+  // JARVIS SPRICHT ÜBER EDGE TTS
+  // =====================================================
+
+  async function speak(text: string) {
+    if (!voiceEnabled) return
 
     const cleanText =
       cleanTextForSpeech(text)
 
     if (!cleanText) return
 
-    window.speechSynthesis.cancel()
+    try {
+      // Vorheriges Audio stoppen
+      stopSpeaking()
 
-    const utterance =
-      new SpeechSynthesisUtterance(
-        cleanText
+      setSpeaking(true)
+
+      const response = await fetch(
+        "/api/tts",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            text: cleanText,
+          }),
+        }
       )
 
-    const voice = getFemaleVoice()
+      if (!response.ok) {
+        let errorMessage =
+          "TTS konnte nicht erzeugt werden."
 
-    if (voice) {
-      utterance.voice = voice
-      utterance.lang = voice.lang
-    } else {
-      utterance.lang = "de-DE"
-    }
+        try {
+          const data =
+            await response.json()
 
-    // Etwas schneller und natürlich
-    utterance.rate = 1.08
+          if (data?.error) {
+            errorMessage =
+              data.error
+          }
+        } catch {}
 
-    // Etwas weiblicher
-    utterance.pitch = 1.05
+        throw new Error(
+          errorMessage
+        )
+      }
 
-    utterance.volume = 1
+      const audioBlob =
+        await response.blob()
 
-    utterance.onstart = () => {
-      setSpeaking(true)
-    }
+      if (!audioBlob.size) {
+        throw new Error(
+          "JARVIS hat keine Audiodatei erhalten."
+        )
+      }
 
-    utterance.onend = () => {
+      const audioUrl =
+        URL.createObjectURL(
+          audioBlob
+        )
+
+      audioUrlRef.current =
+        audioUrl
+
+      const audio =
+        new Audio(audioUrl)
+
+      audioRef.current = audio
+
+      audio.volume = 1
+
+      audio.onended = () => {
+        setSpeaking(false)
+
+        if (
+          audioUrlRef.current ===
+          audioUrl
+        ) {
+          URL.revokeObjectURL(
+            audioUrl
+          )
+
+          audioUrlRef.current = null
+        }
+
+        audioRef.current = null
+      }
+
+      audio.onerror = () => {
+        console.error(
+          "JARVIS AUDIO PLAYBACK ERROR"
+        )
+
+        setSpeaking(false)
+
+        if (
+          audioUrlRef.current ===
+          audioUrl
+        ) {
+          URL.revokeObjectURL(
+            audioUrl
+          )
+
+          audioUrlRef.current = null
+        }
+
+        audioRef.current = null
+      }
+
+      await audio.play()
+    } catch (error) {
+      console.error(
+        "JARVIS VOICE ERROR:",
+        error
+      )
+
       setSpeaking(false)
     }
-
-    utterance.onerror = () => {
-      setSpeaking(false)
-    }
-
-    window.speechSynthesis.speak(
-      utterance
-    )
   }
 
   // =====================================================
@@ -303,14 +354,8 @@ export function Jarvis() {
       setListening(false)
     }
 
-    // Stimme stoppen
-    if (
-      typeof window !== "undefined" &&
-      "speechSynthesis" in window
-    ) {
-      window.speechSynthesis.cancel()
-      setSpeaking(false)
-    }
+    // Aktuelle Stimme stoppen
+    stopSpeaking()
 
     // Neue User-Nachricht
     const userChatMessage: Message = {
@@ -318,15 +363,14 @@ export function Jarvis() {
       content: userMessage,
     }
 
-    // WICHTIG:
-    // Wir bauen den kompletten bisherigen Verlauf
-    // PLUS die neue Frage.
+    // Kompletter bisheriger Verlauf
+    // PLUS neue Frage
     const updatedMessages = [
       ...messages,
       userChatMessage,
     ]
 
-    // User-Nachricht sofort anzeigen
+    // User-Nachricht anzeigen
     setMessages(updatedMessages)
 
     setMessage("")
@@ -337,12 +381,15 @@ export function Jarvis() {
         "/api/chat",
         {
           method: "POST",
+
           headers: {
             "Content-Type":
               "application/json",
           },
+
           body: JSON.stringify({
-            messages: updatedMessages,
+            messages:
+              updatedMessages,
           }),
         }
       )
@@ -353,7 +400,8 @@ export function Jarvis() {
       }
 
       try {
-        data = await response.json()
+        data =
+          await response.json()
       } catch {
         throw new Error(
           `Ungültige Serverantwort (${response.status})`
@@ -376,17 +424,23 @@ export function Jarvis() {
         data.answer ||
         "Ich konnte leider keine Antwort erzeugen."
 
-      // JARVIS Antwort zum Chat hinzufügen
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: jarvisAnswer,
+      }
+
+      // JARVIS Antwort anzeigen
       setMessages([
         ...updatedMessages,
-        {
-          role: "assistant",
-          content: jarvisAnswer,
-        },
+        assistantMessage,
       ])
 
-      // Antwort vorlesen
-      speak(jarvisAnswer)
+      // JARVIS sprechen lassen
+      if (voiceEnabled) {
+        await speak(
+          jarvisAnswer
+        )
+      }
     } catch (error) {
       console.error(
         "JARVIS ERROR:",
@@ -419,9 +473,7 @@ export function Jarvis() {
   function clearConversation() {
     if (loading) return
 
-    window.speechSynthesis.cancel()
-
-    setSpeaking(false)
+    stopSpeaking()
 
     const newMessages: Message[] = [
       INITIAL_MESSAGE,
@@ -440,12 +492,13 @@ export function Jarvis() {
 
   async function startListening() {
     if (
-      typeof window === "undefined"
+      typeof window ===
+      "undefined"
     ) {
       return
     }
 
-    // Mikrofon stoppen
+    // Mikrofon ausschalten
     if (listening) {
       try {
         recognitionRef.current?.stop()
@@ -454,6 +507,7 @@ export function Jarvis() {
       }
 
       setListening(false)
+
       return
     }
 
@@ -462,14 +516,16 @@ export function Jarvis() {
       window.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "Dein Browser unterstützt leider keine Spracherkennung. Bitte verwende Google Chrome oder Microsoft Edge.",
-        },
-      ])
+      setMessages(
+        (previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content:
+              "Dein Browser unterstützt leider keine Spracherkennung. Bitte verwende Google Chrome oder Microsoft Edge.",
+          },
+        ]
+      )
 
       return
     }
@@ -485,27 +541,32 @@ export function Jarvis() {
       window.location.protocol ===
       "https:"
 
-    if (!isSecure && !isLocalhost) {
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "Das Mikrofon benötigt eine sichere HTTPS-Verbindung.",
-        },
-      ])
+    if (
+      !isSecure &&
+      !isLocalhost
+    ) {
+      setMessages(
+        (previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content:
+              "Das Mikrofon benötigt eine sichere HTTPS-Verbindung.",
+          },
+        ]
+      )
 
       return
     }
 
-    // Sprache stoppen
-    window.speechSynthesis.cancel()
-    setSpeaking(false)
+    // JARVIS Stimme stoppen
+    stopSpeaking()
 
     // Mikrofonberechtigung prüfen
     try {
       if (
-        !navigator.mediaDevices?.getUserMedia
+        !navigator.mediaDevices
+          ?.getUserMedia
       ) {
         throw new Error(
           "Mikrofonzugriff nicht verfügbar."
@@ -525,23 +586,27 @@ export function Jarvis() {
 
       stream
         .getTracks()
-        .forEach((track) => {
-          track.stop()
-        })
+        .forEach(
+          (track) => {
+            track.stop()
+          }
+        )
     } catch (error) {
       console.error(
         "MICROPHONE ERROR:",
         error
       )
 
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "Der Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube der Website den Zugriff auf dein Mikrofon.",
-        },
-      ])
+      setMessages(
+        (previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content:
+              "Der Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube der Website den Zugriff auf dein Mikrofon.",
+          },
+        ]
+      )
 
       return
     }
@@ -550,104 +615,118 @@ export function Jarvis() {
     const recognition =
       new SpeechRecognition()
 
-    recognition.lang = "de-DE"
+    recognition.lang =
+      "de-DE"
 
-    recognition.continuous = false
+    recognition.continuous =
+      false
 
-    recognition.interimResults = false
+    recognition.interimResults =
+      false
 
-    recognition.onstart = () => {
-      setListening(true)
+    recognition.onstart =
+      () => {
+        setListening(true)
 
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "🎤 Ich höre zu. Sprich jetzt...",
-        },
-      ])
-    }
+        setMessages(
+          (previous) => [
+            ...previous,
+            {
+              role: "assistant",
+              content:
+                "🎤 Ich höre zu. Sprich jetzt...",
+            },
+          ]
+        )
+      }
 
-    recognition.onresult = (
-      event
-    ) => {
-      const transcript =
-        event.results?.[0]?.[0]
-          ?.transcript
-          ?.trim()
+    recognition.onresult =
+      (event) => {
+        const transcript =
+          event.results?.[0]?.[0]
+            ?.transcript
+            ?.trim()
 
-      if (!transcript) {
+        if (!transcript) {
+          setListening(false)
+
+          setMessages(
+            (previous) => [
+              ...previous,
+              {
+                role: "assistant",
+                content:
+                  "Ich habe leider nichts verstanden.",
+              },
+            ]
+          )
+
+          return
+        }
+
+        setMessage(
+          transcript
+        )
+
+        // Direkt an JARVIS senden
+        askJarvis(
+          transcript
+        )
+      }
+
+    recognition.onend =
+      () => {
+        setListening(false)
+      }
+
+    recognition.onerror =
+      (event) => {
+        console.error(
+          "SPEECH ERROR:",
+          event.error
+        )
+
         setListening(false)
 
-        setMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content:
-              "Ich habe leider nichts verstanden.",
-          },
-        ])
+        if (
+          event.error ===
+          "aborted"
+        ) {
+          return
+        }
 
-        return
+        let errorMessage =
+          "Die Spracherkennung ist fehlgeschlagen."
+
+        if (
+          event.error ===
+          "no-speech"
+        ) {
+          errorMessage =
+            "Ich habe keine Sprache erkannt. Bitte versuche es erneut."
+        }
+
+        if (
+          event.error ===
+            "not-allowed" ||
+          event.error ===
+            "service-not-allowed"
+        ) {
+          errorMessage =
+            "Der Mikrofonzugriff wurde blockiert."
+        }
+
+        setMessages(
+          (previous) => [
+            ...previous,
+            {
+              role: "assistant",
+              content:
+                errorMessage,
+            },
+          ]
+        )
       }
-
-      setMessage(transcript)
-
-      // Direkt an JARVIS senden
-      askJarvis(transcript)
-    }
-
-    recognition.onend = () => {
-      setListening(false)
-    }
-
-    recognition.onerror = (
-      event
-    ) => {
-      console.error(
-        "SPEECH ERROR:",
-        event.error
-      )
-
-      setListening(false)
-
-      if (
-        event.error ===
-        "aborted"
-      ) {
-        return
-      }
-
-      let errorMessage =
-        "Die Spracherkennung ist fehlgeschlagen."
-
-      if (
-        event.error ===
-        "no-speech"
-      ) {
-        errorMessage =
-          "Ich habe keine Sprache erkannt. Bitte versuche es erneut."
-      }
-
-      if (
-        event.error ===
-          "not-allowed" ||
-        event.error ===
-          "service-not-allowed"
-      ) {
-        errorMessage =
-          "Der Mikrofonzugriff wurde blockiert."
-      }
-
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content: errorMessage,
-        },
-      ])
-    }
 
     recognitionRef.current =
       recognition
@@ -674,7 +753,7 @@ export function Jarvis() {
         recognitionRef.current?.abort()
       } catch {}
 
-      window.speechSynthesis.cancel()
+      stopSpeaking()
     }
   }, [])
 
@@ -688,7 +767,7 @@ export function Jarvis() {
         recognitionRef.current?.abort()
       } catch {}
 
-      window.speechSynthesis.cancel()
+      stopSpeaking()
 
       setListening(false)
       setSpeaking(false)
@@ -729,7 +808,6 @@ export function Jarvis() {
       {/* HEADER */}
 
       <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-
         <div className="flex items-center gap-3">
 
           <div className="relative flex h-11 w-11 items-center justify-center">
@@ -751,7 +829,6 @@ export function Jarvis() {
           </div>
 
           <div>
-
             <div className="font-semibold tracking-wider">
               JARVIS
             </div>
@@ -779,7 +856,6 @@ export function Jarvis() {
                 : "ONLINE"}
 
             </div>
-
           </div>
 
         </div>
@@ -790,7 +866,9 @@ export function Jarvis() {
 
           <button
             type="button"
-            onClick={clearConversation}
+            onClick={
+              clearConversation
+            }
             disabled={loading}
             title="Neue Unterhaltung"
             className="rounded-full p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
@@ -811,7 +889,6 @@ export function Jarvis() {
           </button>
 
         </div>
-
       </div>
 
       {/* ANIMATION */}
@@ -855,7 +932,10 @@ export function Jarvis() {
         <div className="space-y-3">
 
           {messages.map(
-            (chatMessage, index) => (
+            (
+              chatMessage,
+              index
+            ) => (
               <div
                 key={`${index}-${chatMessage.role}`}
                 className={`flex ${
@@ -874,7 +954,9 @@ export function Jarvis() {
                       : "border border-white/10 bg-white/5 text-white/80"
                   }`}
                 >
-                  {chatMessage.content}
+                  {
+                    chatMessage.content
+                  }
                 </div>
 
               </div>
@@ -898,7 +980,6 @@ export function Jarvis() {
           <div ref={chatEndRef} />
 
         </div>
-
       </div>
 
       {/* INPUT */}
@@ -917,7 +998,8 @@ export function Jarvis() {
             }
             onKeyDown={(event) => {
               if (
-                event.key === "Enter" &&
+                event.key ===
+                  "Enter" &&
                 !event.shiftKey
               ) {
                 event.preventDefault()
@@ -934,8 +1016,15 @@ export function Jarvis() {
 
           <button
             type="button"
-            onClick={startListening}
+            onClick={
+              startListening
+            }
             disabled={loading}
+            title={
+              listening
+                ? "Mikrofon stoppen"
+                : "Sprechen"
+            }
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
               listening
                 ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]"
@@ -978,16 +1067,13 @@ export function Jarvis() {
           <button
             type="button"
             onClick={() => {
-              if (
-                voiceEnabled
-              ) {
-                window.speechSynthesis.cancel()
-
-                setSpeaking(false)
+              if (voiceEnabled) {
+                stopSpeaking()
               }
 
               setVoiceEnabled(
-                (value) => !value
+                (value) =>
+                  !value
               )
             }}
             className="flex items-center gap-2 text-xs text-white/40 transition hover:text-white"
@@ -1008,7 +1094,6 @@ export function Jarvis() {
         </div>
 
       </div>
-
     </div>
   )
 }
