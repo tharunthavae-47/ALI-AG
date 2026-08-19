@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { SiteNav } from "@/components/site-nav"
 import { Hero } from "@/components/hero"
 import { Services } from "@/components/services"
