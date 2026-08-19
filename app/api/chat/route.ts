@@ -1,107 +1,156 @@
 import { NextResponse } from "next/server"
 import { GoogleGenAI } from "@google/genai"
 
-export const runtime = "nodejs"
+const apiKey = process.env.GEMINI_API_KEY
 
-export async function POST(request: Request) {
+if (!apiKey) {
+  console.error(
+    "GEMINI_API_KEY fehlt."
+  )
+}
+
+const ai = new GoogleGenAI({
+  apiKey: apiKey || "",
+})
+
+type ChatMessage = {
+  role: "user" | "assistant"
+  content: string
+}
+
+export async function POST(
+  request: Request
+) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          error: "GEMINI_API_KEY ist nicht in Vercel eingerichtet.",
-        },
-        { status: 500 }
-      )
-    }
+    // ==========================================
+    // REQUEST LESEN
+    // ==========================================
 
     const body = await request.json()
 
-    const message = body?.message
+    const messages =
+      body?.messages as ChatMessage[]
 
-    if (!message || typeof message !== "string") {
+    if (
+      !Array.isArray(messages) ||
+      messages.length === 0
+    ) {
       return NextResponse.json(
         {
-          error: "Keine Nachricht erhalten.",
+          error:
+            "Keine Chatnachrichten erhalten.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       )
     }
 
-    const ai = new GoogleGenAI({
-      apiKey,
-    })
+    // ==========================================
+    // NUR GÜLTIGE NACHRICHTEN
+    // ==========================================
 
-    const responseStream =
-      await ai.models.generateContentStream({
-        model: "gemini-3.5-flash-lite",
+    const validMessages =
+      messages.filter(
+        (msg) =>
+          msg &&
+          (msg.role === "user" ||
+            msg.role === "assistant") &&
+          typeof msg.content ===
+            "string" &&
+          msg.content.trim()
+      )
 
-        contents: message,
+    // ==========================================
+    // CHATVERLAUF FÜR GEMINI
+    // ==========================================
 
-        config: {
-          systemInstruction: `
+    const conversation =
+      validMessages
+        .map((msg) => {
+          const role =
+            msg.role === "assistant"
+              ? "JARVIS"
+              : "BENUTZER"
+
+          return `${role}: ${msg.content}`
+        })
+        .join("\n\n")
+
+    // ==========================================
+    // SYSTEM-INSTRUKTION
+    // ==========================================
+
+    const prompt = `
 Du bist JARVIS, der persönliche KI-Assistent von MB-Performance.
 
-Antworte auf Deutsch.
+WICHTIG:
 
-Regeln:
-- Antworte sehr schnell und direkt.
-- Verwende normalerweise nur 1 bis 3 kurze Sätze.
-- Bei einfachen Fragen reicht ein kurzer Satz.
-- Sei freundlich, professionell und natürlich.
-- Keine unnötigen langen Erklärungen.
-- Keine erfundenen Informationen.
-- Erfinde niemals Termine, Kundendaten oder Fahrzeugdaten.
+- Du antwortest auf Deutsch.
+- Du bist freundlich, professionell und natürlich.
+- Du antwortest möglichst schnell und direkt.
+- Halte Antworten normalerweise kurz.
+- Bei einfachen Fragen reichen 1 bis 3 Sätze.
+- Du darfst ausführlicher antworten, wenn der Benutzer danach fragt.
+- Du bist der KI-Assistent von MB-Performance.
+- Erfinde niemals Termine, Kunden, Fahrzeuge oder andere Daten.
 - Wenn du etwas nicht weißt, sage ehrlich, dass du es nicht weißt.
-- Du bist der digitale Assistent von MB-Performance.
-- Wenn der Benutzer nach MB-Performance fragt, bleibe professionell.
-- Schreibe keine Markdown-Überschriften, wenn die Antwort gesprochen werden soll.
-- Verwende möglichst natürliche deutsche Sprache.
-          `,
+- Beziehe dich auf vorherige Nachrichten, wenn sie für die aktuelle Frage relevant sind.
+- Wenn der Benutzer "er", "sie", "das", "dort", "vorher" oder ähnliche Begriffe verwendet, versuche anhand des bisherigen Gesprächs zu verstehen, worauf er sich bezieht.
+
+Hier ist der bisherige Chatverlauf:
+
+${conversation}
+
+Beantworte jetzt die letzte Nachricht des BENUTZERS.
+
+Wichtig:
+Antworte nur mit deiner eigentlichen Antwort.
+Schreibe nicht "JARVIS:" vor deine Antwort.
+`
+
+    // ==========================================
+    // GEMINI
+    // ==========================================
+
+    const response =
+      await ai.models.generateContent({
+        model:
+          "gemini-3.5-flash-lite",
+
+        contents: prompt,
+
+        config: {
           temperature: 0.4,
-          maxOutputTokens: 300,
+          maxOutputTokens: 500,
         },
       })
 
-    const encoder = new TextEncoder()
+    // ==========================================
+    // ANTWORT
+    // ==========================================
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of responseStream) {
-            const text = chunk.text
+    const answer =
+      response.text?.trim()
 
-            if (text) {
-              controller.enqueue(
-                encoder.encode(text)
-              )
-            }
-          }
-
-          controller.close()
-        } catch (error) {
-          console.error(
-            "GEMINI STREAM ERROR:",
-            error
-          )
-
-          controller.error(error)
+    if (!answer) {
+      return NextResponse.json(
+        {
+          error:
+            "JARVIS konnte keine Antwort erzeugen.",
+        },
+        {
+          status: 500,
         }
-      },
-    })
+      )
+    }
 
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-      },
+    return NextResponse.json({
+      answer,
     })
   } catch (error) {
     console.error(
-      "JARVIS API ERROR:",
+      "JARVIS GEMINI ERROR:",
       error
     )
 
@@ -112,7 +161,9 @@ Regeln:
             ? error.message
             : "JARVIS konnte die Anfrage nicht verarbeiten.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     )
   }
 }
