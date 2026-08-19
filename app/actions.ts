@@ -1,44 +1,11 @@
 "use server"
 
-import { createClient } from "@supabase/supabase-js"
+import { revalidatePath } from "next/cache"
+import { createClient } from "@/lib/supabase/server"
 
-/* =====================================================
-   SUPABASE
-===================================================== */
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!supabaseUrl) {
-  console.error(
-    "NEXT_PUBLIC_SUPABASE_URL fehlt."
-  )
-}
-
-if (!supabaseServiceKey) {
-  console.error(
-    "SUPABASE_SERVICE_ROLE_KEY fehlt."
-  )
-}
-
-const supabase =
-  supabaseUrl && supabaseServiceKey
-    ? createClient(
-        supabaseUrl,
-        supabaseServiceKey,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        },
-      )
-    : null
-
-/* =====================================================
-   TYPES
-===================================================== */
+// =====================================================
+// TYPES
+// =====================================================
 
 export type BookingStatus =
   | "pending"
@@ -56,13 +23,10 @@ export type Booking = {
   problem: string
   status: BookingStatus
   created_at?: string
+  image_urls?: string[] | null
 }
 
-/* =====================================================
-   BOOKING INPUT
-===================================================== */
-
-export type CreateBookingInput = {
+export type CreateBookingData = {
   booking_date: string
   booking_time: string
   name: string
@@ -72,365 +36,436 @@ export type CreateBookingInput = {
   problem: string
 }
 
-/* =====================================================
-   CREATE BOOKING
-===================================================== */
+export type PublicSlot = {
+  booking_date: string
+  booking_time: string
+}
 
-export async function createBooking(
-  booking: CreateBookingInput,
-): Promise<{
-  ok: boolean
-  bookingId?: string
-  error?: string
-}> {
-  try {
-    if (!supabase) {
-      return {
-        ok: false,
-        error:
-          "Supabase ist nicht korrekt eingerichtet.",
-      }
-    }
+// =====================================================
+// SIGN OUT
+// =====================================================
 
-    /* -----------------------------------------------
-       Pflichtfelder prüfen
-    ------------------------------------------------ */
+export async function signOut() {
+  const supabase = await createClient()
 
-    if (
-      !booking.booking_date ||
-      !booking.booking_time ||
-      !booking.name ||
-      !booking.phone ||
-      !booking.email ||
-      !booking.car ||
-      !booking.problem
-    ) {
-      return {
-        ok: false,
-        error:
-          "Für den Termin fehlen noch Angaben.",
-      }
-    }
+  const { error } = await supabase.auth.signOut()
 
-    /* -----------------------------------------------
-       Prüfen, ob Uhrzeit gültig ist
-    ------------------------------------------------ */
-
-    const hour = Number(
-      booking.booking_time.split(":")[0],
-    )
-
-    if (
-      Number.isNaN(hour) ||
-      hour < 15 ||
-      hour > 22
-    ) {
-      return {
-        ok: false,
-        error:
-          "Termine sind zwischen 15:00 und 22:00 Uhr möglich.",
-      }
-    }
-
-    /* -----------------------------------------------
-       Prüfen, ob Termin bereits existiert
-    ------------------------------------------------ */
-
-    const { data: existingBooking, error: checkError } =
-      await supabase
-        .from("bookings")
-        .select("id")
-        .eq(
-          "booking_date",
-          booking.booking_date,
-        )
-        .eq(
-          "booking_time",
-          booking.booking_time,
-        )
-        .neq("status", "rejected")
-        .maybeSingle()
-
-    if (checkError) {
-      console.error(
-        "BOOKING CHECK ERROR:",
-        checkError,
-      )
-
-      return {
-        ok: false,
-        error:
-          "Der Termin konnte nicht überprüft werden.",
-      }
-    }
-
-    if (existingBooking) {
-      return {
-        ok: false,
-        error:
-          "Diese Uhrzeit ist bereits vergeben.",
-      }
-    }
-
-    /* -----------------------------------------------
-       Termin erstellen
-    ------------------------------------------------ */
-
-    const { data, error } =
-      await supabase
-        .from("bookings")
-        .insert({
-          booking_date:
-            booking.booking_date,
-
-          booking_time:
-            booking.booking_time,
-
-          name:
-            booking.name,
-
-          phone:
-            booking.phone,
-
-          email:
-            booking.email,
-
-          car:
-            booking.car,
-
-          problem:
-            booking.problem,
-
-          status:
-            "pending",
-        })
-        .select("id")
-        .single()
-
-    if (error) {
-      console.error(
-        "CREATE BOOKING ERROR:",
-        error,
-      )
-
-      return {
-        ok: false,
-        error:
-          error.message ||
-          "Der Termin konnte nicht erstellt werden.",
-      }
-    }
+  if (error) {
+    console.error("SIGN OUT ERROR:", error)
 
     return {
-      ok: true,
-      bookingId: data.id,
+      ok: false,
+      error: error.message,
     }
-  } catch (error) {
+  }
+
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
+  }
+}
+
+// =====================================================
+// CREATE BOOKING
+// =====================================================
+
+export async function createBooking(
+  data: CreateBookingData,
+) {
+  const supabase = await createClient()
+
+  if (
+    !data.booking_date ||
+    !data.booking_time ||
+    !data.name ||
+    !data.phone ||
+    !data.email ||
+    !data.car ||
+    !data.problem
+  ) {
+    return {
+      ok: false,
+      error:
+        "Es fehlen noch Angaben für den Termin.",
+    }
+  }
+
+  // -----------------------------------------------
+  // Prüfen, ob Termin bereits vergeben ist
+  // -----------------------------------------------
+
+  const { data: existingBooking, error: checkError } =
+    await supabase
+      .from("bookings")
+      .select("id")
+      .eq(
+        "booking_date",
+        data.booking_date,
+      )
+      .eq(
+        "booking_time",
+        data.booking_time,
+      )
+      .in("status", [
+        "pending",
+        "confirmed",
+      ])
+      .maybeSingle()
+
+  if (checkError) {
     console.error(
-      "CREATE BOOKING EXCEPTION:",
+      "BOOKING CHECK ERROR:",
+      checkError,
+    )
+
+    return {
+      ok: false,
+      error:
+        "Der Termin konnte nicht geprüft werden.",
+    }
+  }
+
+  if (existingBooking) {
+    return {
+      ok: false,
+      error:
+        "Dieser Termin ist bereits vergeben.",
+    }
+  }
+
+  // -----------------------------------------------
+  // Termin erstellen
+  // -----------------------------------------------
+
+  const { data: booking, error } =
+    await supabase
+      .from("bookings")
+      .insert({
+        booking_date:
+          data.booking_date,
+
+        booking_time:
+          data.booking_time,
+
+        name:
+          data.name,
+
+        phone:
+          data.phone,
+
+        email:
+          data.email,
+
+        car:
+          data.car,
+
+        problem:
+          data.problem,
+
+        status: "pending",
+      })
+      .select()
+      .single()
+
+  if (error) {
+    console.error(
+      "CREATE BOOKING ERROR:",
       error,
     )
 
     return {
       ok: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "Unbekannter Fehler beim Erstellen des Termins.",
+        error.message ||
+        "Der Termin konnte nicht erstellt werden.",
     }
+  }
+
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
+    bookingId: booking.id,
+    booking,
   }
 }
 
-/* =====================================================
-   GET BOOKED SLOTS
-===================================================== */
+// =====================================================
+// GET BOOKED SLOTS
+// =====================================================
 
 export async function getBookedSlots(): Promise<
-  Array<{
-    booking_date: string
-    booking_time: string
-  }>
+  PublicSlot[]
 > {
-  try {
-    if (!supabase) {
-      return []
-    }
+  const supabase = await createClient()
 
-    const { data, error } =
-      await supabase
-        .from("bookings")
-        .select(
-          "booking_date, booking_time, status",
-        )
-        .neq("status", "rejected")
-
-    if (error) {
-      console.error(
-        "GET BOOKED SLOTS ERROR:",
-        error,
+  const { data, error } =
+    await supabase
+      .from("bookings")
+      .select(
+        "booking_date, booking_time, status",
+      )
+      .in("status", [
+        "pending",
+        "confirmed",
+      ])
+      .order(
+        "booking_date",
+        {
+          ascending: true,
+        },
+      )
+      .order(
+        "booking_time",
+        {
+          ascending: true,
+        },
       )
 
-      return []
-    }
-
-    return (
-      data?.map((booking) => ({
-        booking_date:
-          booking.booking_date,
-
-        booking_time:
-          booking.booking_time,
-      })) || []
-    )
-  } catch (error) {
+  if (error) {
     console.error(
-      "GET BOOKED SLOTS EXCEPTION:",
+      "GET BOOKED SLOTS ERROR:",
       error,
     )
 
     return []
   }
+
+  return (
+    data?.map((booking) => ({
+      booking_date:
+        booking.booking_date,
+
+      booking_time:
+        booking.booking_time,
+    })) || []
+  )
 }
 
-/* =====================================================
-   LIST BOOKINGS
-===================================================== */
+// =====================================================
+// LIST BOOKINGS
+// =====================================================
 
 export async function listBookings(): Promise<{
   ok: boolean
   bookings: Booking[]
   error?: string
 }> {
-  try {
-    if (!supabase) {
-      return {
-        ok: false,
-        bookings: [],
-        error:
-          "Supabase ist nicht eingerichtet.",
-      }
+  const supabase = await createClient()
+
+  // -----------------------------------------------
+  // Benutzer prüfen
+  // -----------------------------------------------
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      bookings: [],
+      error:
+        "Du bist nicht angemeldet.",
     }
+  }
 
-    const { data, error } =
-      await supabase
-        .from("bookings")
-        .select("*")
-        .order(
-          "booking_date",
-          {
-            ascending: true,
-          },
-        )
-        .order(
-          "booking_time",
-          {
-            ascending: true,
-          },
-        )
+  // -----------------------------------------------
+  // Buchungen laden
+  // -----------------------------------------------
 
-    if (error) {
-      console.error(
-        "LIST BOOKINGS ERROR:",
-        error,
+  const { data, error } =
+    await supabase
+      .from("bookings")
+      .select("*")
+      .order(
+        "booking_date",
+        {
+          ascending: false,
+        },
+      )
+      .order(
+        "booking_time",
+        {
+          ascending: true,
+        },
       )
 
-      return {
-        ok: false,
-        bookings: [],
-        error: error.message,
-      }
-    }
-
-    return {
-      ok: true,
-      bookings:
-        (data as Booking[]) || [],
-    }
-  } catch (error) {
+  if (error) {
     console.error(
-      "LIST BOOKINGS EXCEPTION:",
+      "LIST BOOKINGS ERROR:",
       error,
     )
 
     return {
       ok: false,
       bookings: [],
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unbekannter Fehler.",
+      error: error.message,
     }
+  }
+
+  return {
+    ok: true,
+    bookings:
+      (data as Booking[]) || [],
   }
 }
 
-/* =====================================================
-   UPDATE BOOKING STATUS
-===================================================== */
+// =====================================================
+// UPDATE BOOKING STATUS
+// =====================================================
 
 export async function updateBookingStatus(
   bookingId: string,
   status: BookingStatus,
-): Promise<{
-  ok: boolean
-  error?: string
-}> {
-  try {
-    if (!supabase) {
-      return {
-        ok: false,
-        error:
-          "Supabase ist nicht eingerichtet.",
-      }
-    }
+) {
+  const supabase = await createClient()
 
-    if (
-      !bookingId ||
-      !["pending", "confirmed", "rejected"].includes(
-        status,
-      )
-    ) {
-      return {
-        ok: false,
-        error:
-          "Ungültige Buchungsdaten.",
-      }
-    }
+  // -----------------------------------------------
+  // Status prüfen
+  // -----------------------------------------------
 
-    const { error } =
-      await supabase
-        .from("bookings")
-        .update({
-          status,
-        })
-        .eq("id", bookingId)
-
-    if (error) {
-      console.error(
-        "UPDATE BOOKING STATUS ERROR:",
-        error,
-      )
-
-      return {
-        ok: false,
-        error: error.message,
-      }
-    }
-
+  if (
+    status !== "confirmed" &&
+    status !== "rejected"
+  ) {
     return {
-      ok: true,
+      ok: false,
+      error:
+        "Ungültiger Buchungsstatus.",
     }
-  } catch (error) {
+  }
+
+  // -----------------------------------------------
+  // Benutzer prüfen
+  // -----------------------------------------------
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      error:
+        "Du musst angemeldet sein.",
+    }
+  }
+
+  // -----------------------------------------------
+  // Buchung aktualisieren
+  // -----------------------------------------------
+
+  const { data, error } =
+    await supabase
+      .from("bookings")
+      .update({
+        status,
+      })
+      .eq("id", bookingId)
+      .select()
+      .single()
+
+  if (error) {
     console.error(
-      "UPDATE BOOKING STATUS EXCEPTION:",
+      "UPDATE BOOKING STATUS ERROR:",
       error,
     )
 
     return {
       ok: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "Unbekannter Fehler.",
+        error.message ||
+        "Der Status konnte nicht geändert werden.",
     }
+  }
+
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
+    booking: data as Booking,
+  }
+}
+
+// =====================================================
+// SAVE BOOKING IMAGES
+// =====================================================
+
+export async function saveBookingImages(
+  bookingId: string,
+  imageUrls: string[],
+) {
+  const supabase = await createClient()
+
+  // -----------------------------------------------
+  // Benutzer prüfen
+  // -----------------------------------------------
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      error:
+        "Du musst angemeldet sein.",
+    }
+  }
+
+  // -----------------------------------------------
+  // URLs prüfen
+  // -----------------------------------------------
+
+  if (!Array.isArray(imageUrls)) {
+    return {
+      ok: false,
+      error:
+        "Ungültige Bilddaten.",
+    }
+  }
+
+  // -----------------------------------------------
+  // Bilder speichern
+  // -----------------------------------------------
+
+  const { data, error } =
+    await supabase
+      .from("bookings")
+      .update({
+        image_urls: imageUrls,
+      })
+      .eq("id", bookingId)
+      .select()
+      .single()
+
+  if (error) {
+    console.error(
+      "SAVE BOOKING IMAGES ERROR:",
+      error,
+    )
+
+    return {
+      ok: false,
+      error:
+        error.message ||
+        "Die Bilder konnten nicht gespeichert werden.",
+    }
+  }
+
+  revalidatePath("/")
+  revalidatePath("/besitzer")
+
+  return {
+    ok: true,
+    booking: data as Booking,
   }
 }
