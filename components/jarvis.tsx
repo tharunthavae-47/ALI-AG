@@ -10,11 +10,22 @@ import {
   VolumeX,
   X,
   Trash2,
+  CalendarCheck,
 } from "lucide-react"
 
 type Message = {
   role: "user" | "assistant"
   content: string
+}
+
+type BookingData = {
+  booking_date: string | null
+  booking_time: string | null
+  name: string | null
+  phone: string | null
+  email: string | null
+  car: string | null
+  problem: string | null
 }
 
 type SpeechRecognitionResultEvent = Event & {
@@ -35,14 +46,23 @@ type SpeechRecognitionInstance = {
   lang: string
   continuous: boolean
   interimResults: boolean
+
   start: () => void
   stop: () => void
   abort: () => void
+
   onresult:
     | ((event: SpeechRecognitionResultEvent) => void)
     | null
-  onstart: (() => void) | null
-  onend: (() => void) | null
+
+  onstart:
+    | (() => void)
+    | null
+
+  onend:
+    | (() => void)
+    | null
+
   onerror:
     | ((event: SpeechRecognitionErrorEvent) => void)
     | null
@@ -64,42 +84,79 @@ const INITIAL_MESSAGE: Message = {
     "Hallo. Ich bin JARVIS. Wie kann ich dir helfen?",
 }
 
+const EMPTY_BOOKING: BookingData = {
+  booking_date: null,
+  booking_time: null,
+  name: null,
+  phone: null,
+  email: null,
+  car: null,
+  problem: null,
+}
+
 export function Jarvis() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] =
+    useState(false)
 
-  const [messages, setMessages] = useState<Message[]>([
-    INITIAL_MESSAGE,
-  ])
+  const [messages, setMessages] =
+    useState<Message[]>([
+      INITIAL_MESSAGE,
+    ])
 
-  const [message, setMessage] = useState("")
+  const [message, setMessage] =
+    useState("")
 
-  const [loading, setLoading] = useState(false)
-  const [listening, setListening] = useState(false)
-  const [speaking, setSpeaking] = useState(false)
-  const [voiceEnabled, setVoiceEnabled] = useState(true)
+  const [loading, setLoading] =
+    useState(false)
 
-  const [voices, setVoices] = useState<
-    SpeechSynthesisVoice[]
-  >([])
+  const [listening, setListening] =
+    useState(false)
+
+  const [speaking, setSpeaking] =
+    useState(false)
+
+  const [voiceEnabled, setVoiceEnabled] =
+    useState(true)
+
+  const [bookingInProgress, setBookingInProgress] =
+    useState(false)
+
+  const [bookingData, setBookingData] =
+    useState<BookingData>(
+      EMPTY_BOOKING,
+    )
+
+  const [voices, setVoices] =
+    useState<SpeechSynthesisVoice[]>(
+      [],
+    )
 
   const recognitionRef =
-    useRef<SpeechRecognitionInstance | null>(null)
+    useRef<SpeechRecognitionInstance | null>(
+      null,
+    )
 
   const chatEndRef =
-    useRef<HTMLDivElement | null>(null)
+    useRef<HTMLDivElement | null>(
+      null,
+    )
 
   // =====================================================
-  // STIMMEN LADEN
+  // VOICES
   // =====================================================
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (
+      typeof window === "undefined"
+    ) {
+      return
+    }
 
     const loadVoices = () => {
-      const availableVoices =
+      const available =
         window.speechSynthesis.getVoices()
 
-      setVoices(availableVoices)
+      setVoices(available)
     }
 
     loadVoices()
@@ -108,32 +165,28 @@ export function Jarvis() {
       loadVoices
 
     return () => {
-      window.speechSynthesis.onvoiceschanged = null
+      window.speechSynthesis.onvoiceschanged =
+        null
     }
   }, [])
 
   // =====================================================
-  // CHAT NACH UNTEN SCROLLEN
-  // =====================================================
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    })
-  }, [messages, loading])
-
-  // =====================================================
-  // CHAT AUS LOCALSTORAGE LADEN
+  // CHAT LADEN
   // =====================================================
 
   useEffect(() => {
     try {
       const saved =
-        localStorage.getItem("jarvis-chat")
+        localStorage.getItem(
+          "jarvis-chat",
+        )
 
-      if (!saved) return
+      if (!saved) {
+        return
+      }
 
-      const parsed = JSON.parse(saved)
+      const parsed =
+        JSON.parse(saved)
 
       if (
         Array.isArray(parsed) &&
@@ -144,7 +197,7 @@ export function Jarvis() {
     } catch (error) {
       console.error(
         "JARVIS CHAT LOAD ERROR:",
-        error
+        error,
       )
     }
   }, [])
@@ -157,29 +210,43 @@ export function Jarvis() {
     try {
       localStorage.setItem(
         "jarvis-chat",
-        JSON.stringify(messages)
+        JSON.stringify(messages),
       )
     } catch (error) {
       console.error(
         "JARVIS CHAT SAVE ERROR:",
-        error
+        error,
       )
     }
   }, [messages])
 
   // =====================================================
-  // WEIBLICHE DEUTSCHE STIMME
+  // SCROLL
   // =====================================================
 
-  function getFemaleVoice() {
-    const germanVoices = voices.filter((voice) =>
-      voice.lang
-        .toLowerCase()
-        .startsWith("de")
-    )
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    })
+  }, [
+    messages,
+    loading,
+  ])
 
-    const preferredVoice =
-      germanVoices.find((voice) => {
+  // =====================================================
+  // STIMME
+  // =====================================================
+
+  function getGermanVoice() {
+    const german =
+      voices.filter((voice) =>
+        voice.lang
+          .toLowerCase()
+          .startsWith("de"),
+      )
+
+    const preferred =
+      german.find((voice) => {
         const name =
           voice.name.toLowerCase()
 
@@ -194,8 +261,8 @@ export function Jarvis() {
       })
 
     return (
-      preferredVoice ||
-      germanVoices[0] ||
+      preferred ||
+      german[0] ||
       voices[0]
     )
   }
@@ -204,7 +271,9 @@ export function Jarvis() {
   // TEXT BEREINIGEN
   // =====================================================
 
-  function cleanTextForSpeech(text: string) {
+  function cleanTextForSpeech(
+    text: string,
+  ) {
     return text
       .replace(/\*\*/g, "")
       .replace(/\*/g, "")
@@ -212,20 +281,25 @@ export function Jarvis() {
       .replace(/`/g, "")
       .replace(
         /\[([^\]]+)\]\([^)]+\)/g,
-        "$1"
+        "$1",
       )
-      .replace(/https?:\/\/\S+/g, "")
+      .replace(
+        /https?:\/\/\S+/g,
+        "",
+      )
       .replace(/\n+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
   }
 
   // =====================================================
-  // JARVIS SPRICHT
+  // SPRECHEN
   // =====================================================
 
   function speak(text: string) {
-    if (!voiceEnabled) return
+    if (!voiceEnabled) {
+      return
+    }
 
     if (
       typeof window === "undefined" ||
@@ -234,19 +308,22 @@ export function Jarvis() {
       return
     }
 
-    const cleanText =
+    const clean =
       cleanTextForSpeech(text)
 
-    if (!cleanText) return
+    if (!clean) {
+      return
+    }
 
     window.speechSynthesis.cancel()
 
     const utterance =
       new SpeechSynthesisUtterance(
-        cleanText
+        clean,
       )
 
-    const voice = getFemaleVoice()
+    const voice =
+      getGermanVoice()
 
     if (voice) {
       utterance.voice = voice
@@ -256,7 +333,7 @@ export function Jarvis() {
     }
 
     utterance.rate = 1.05
-    utterance.pitch = 1.08
+    utterance.pitch = 1.0
     utterance.volume = 1
 
     utterance.onstart = () => {
@@ -272,7 +349,7 @@ export function Jarvis() {
     }
 
     window.speechSynthesis.speak(
-      utterance
+      utterance,
     )
   }
 
@@ -281,15 +358,19 @@ export function Jarvis() {
   // =====================================================
 
   async function askJarvis(
-    text?: string
+    text?: string,
   ) {
     const userMessage =
       (text ?? message).trim()
 
-    if (!userMessage || loading) {
+    if (
+      !userMessage ||
+      loading
+    ) {
       return
     }
 
+    // Mikrofon stoppen
     if (listening) {
       try {
         recognitionRef.current?.stop()
@@ -300,6 +381,7 @@ export function Jarvis() {
       setListening(false)
     }
 
+    // Aktuelle Sprachausgabe stoppen
     if (
       typeof window !== "undefined" &&
       "speechSynthesis" in window
@@ -318,46 +400,63 @@ export function Jarvis() {
       userChatMessage,
     ]
 
-    setMessages(updatedMessages)
+    setMessages(
+      updatedMessages,
+    )
+
     setMessage("")
     setLoading(true)
 
     try {
-      const response = await fetch(
-        "/api/chat",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
+      const response =
+        await fetch(
+          "/api/chat",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body: JSON.stringify({
+              messages:
+                updatedMessages,
+
+              bookingData:
+                bookingInProgress
+                  ? bookingData
+                  : EMPTY_BOOKING,
+            }),
           },
-          body: JSON.stringify({
-            messages: updatedMessages,
-          }),
-        }
-      )
+        )
 
       let data: {
         answer?: string
         error?: string
+        bookingCreated?: boolean
+        bookingId?: string
+        bookingData?: BookingData
+        bookingInProgress?: boolean
       }
 
       try {
-        data = await response.json()
+        data =
+          await response.json()
       } catch {
         throw new Error(
-          `Ungültige Serverantwort (${response.status})`
+          `Ungültige Serverantwort (${response.status})`,
         )
       }
 
       if (!response.ok) {
         throw new Error(
           data.error ||
-            `Serverfehler: ${response.status}`
+            `Serverfehler: ${response.status}`,
         )
       }
 
-      const jarvisAnswer =
+      const answer =
         data.answer ||
         "Ich konnte leider keine Antwort erzeugen."
 
@@ -365,15 +464,47 @@ export function Jarvis() {
         ...updatedMessages,
         {
           role: "assistant",
-          content: jarvisAnswer,
+          content: answer,
         },
       ])
 
-      speak(jarvisAnswer)
+      // --------------------------------------------------
+      // TERMIN-STATUS
+      // --------------------------------------------------
+
+      if (
+        data.bookingCreated
+      ) {
+        setBookingInProgress(
+          false,
+        )
+
+        setBookingData(
+          EMPTY_BOOKING,
+        )
+      } else if (
+        data.bookingInProgress
+      ) {
+        setBookingInProgress(
+          true,
+        )
+
+        if (data.bookingData) {
+          setBookingData(
+            data.bookingData,
+          )
+        }
+      }
+
+      // --------------------------------------------------
+      // ANTWORT VORLESEN
+      // --------------------------------------------------
+
+      speak(answer)
     } catch (error) {
       console.error(
         "JARVIS ERROR:",
-        error
+        error,
       )
 
       const errorMessage =
@@ -381,15 +512,22 @@ export function Jarvis() {
           ? error.message
           : "Unbekannter Fehler."
 
-      setMessages([
-        ...updatedMessages,
+      const assistantMessage: Message =
         {
           role: "assistant",
           content:
             "JARVIS konnte die Anfrage nicht verarbeiten.\n\nFehler: " +
             errorMessage,
-        },
+        }
+
+      setMessages([
+        ...updatedMessages,
+        assistantMessage,
       ])
+
+      speak(
+        assistantMessage.content,
+      )
     } finally {
       setLoading(false)
     }
@@ -400,20 +538,29 @@ export function Jarvis() {
   // =====================================================
 
   function clearConversation() {
-    if (loading) return
+    if (loading) {
+      return
+    }
 
-    window.speechSynthesis.cancel()
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window
+    ) {
+      window.speechSynthesis.cancel()
+    }
 
     setSpeaking(false)
+    setBookingInProgress(false)
+    setBookingData(
+      EMPTY_BOOKING,
+    )
 
-    const newMessages: Message[] = [
+    setMessages([
       INITIAL_MESSAGE,
-    ]
-
-    setMessages(newMessages)
+    ])
 
     localStorage.removeItem(
-      "jarvis-chat"
+      "jarvis-chat",
     )
   }
 
@@ -436,6 +583,7 @@ export function Jarvis() {
       }
 
       setListening(false)
+
       return
     }
 
@@ -444,13 +592,16 @@ export function Jarvis() {
       window.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
-      setMessages((previous) => [
-        ...previous,
+      const errorMessage: Message =
         {
           role: "assistant",
           content:
             "Dein Browser unterstützt leider keine Spracherkennung. Bitte verwende Google Chrome oder Microsoft Edge.",
-        },
+        }
+
+      setMessages((previous) => [
+        ...previous,
+        errorMessage,
       ])
 
       return
@@ -466,7 +617,10 @@ export function Jarvis() {
       window.location.protocol ===
       "https:"
 
-    if (!isSecure && !isLocalhost) {
+    if (
+      !isSecure &&
+      !isLocalhost
+    ) {
       setMessages((previous) => [
         ...previous,
         {
@@ -479,15 +633,16 @@ export function Jarvis() {
       return
     }
 
-    window.speechSynthesis.cancel()
-    setSpeaking(false)
+    // --------------------------------------------------
+    // MIKROFON-BERECHTIGUNG
+    // --------------------------------------------------
 
     try {
       if (
         !navigator.mediaDevices?.getUserMedia
       ) {
         throw new Error(
-          "Mikrofonzugriff nicht verfügbar."
+          "Mikrofonzugriff nicht verfügbar.",
         )
       }
 
@@ -499,18 +654,18 @@ export function Jarvis() {
               noiseSuppression: true,
               autoGainControl: true,
             },
-          }
+          },
         )
 
       stream
         .getTracks()
-        .forEach((track) => {
-          track.stop()
-        })
+        .forEach((track) =>
+          track.stop(),
+        )
     } catch (error) {
       console.error(
         "MICROPHONE ERROR:",
-        error
+        error,
       )
 
       setMessages((previous) => [
@@ -518,12 +673,23 @@ export function Jarvis() {
         {
           role: "assistant",
           content:
-            "Der Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube der Website den Zugriff auf dein Mikrofon.",
+            "Der Mikrofonzugriff wurde nicht erlaubt. Bitte erlaube dieser Website den Zugriff auf dein Mikrofon.",
         },
       ])
 
       return
     }
+
+    // --------------------------------------------------
+    // SPRACHSYNTHESIS STOPPEN
+    // --------------------------------------------------
+
+    window.speechSynthesis.cancel()
+    setSpeaking(false)
+
+    // --------------------------------------------------
+    // RECOGNITION
+    // --------------------------------------------------
 
     const recognition =
       new SpeechRecognition()
@@ -534,19 +700,10 @@ export function Jarvis() {
 
     recognition.onstart = () => {
       setListening(true)
-
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "🎤 Ich höre zu. Sprich jetzt...",
-        },
-      ])
     }
 
     recognition.onresult = (
-      event
+      event,
     ) => {
       const transcript =
         event.results?.[0]?.[0]
@@ -570,6 +727,7 @@ export function Jarvis() {
 
       setMessage(transcript)
 
+      // Direkt an JARVIS senden
       askJarvis(transcript)
     }
 
@@ -578,11 +736,11 @@ export function Jarvis() {
     }
 
     recognition.onerror = (
-      event
+      event,
     ) => {
       console.error(
         "SPEECH ERROR:",
-        event.error
+        event.error,
       )
 
       setListening(false)
@@ -612,14 +770,15 @@ export function Jarvis() {
           "service-not-allowed"
       ) {
         errorMessage =
-          "Der Mikrofonzugriff wurde blockiert."
+          "Der Mikrofonzugriff wurde blockiert. Bitte erlaube der Website den Mikrofonzugriff."
       }
 
       setMessages((previous) => [
         ...previous,
         {
           role: "assistant",
-          content: errorMessage,
+          content:
+            errorMessage,
         },
       ])
     }
@@ -632,7 +791,7 @@ export function Jarvis() {
     } catch (error) {
       console.error(
         "RECOGNITION START ERROR:",
-        error
+        error,
       )
 
       setListening(false)
@@ -640,7 +799,7 @@ export function Jarvis() {
   }
 
   // =====================================================
-  // AUFRÄUMEN
+  // CLEANUP
   // =====================================================
 
   useEffect(() => {
@@ -649,12 +808,17 @@ export function Jarvis() {
         recognitionRef.current?.abort()
       } catch {}
 
-      window.speechSynthesis.cancel()
+      if (
+        typeof window !== "undefined" &&
+        "speechSynthesis" in window
+      ) {
+        window.speechSynthesis.cancel()
+      }
     }
   }, [])
 
   // =====================================================
-  // BEIM SCHLIESSEN
+  // FENSTER SCHLIESSEN
   // =====================================================
 
   useEffect(() => {
@@ -663,7 +827,12 @@ export function Jarvis() {
         recognitionRef.current?.abort()
       } catch {}
 
-      window.speechSynthesis.cancel()
+      if (
+        typeof window !== "undefined" &&
+        "speechSynthesis" in window
+      ) {
+        window.speechSynthesis.cancel()
+      }
 
       setListening(false)
       setSpeaking(false)
@@ -688,7 +857,7 @@ export function Jarvis() {
 
         <Image
           src="/tharun.jpg"
-          alt="NURAHT47"
+          alt="JARVIS"
           width={42}
           height={42}
           className="relative z-10 object-contain"
@@ -724,7 +893,7 @@ export function Jarvis() {
 
             <Image
               src="/tharun.jpg"
-              alt="NURAHT47"
+              alt="JARVIS"
               width={36}
               height={36}
               className="relative z-10 rounded-full object-contain"
@@ -734,8 +903,15 @@ export function Jarvis() {
 
           <div>
 
-            <div className="font-semibold tracking-wider">
+            <div className="flex items-center gap-2 font-semibold tracking-wider">
               JARVIS
+
+              {bookingInProgress && (
+                <CalendarCheck
+                  size={16}
+                  className="text-cyan-300"
+                />
+              )}
             </div>
 
             <div className="flex items-center gap-2 text-xs text-white/40">
@@ -745,20 +921,24 @@ export function Jarvis() {
                   loading
                     ? "animate-pulse bg-yellow-400"
                     : listening
-                    ? "animate-pulse bg-red-400"
-                    : speaking
-                    ? "animate-pulse bg-blue-400"
-                    : "bg-green-400"
+                      ? "animate-pulse bg-red-400"
+                      : speaking
+                        ? "animate-pulse bg-blue-400"
+                        : bookingInProgress
+                          ? "animate-pulse bg-cyan-400"
+                          : "bg-green-400"
                 }`}
               />
 
               {loading
                 ? "DENKT..."
                 : listening
-                ? "HÖRT ZU..."
-                : speaking
-                ? "SPRICHT..."
-                : "ONLINE"}
+                  ? "HÖRT ZU..."
+                  : speaking
+                    ? "SPRICHT..."
+                    : bookingInProgress
+                      ? "TERMIN..."
+                      : "ONLINE"}
 
             </div>
 
@@ -770,7 +950,9 @@ export function Jarvis() {
 
           <button
             type="button"
-            onClick={clearConversation}
+            onClick={
+              clearConversation
+            }
             disabled={loading}
             title="Neue Unterhaltung"
             className="rounded-full p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
@@ -823,7 +1005,7 @@ export function Jarvis() {
         >
           <Image
             src="/tharun.jpg"
-            alt="NURAHT47"
+            alt="JARVIS"
             width={48}
             height={48}
             className="object-contain"
@@ -832,6 +1014,24 @@ export function Jarvis() {
 
       </div>
 
+      {/* TERMIN STATUS */}
+
+      {bookingInProgress && (
+        <div className="border-b border-cyan-400/10 bg-cyan-400/5 px-4 py-2">
+
+          <div className="flex items-center gap-2 text-xs text-cyan-300">
+
+            <CalendarCheck
+              size={14}
+            />
+
+            JARVIS sammelt deine Termindaten...
+
+          </div>
+
+        </div>
+      )}
+
       {/* CHAT */}
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -839,7 +1039,10 @@ export function Jarvis() {
         <div className="space-y-3">
 
           {messages.map(
-            (chatMessage, index) => (
+            (
+              chatMessage,
+              index,
+            ) => (
               <div
                 key={`${index}-${chatMessage.role}`}
                 className={`flex ${
@@ -858,11 +1061,13 @@ export function Jarvis() {
                       : "border border-white/10 bg-white/5 text-white/80"
                   }`}
                 >
-                  {chatMessage.content}
+                  {
+                    chatMessage.content
+                  }
                 </div>
 
               </div>
-            )
+            ),
           )}
 
           {loading && (
@@ -896,12 +1101,13 @@ export function Jarvis() {
             value={message}
             onChange={(event) =>
               setMessage(
-                event.target.value
+                event.target.value,
               )
             }
             onKeyDown={(event) => {
               if (
-                event.key === "Enter" &&
+                event.key ===
+                  "Enter" &&
                 !event.shiftKey
               ) {
                 event.preventDefault()
@@ -909,7 +1115,11 @@ export function Jarvis() {
                 askJarvis()
               }
             }}
-            placeholder="JARVIS fragen..."
+            placeholder={
+              bookingInProgress
+                ? "Terminangabe..."
+                : "JARVIS fragen..."
+            }
             disabled={loading}
             className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white outline-none placeholder:text-white/30"
           />
@@ -918,8 +1128,15 @@ export function Jarvis() {
 
           <button
             type="button"
-            onClick={startListening}
+            onClick={
+              startListening
+            }
             disabled={loading}
+            aria-label={
+              listening
+                ? "Mikrofon stoppen"
+                : "JARVIS zuhören"
+            }
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
               listening
                 ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]"
@@ -944,6 +1161,7 @@ export function Jarvis() {
               loading ||
               !message.trim()
             }
+            aria-label="Nachricht senden"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-300 text-black transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Send size={18} />
@@ -962,13 +1180,16 @@ export function Jarvis() {
           <button
             type="button"
             onClick={() => {
-              if (voiceEnabled) {
+              if (
+                voiceEnabled
+              ) {
                 window.speechSynthesis.cancel()
                 setSpeaking(false)
               }
 
               setVoiceEnabled(
-                (value) => !value
+                (value) =>
+                  !value,
               )
             }}
             className="flex items-center gap-2 text-xs text-white/40 transition hover:text-white"
