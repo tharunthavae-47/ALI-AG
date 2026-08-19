@@ -1,9 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const supabase = createAdminClient()
+export async function getBookingsForDate(
+  date: string
+) {
+  const supabase = createAdminClient()
 
-export async function getBookingsForDate(date: string) {
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("bookings")
     .select(`
       id,
@@ -16,19 +21,38 @@ export async function getBookingsForDate(date: string) {
       phone,
       email
     `)
-    .eq("booking_date", date)
-    .order("booking_time", { ascending: true })
+    .eq(
+      "booking_date",
+      date
+    )
+    .order(
+      "booking_time",
+      {
+        ascending: true,
+      }
+    )
 
   if (error) {
-    console.error("Supabase error:", error)
-    throw new Error(error.message)
+    console.error(
+      "Supabase error:",
+      error
+    )
+
+    throw new Error(
+      error.message
+    )
   }
 
   return data ?? []
 }
 
 export async function getOpenBookings() {
-  const { data, error } = await supabase
+  const supabase = createAdminClient()
+
+  const {
+    data,
+    error,
+  } = await supabase
     .from("bookings")
     .select(`
       id,
@@ -41,13 +65,32 @@ export async function getOpenBookings() {
       phone,
       email
     `)
-    .eq("status", "pending")
-    .order("booking_date", { ascending: true })
-    .order("booking_time", { ascending: true })
+    .eq(
+      "status",
+      "pending"
+    )
+    .order(
+      "booking_date",
+      {
+        ascending: true,
+      }
+    )
+    .order(
+      "booking_time",
+      {
+        ascending: true,
+      }
+    )
 
   if (error) {
-    console.error("Supabase error:", error)
-    throw new Error(error.message)
+    console.error(
+      "Supabase error:",
+      error
+    )
+
+    throw new Error(
+      error.message
+    )
   }
 
   return data ?? []
