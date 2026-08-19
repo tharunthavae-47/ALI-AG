@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { EdgeTTS } from "node-edge-tts"
 
 export const runtime = "nodejs"
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+
     const text = body?.text
 
     if (
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
-          error: "Kein Text zum Vorlesen erhalten.",
+          error: "Kein Text erhalten.",
         },
         {
           status: 400,
@@ -27,48 +27,87 @@ export async function POST(request: Request) {
       .replace(/\*/g, "")
       .replace(/#{1,6}\s/g, "")
       .replace(/`/g, "")
-      .replace(
-        /\[([^\]]+)\]\([^)]+\)/g,
-        "$1"
-      )
-      .replace(
-        /https?:\/\/\S+/g,
-        ""
-      )
       .replace(/\n+/g, " ")
       .replace(/\s+/g, " ")
       .trim()
 
-    if (!cleanText) {
-      return NextResponse.json(
-        {
-          error: "Nach der Bereinigung ist kein Text übrig.",
+    /*
+     * Microsoft Edge TTS
+     *
+     * Weibliche deutsche Stimme:
+     * de-DE-KatjaNeural
+     */
+
+    const voice = "de-DE-KatjaNeural"
+
+    const ssml = `
+<speak version="1.0"
+  xmlns="http://www.w3.org/2001/10/synthesis"
+  xmlns:mstts="http://www.w3.org/2001/mstts"
+  xml:lang="de-DE">
+
+  <voice name="${voice}">
+    <prosody
+      rate="+5%"
+      pitch="+2Hz"
+      volume="100">
+      ${escapeXml(cleanText)}
+    </prosody>
+  </voice>
+
+</speak>
+`
+
+    const response = await fetch(
+      "https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/ssml+xml",
+
+          "X-Microsoft-OutputFormat":
+            "audio-24khz-48kbitrate-mono-mp3",
+
+          "User-Agent":
+            "Mozilla/5.0",
         },
-        {
-          status: 400,
-        }
+
+        body: ssml,
+      }
+    )
+
+    if (!response.ok) {
+      const errorText =
+        await response.text()
+
+      console.error(
+        "EDGE TTS ERROR:",
+        response.status,
+        errorText
+      )
+
+      throw new Error(
+        `Edge TTS Fehler: ${response.status}`
       )
     }
 
-    const tts = new EdgeTTS({
-      voice: "de-DE-KatjaNeural",
-      lang: "de-DE",
-      outputFormat:
-        "audio-24khz-48kbitrate-mono-mp3",
-      rate: "+5%",
-      pitch: "+0Hz",
-      volume: "+0%",
-    })
-
-    const audio = await tts.synthesize(
-      cleanText
-    )
+    const audio =
+      await response.arrayBuffer()
 
     return new NextResponse(audio, {
       status: 200,
+
       headers: {
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-cache",
+        "Content-Type":
+          "audio/mpeg",
+
+        "Content-Length":
+          String(audio.byteLength),
+
+        "Cache-Control":
+          "no-cache",
       },
     })
   } catch (error) {
@@ -82,11 +121,25 @@ export async function POST(request: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "TTS konnte nicht erzeugt werden.",
+            : "TTS Fehler",
       },
       {
         status: 500,
       }
     )
   }
+}
+
+function escapeXml(
+  text: string
+) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(
+      /'/g,
+      "&apos;"
+    )
 }
