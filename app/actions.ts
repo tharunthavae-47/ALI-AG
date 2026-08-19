@@ -27,6 +27,11 @@ export type Booking = {
   image_urls?: string[] | null
 }
 
+export type PublicSlot = {
+  time: string
+  available: boolean
+}
+
 export type CreateBookingData = {
   booking_date: string
   booking_time: string
@@ -111,7 +116,7 @@ export async function createBooking(
     }
 
     // ----------------------------------------------------------
-    // Datum
+    // Datum prüfen
     // ----------------------------------------------------------
 
     if (
@@ -158,7 +163,7 @@ export async function createBooking(
     }
 
     // ----------------------------------------------------------
-    // Uhrzeit
+    // Uhrzeit prüfen
     // ----------------------------------------------------------
 
     if (
@@ -200,7 +205,7 @@ export async function createBooking(
     }
 
     // ----------------------------------------------------------
-    // E-Mail
+    // E-Mail prüfen
     // ----------------------------------------------------------
 
     const emailRegex =
@@ -258,7 +263,7 @@ export async function createBooking(
     }
 
     // ----------------------------------------------------------
-    // Termin prüfen
+    // Prüfen ob Termin bereits vergeben
     // ----------------------------------------------------------
 
     const {
@@ -363,6 +368,101 @@ export async function createBooking(
   } catch (error) {
     console.error(
       "createBooking Fehler:",
+      error
+    )
+
+    return {
+      ok: false,
+      error:
+        "Ein unerwarteter Fehler ist aufgetreten.",
+    }
+  }
+}
+
+// ============================================================
+// SAVE BOOKING IMAGES
+// ============================================================
+
+export async function saveBookingImages(
+  bookingId: string,
+  imageUrls: string[]
+) {
+  try {
+    const supabase =
+      await createClient()
+
+    if (!bookingId) {
+      return {
+        ok: false,
+        error:
+          "Keine Buchungs-ID angegeben.",
+      }
+    }
+
+    if (!Array.isArray(imageUrls)) {
+      return {
+        ok: false,
+        error:
+          "Ungültige Bilddaten.",
+      }
+    }
+
+    const cleanImageUrls =
+      imageUrls
+        .filter(
+          (url) =>
+            typeof url ===
+              "string" &&
+            url.trim().length > 0
+        )
+        .map((url) =>
+          url.trim()
+        )
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from("bookings")
+      .update({
+        image_urls:
+          cleanImageUrls,
+      })
+      .eq(
+        "id",
+        bookingId
+      )
+      .select("*")
+      .single()
+
+    if (error) {
+      console.error(
+        "Fehler beim Speichern der Bilder:",
+        error
+      )
+
+      return {
+        ok: false,
+        error:
+          error.message ||
+          "Die Bilder konnten nicht gespeichert werden.",
+      }
+    }
+
+    revalidatePath(
+      "/besitzer"
+    )
+
+    revalidatePath("/")
+
+    return {
+      ok: true,
+      booking:
+        data as Booking,
+    }
+  } catch (error) {
+    console.error(
+      "saveBookingImages Fehler:",
       error
     )
 
@@ -484,7 +584,10 @@ export async function updateBookingStatus(
       .update({
         status,
       })
-      .eq("id", bookingId)
+      .eq(
+        "id",
+        bookingId
+      )
       .select("*")
       .single()
 
@@ -546,14 +649,15 @@ export async function deleteBooking(
       }
     }
 
-    const { error } =
-      await supabase
-        .from("bookings")
-        .delete()
-        .eq(
-          "id",
-          bookingId
-        )
+    const {
+      error,
+    } = await supabase
+      .from("bookings")
+      .delete()
+      .eq(
+        "id",
+        bookingId
+      )
 
     if (error) {
       console.error(
@@ -681,7 +785,12 @@ export async function signOut() {
 
   await supabase.auth.signOut()
 
-  revalidatePath("/", "layout")
+  revalidatePath(
+    "/",
+    "layout"
+  )
 
-  redirect("/besitzer/login")
+  redirect(
+    "/besitzer/login"
+  )
 }
