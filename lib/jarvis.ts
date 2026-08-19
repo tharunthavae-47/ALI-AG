@@ -1,9 +1,6 @@
-import { createClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-)
+const supabase = createAdminClient()
 
 export async function getBookingsForDate(date: string) {
   const { data, error } = await supabase
