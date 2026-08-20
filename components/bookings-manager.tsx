@@ -716,67 +716,55 @@ export function BookingsManager({
                 </div>
 
                 {/* ==================================================
-                    BILDER
-                ================================================== */}
+    BILDER
+================================================== */}
 
-                {Array.isArray(
-                  booking.image_urls
-                ) &&
-                  booking.image_urls
-                    .length >
-                    0 && (
-                    <div className="mt-5 border-t border-border pt-5">
+{Array.isArray(booking.image_urls) &&
+  booking.image_urls.length > 0 && (
+    <div className="mt-5 border-t border-border pt-5">
 
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Bilder
-                      </p>
+      <p className="text-xs uppercase tracking-widest text-muted-foreground">
+        Bilder
+      </p>
 
-                      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
 
-                        {booking.image_urls.map(
-                          (
-                            url,
-                            index
-                          ) => {
+        {booking.image_urls.map((url, index) => {
+          const cleanUrl = String(url).trim()
 
-                            const imageUrl =
-                              url.startsWith(
-                                "http"
-                              )
-                                ? url
-                                : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/Kunden-Bilder/${url}`
+          const imageUrl = cleanUrl.startsWith("http")
+            ? cleanUrl
+            : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/Kunden-Bilder/${cleanUrl}`
 
-                            return (
-                              <a
-                                key={`${url}-${index}`}
-                                href={
-                                  imageUrl
-                                }
-                                target="_blank"
-                                rel="noreferrer"
-                                className="group aspect-square overflow-hidden border border-border"
-                              >
+          return (
+            <a
+              key={`${cleanUrl}-${index}`}
+              href={imageUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="group aspect-square overflow-hidden border border-border bg-secondary"
+            >
+              <img
+                src={imageUrl}
+                alt={`Buchungsbild ${index + 1}`}
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                onError={(event) => {
+                  console.error(
+                    "Buchungsbild konnte nicht geladen werden:",
+                    imageUrl
+                  )
 
-                                <img
-                                  src={
-                                    imageUrl
-                                  }
-                                  alt={`Buchungsbild ${
-                                    index +
-                                    1
-                                  }`}
-                                  className="h-full w-full object-cover transition group-hover:scale-105"
-                                />
+                  event.currentTarget.style.display = "none"
+                }}
+              />
+            </a>
+          )
+        })}
 
-                              </a>
-                            )
-                          }
-                        )}
+      </div>
 
-                      </div>
-
-                    </div>
-                  )}
+    </div>
+  )}
 
                 {/* ==================================================
                     AKTIONEN
