@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server"
 export type BookingStatus =
   | "pending"
   | "confirmed"
-  | "cancelled"
+  | "rejected"
 
 export type Booking = {
   id: string
@@ -361,8 +361,7 @@ export async function createBooking(
     return {
       ok: true,
       bookingId: booking.id,
-      booking:
-        booking as Booking,
+      booking: booking as Booking,
     }
   } catch (error) {
     console.error(
@@ -561,7 +560,7 @@ export async function updateBookingStatus(
       BookingStatus[] = [
         "pending",
         "confirmed",
-        "cancelled",
+        "rejected",
       ]
 
     if (
@@ -699,12 +698,6 @@ export async function deleteBooking(
 // ============================================================
 // GET BOOKED SLOTS
 // ============================================================
-//
-// WICHTIG:
-// Diese Funktion gibt IMMER ein Array zurück.
-// booking-form.tsx verwendet:
-// bookedSlots.filter(...)
-//
 
 export async function getBookedSlots(
   date?: string
