@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react"
@@ -14,7 +15,9 @@ import {
   Trash2,
   X,
   Image as ImageIcon,
-  ExternalLink,
+  Maximize2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 
 import {
@@ -86,30 +89,15 @@ function getSupabaseImageUrl(
     return ""
   }
 
-  // Falls bereits eine komplette URL gespeichert wurde
+  // Bereits komplette URL
   if (
-    cleanFileName.startsWith(
-      "http://",
-    ) ||
-    cleanFileName.startsWith(
-      "https://",
-    )
+    cleanFileName.startsWith("http://") ||
+    cleanFileName.startsWith("https://")
   ) {
     return cleanFileName
   }
 
-  /*
-   * WICHTIG:
-   *
-   * image_urls enthält nur:
-   *
-   * tim-123.jpg
-   *
-   * Daraus machen wir:
-   *
-   * https://PROJECT.supabase.co/storage/v1/object/public/Kunden-Bilder/tim-123.jpg
-   */
-
+  // Supabase Storage Pfad
   const encodedPath =
     cleanFileName
       .split("/")
@@ -121,9 +109,7 @@ function getSupabaseImageUrl(
   return (
     `${SUPABASE_URL}` +
     `/storage/v1/object/public/` +
-    `${encodeURIComponent(
-      STORAGE_BUCKET,
-    )}/` +
+    `${encodeURIComponent(STORAGE_BUCKET)}/` +
     `${encodedPath}`
   )
 }
@@ -164,6 +150,151 @@ export function BookingsManager({
 
   const [error, setError] =
     useState<string | null>(null)
+
+  // ==========================================================
+  // BILD MODAL
+  // ==========================================================
+
+  const [selectedImage, setSelectedImage] =
+    useState<string | null>(null)
+
+  const [selectedImageIndex, setSelectedImageIndex] =
+    useState(0)
+
+  const [selectedImages, setSelectedImages] =
+    useState<string[]>([])
+
+  // ==========================================================
+  // BILD ÖFFNEN
+  // ==========================================================
+
+  function openImage(
+    images: string[],
+    index: number,
+  ) {
+    if (
+      !images.length ||
+      !images[index]
+    ) {
+      return
+    }
+
+    setSelectedImages(images)
+    setSelectedImageIndex(index)
+    setSelectedImage(images[index])
+  }
+
+  // ==========================================================
+  // BILD SCHLIESSEN
+  // ==========================================================
+
+  function closeImage() {
+    setSelectedImage(null)
+    setSelectedImages([])
+    setSelectedImageIndex(0)
+  }
+
+  // ==========================================================
+  // VORHERIGES BILD
+  // ==========================================================
+
+  function previousImage() {
+    if (
+      selectedImages.length <= 1
+    ) {
+      return
+    }
+
+    const newIndex =
+      selectedImageIndex === 0
+        ? selectedImages.length - 1
+        : selectedImageIndex - 1
+
+    setSelectedImageIndex(
+      newIndex,
+    )
+
+    setSelectedImage(
+      selectedImages[newIndex],
+    )
+  }
+
+  // ==========================================================
+  // NÄCHSTES BILD
+  // ==========================================================
+
+  function nextImage() {
+    if (
+      selectedImages.length <= 1
+    ) {
+      return
+    }
+
+    const newIndex =
+      selectedImageIndex ===
+      selectedImages.length - 1
+        ? 0
+        : selectedImageIndex + 1
+
+    setSelectedImageIndex(
+      newIndex,
+    )
+
+    setSelectedImage(
+      selectedImages[newIndex],
+    )
+  }
+
+  // ==========================================================
+  // ESC + BODY SCROLL
+  // ==========================================================
+
+  useEffect(() => {
+    if (!selectedImage) {
+      return
+    }
+
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ) {
+      if (event.key === "Escape") {
+        closeImage()
+      }
+
+      if (event.key === "ArrowLeft") {
+        previousImage()
+      }
+
+      if (event.key === "ArrowRight") {
+        nextImage()
+      }
+    }
+
+    document.addEventListener(
+      "keydown",
+      handleKeyDown,
+    )
+
+    const originalOverflow =
+      document.body.style.overflow
+
+    document.body.style.overflow =
+      "hidden"
+
+    return () => {
+      document.removeEventListener(
+        "keydown",
+        handleKeyDown,
+      )
+
+      document.body.style.overflow =
+        originalOverflow
+    }
+  }, [
+    selectedImage,
+    selectedImageIndex,
+    selectedImages,
+  ])
 
   // ==========================================================
   // FILTER
@@ -413,427 +544,441 @@ export function BookingsManager({
   // ==========================================================
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
 
-      {/* ====================================================
-          STATISTIK
-      ==================================================== */}
+        {/* ====================================================
+            STATISTIK
+        ==================================================== */}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-3">
 
-        <div className="border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                Offen
-              </p>
+          <div className="border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
 
-              <p className="mt-2 text-3xl font-bold">
-                {pendingCount}
-              </p>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Offen
+                </p>
+
+                <p className="mt-2 text-3xl font-bold">
+                  {pendingCount}
+                </p>
+              </div>
+
+              <Clock className="h-7 w-7 text-yellow-500" />
+
             </div>
-
-            <Clock className="h-7 w-7 text-yellow-500" />
           </div>
-        </div>
 
-        <div className="border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                Bestätigt
-              </p>
+          <div className="border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
 
-              <p className="mt-2 text-3xl font-bold">
-                {confirmedCount}
-              </p>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Bestätigt
+                </p>
+
+                <p className="mt-2 text-3xl font-bold">
+                  {confirmedCount}
+                </p>
+              </div>
+
+              <Check className="h-7 w-7 text-green-500" />
+
             </div>
-
-            <Check className="h-7 w-7 text-green-500" />
           </div>
-        </div>
 
-        <div className="border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                Storniert
-              </p>
+          <div className="border border-border bg-card p-5">
+            <div className="flex items-center justify-between">
 
-              <p className="mt-2 text-3xl font-bold">
-                {rejectedCount}
-              </p>
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                  Storniert
+                </p>
+
+                <p className="mt-2 text-3xl font-bold">
+                  {rejectedCount}
+                </p>
+              </div>
+
+              <X className="h-7 w-7 text-red-500" />
+
             </div>
-
-            <X className="h-7 w-7 text-red-500" />
-          </div>
-        </div>
-
-      </div>
-
-      {/* ====================================================
-          FILTER
-      ==================================================== */}
-
-      <div className="border border-border bg-card p-4">
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-
-          <div className="flex flex-wrap gap-2">
-
-            {FILTERS.map(
-              (item) => {
-                const active =
-                  filter ===
-                  item.key
-
-                return (
-                  <button
-                    key={
-                      item.key
-                    }
-                    type="button"
-                    onClick={() =>
-                      setFilter(
-                        item.key,
-                      )
-                    }
-                    className={[
-                      "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border hover:bg-secondary",
-                    ].join(" ")}
-                  >
-                    {item.label}
-                  </button>
-                )
-              },
-            )}
-
           </div>
 
-          <input
-            type="search"
-            value={search}
-            onChange={(event) =>
-              setSearch(
-                event.target.value,
-              )
-            }
-            placeholder="Buchung suchen..."
-            className="w-full border border-input bg-background px-4 py-2 text-sm outline-none lg:max-w-xs"
-          />
-
         </div>
 
-      </div>
+        {/* ====================================================
+            FILTER
+        ==================================================== */}
 
-      {/* ====================================================
-          ERROR
-      ==================================================== */}
+        <div className="border border-border bg-card p-4">
 
-      {error && (
-        <div className="border border-red-500/30 bg-red-500/10 p-4">
-          <p className="text-sm text-red-600">
-            {error}
-          </p>
-        </div>
-      )}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
-      {/* ====================================================
-          KEINE BUCHUNGEN
-      ==================================================== */}
+            <div className="flex flex-wrap gap-2">
 
-      {filteredBookings.length === 0 && (
-        <div className="border border-border bg-card p-12 text-center">
+              {FILTERS.map(
+                (item) => {
+                  const active =
+                    filter ===
+                    item.key
 
-          <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
-
-          <h3 className="mt-4 font-display text-lg font-bold uppercase">
-            Keine Buchungen
-          </h3>
-
-          <p className="mt-2 text-sm text-muted-foreground">
-            Es wurden keine passenden
-            Buchungen gefunden.
-          </p>
-
-        </div>
-      )}
-
-      {/* ====================================================
-          BUCHUNGEN
-      ==================================================== */}
-
-      <div className="space-y-4">
-
-        {filteredBookings.map(
-          (booking) => {
-
-            const processing =
-              processingId ===
-              booking.id
-
-            const deleting =
-              deletingId ===
-              booking.id
-
-            // ==================================================
-            // BILDER
-            // ==================================================
-
-            const images =
-              Array.isArray(
-                booking.image_urls,
-              )
-                ? booking.image_urls.filter(
-                    (image) =>
-                      typeof image ===
-                        "string" &&
-                      image.trim()
-                        .length > 0,
+                  return (
+                    <button
+                      key={
+                        item.key
+                      }
+                      type="button"
+                      onClick={() =>
+                        setFilter(
+                          item.key,
+                        )
+                      }
+                      className={[
+                        "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border hover:bg-secondary",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </button>
                   )
-                : []
+                },
+              )}
 
-            return (
-              <div
-                key={
-                  booking.id
-                }
-                className="border border-border bg-card p-5 md:p-6"
-              >
+            </div>
 
-                {/* ==================================================
-                    HEADER
-                ================================================== */}
+            <input
+              type="search"
+              value={search}
+              onChange={(event) =>
+                setSearch(
+                  event.target.value,
+                )
+              }
+              placeholder="Buchung suchen..."
+              className="w-full border border-input bg-background px-4 py-2 text-sm outline-none lg:max-w-xs"
+            />
 
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          </div>
 
-                  <div>
+        </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+        {/* ====================================================
+            ERROR
+        ==================================================== */}
 
-                      <h3 className="text-lg font-bold">
-                        {booking.name}
-                      </h3>
+        {error && (
+          <div className="border border-red-500/30 bg-red-500/10 p-4">
 
-                      <span
-                        className={[
-                          "border px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
-                          getStatusClass(
+            <p className="text-sm text-red-600">
+              {error}
+            </p>
+
+          </div>
+        )}
+
+        {/* ====================================================
+            KEINE BUCHUNGEN
+        ==================================================== */}
+
+        {filteredBookings.length === 0 && (
+          <div className="border border-border bg-card p-12 text-center">
+
+            <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
+
+            <h3 className="mt-4 font-display text-lg font-bold uppercase">
+              Keine Buchungen
+            </h3>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              Es wurden keine passenden
+              Buchungen gefunden.
+            </p>
+
+          </div>
+        )}
+
+        {/* ====================================================
+            BUCHUNGEN
+        ==================================================== */}
+
+        <div className="space-y-4">
+
+          {filteredBookings.map(
+            (booking) => {
+
+              const processing =
+                processingId ===
+                booking.id
+
+              const deleting =
+                deletingId ===
+                booking.id
+
+              // ==================================================
+              // BILDER
+              // ==================================================
+
+              const images =
+                Array.isArray(
+                  booking.image_urls,
+                )
+                  ? booking.image_urls.filter(
+                      (image) =>
+                        typeof image ===
+                          "string" &&
+                        image.trim()
+                          .length > 0,
+                    )
+                  : []
+
+              const imageUrls =
+                images
+                  .map(
+                    (image) =>
+                      getSupabaseImageUrl(
+                        image,
+                      ),
+                  )
+                  .filter(Boolean)
+
+              return (
+                <div
+                  key={
+                    booking.id
+                  }
+                  className="border border-border bg-card p-5 md:p-6"
+                >
+
+                  {/* ==================================================
+                      HEADER
+                  ================================================== */}
+
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+
+                    <div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+
+                        <h3 className="text-lg font-bold">
+                          {booking.name}
+                        </h3>
+
+                        <span
+                          className={[
+                            "border px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
+                            getStatusClass(
+                              booking.status,
+                            ),
+                          ].join(" ")}
+                        >
+                          {getStatusLabel(
                             booking.status,
-                          ),
-                        ].join(" ")}
-                      >
-                        {getStatusLabel(
-                          booking.status,
-                        )}
-                      </span>
+                          )}
+                        </span>
+
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+
+                        <span>
+                          {formatDate(
+                            booking.booking_date,
+                          )}
+                        </span>
+
+                        <span>
+                          {booking.booking_time}
+                        </span>
+
+                      </div>
 
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-
-                      <span>
-                        {formatDate(
-                          booking.booking_date,
-                        )}
-                      </span>
-
-                      <span>
-                        {booking.booking_time}
-                      </span>
-
-                    </div>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={
-                      deleting ||
-                      processing
-                    }
-                    onClick={() =>
-                      handleDelete(
-                        booking.id,
-                      )
-                    }
-                    className="flex items-center gap-2 self-start border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
-                  >
-
-                    <Trash2 className="h-4 w-4" />
-
-                    {deleting
-                      ? "Löschen..."
-                      : "Löschen"}
-
-                  </button>
-
-                </div>
-
-                {/* ==================================================
-                    KUNDENDATEN
-                ================================================== */}
-
-                <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
-
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Telefon
-                    </p>
-
-                    <a
-                      href={`tel:${booking.phone}`}
-                      className="mt-1 flex items-center gap-2 text-sm font-medium hover:underline"
+                    <button
+                      type="button"
+                      disabled={
+                        deleting ||
+                        processing
+                      }
+                      onClick={() =>
+                        handleDelete(
+                          booking.id,
+                        )
+                      }
+                      className="flex items-center gap-2 self-start border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
                     >
-                      <Phone className="h-4 w-4" />
-                      {booking.phone}
-                    </a>
-                  </div>
 
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                      E-Mail
-                    </p>
+                      <Trash2 className="h-4 w-4" />
 
-                    <a
-                      href={`mailto:${booking.email}`}
-                      className="mt-1 flex items-center gap-2 break-all text-sm font-medium hover:underline"
-                    >
-                      <Mail className="h-4 w-4" />
-                      {booking.email}
-                    </a>
-                  </div>
+                      {deleting
+                        ? "Löschen..."
+                        : "Löschen"}
 
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Fahrzeug
-                    </p>
-
-                    <p className="mt-1 text-sm font-medium">
-                      {booking.car}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Termin
-                    </p>
-
-                    <p className="mt-1 flex items-center gap-2 text-sm font-medium">
-
-                      <CalendarDays className="h-4 w-4" />
-
-                      {formatDate(
-                        booking.booking_date,
-                      )}
-
-                      {" "}um{" "}
-
-                      {booking.booking_time}
-
-                    </p>
-                  </div>
-
-                </div>
-
-                {/* ==================================================
-                    PROBLEM
-                ================================================== */}
-
-                <div className="mt-5 border-t border-border pt-5">
-
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                    Problem / Anliegen
-                  </p>
-
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                    {booking.problem}
-                  </p>
-
-                </div>
-
-                {/* ==================================================
-                    KUNDEN-BILDER
-                ================================================== */}
-
-                <div className="mt-5 border-t border-border pt-5">
-
-                  <div className="flex items-center gap-2">
-
-                    <ImageIcon className="h-5 w-5" />
-
-                    <p className="text-xs font-bold uppercase tracking-widest">
-                      Kunden-Bilder
-                    </p>
-
-                    {images.length > 0 && (
-                      <span className="text-xs text-muted-foreground">
-                        ({images.length})
-                      </span>
-                    )}
+                    </button>
 
                   </div>
 
                   {/* ==================================================
-                      KEINE BILDER
+                      KUNDENDATEN
                   ================================================== */}
 
-                  {images.length === 0 ? (
+                  <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
 
-                    <div className="mt-4 border border-dashed border-border p-6 text-center">
-
-                      <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
-
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Keine Bilder hochgeladen.
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Telefon
                       </p>
+
+                      <a
+                        href={`tel:${booking.phone}`}
+                        className="mt-1 flex items-center gap-2 text-sm font-medium hover:underline"
+                      >
+
+                        <Phone className="h-4 w-4" />
+
+                        {booking.phone}
+
+                      </a>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                        E-Mail
+                      </p>
+
+                      <a
+                        href={`mailto:${booking.email}`}
+                        className="mt-1 flex items-center gap-2 break-all text-sm font-medium hover:underline"
+                      >
+
+                        <Mail className="h-4 w-4" />
+
+                        {booking.email}
+
+                      </a>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Fahrzeug
+                      </p>
+
+                      <p className="mt-1 text-sm font-medium">
+                        {booking.car}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                        Termin
+                      </p>
+
+                      <p className="mt-1 flex items-center gap-2 text-sm font-medium">
+
+                        <CalendarDays className="h-4 w-4" />
+
+                        {formatDate(
+                          booking.booking_date,
+                        )}
+
+                        {" "}um{" "}
+
+                        {booking.booking_time}
+
+                      </p>
+                    </div>
+
+                  </div>
+
+                  {/* ==================================================
+                      PROBLEM
+                  ================================================== */}
+
+                  <div className="mt-5 border-t border-border pt-5">
+
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Problem / Anliegen
+                    </p>
+
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                      {booking.problem}
+                    </p>
+
+                  </div>
+
+                  {/* ==================================================
+                      KUNDEN-BILDER
+                  ================================================== */}
+
+                  <div className="mt-5 border-t border-border pt-5">
+
+                    <div className="flex items-center gap-2">
+
+                      <ImageIcon className="h-5 w-5" />
+
+                      <p className="text-xs font-bold uppercase tracking-widest">
+                        Kunden-Bilder
+                      </p>
+
+                      {imageUrls.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          ({imageUrls.length})
+                        </span>
+                      )}
 
                     </div>
 
-                  ) : (
+                    {/* ==================================================
+                        KEINE BILDER
+                    ================================================== */}
 
-                    /* ==================================================
-                       BILDER
-                    ================================================== */
+                    {imageUrls.length === 0 ? (
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                      <div className="mt-4 border border-dashed border-border p-6 text-center">
 
-                      {images.map(
-                        (
-                          image,
-                          index,
-                        ) => {
+                        <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
 
-                          const cleanFileName =
-                            image.trim()
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Keine Bilder hochgeladen.
+                        </p>
 
-                          const imageUrl =
-                            getSupabaseImageUrl(
-                              cleanFileName,
-                            )
+                      </div>
 
-                          return (
+                    ) : (
 
-                            <div
-                              key={`${cleanFileName}-${index}`}
-                              className="overflow-hidden border border-border bg-background"
-                            >
+                      /* ==================================================
+                         BILDER
+                      ================================================== */
 
-                              {/* BILD */}
+                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 
-                              <div className="relative aspect-square overflow-hidden bg-secondary">
+                        {imageUrls.map(
+                          (
+                            imageUrl,
+                            index,
+                          ) => {
 
-                                <a
-                                  href={
-                                    imageUrl
-                                  }
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group block h-full w-full"
-                                >
+                            return (
+                              <button
+                                key={`${imageUrl}-${index}`}
+                                type="button"
+                                onClick={() =>
+                                  openImage(
+                                    imageUrls,
+                                    index,
+                                  )
+                                }
+                                className="group relative overflow-hidden border border-border bg-background text-left focus:outline-none focus:ring-2 focus:ring-primary"
+                              >
+
+                                {/* BILD */}
+
+                                <div className="relative aspect-square overflow-hidden bg-secondary">
 
                                   <img
                                     src={
@@ -843,8 +988,8 @@ export function BookingsManager({
                                       index +
                                       1
                                     }`}
-                                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                    loading="eager"
+                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                    loading="lazy"
                                     onLoad={() => {
                                       console.log(
                                         "SUPABASE BILD GELADEN:",
@@ -859,135 +1004,241 @@ export function BookingsManager({
                                     }}
                                   />
 
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+                                  {/* OVERLAY */}
 
-                                    <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition duration-300 group-hover:bg-black/40">
+
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-lg transition duration-300 group-hover:opacity-100">
+
+                                      <Maximize2 className="h-5 w-5 text-black" />
+
+                                    </div>
 
                                   </div>
 
-                                </a>
+                                </div>
 
-                              </div>
+                                {/* BESCHRIFTUNG */}
 
-                              {/* DATEINAME */}
+                                <div className="border-t border-border px-3 py-2">
 
-                              <div className="border-t border-border px-3 py-2">
+                                  <p className="truncate text-xs font-bold">
+                                    Bild{" "}
+                                    {index + 1}
+                                  </p>
 
-                                <p className="truncate text-xs font-medium">
-                                  Bild {index + 1}
-                                </p>
+                                  <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                                    Vergrössern
+                                  </p>
 
-                                <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                                  {cleanFileName}
-                                </p>
+                                </div>
 
-                              </div>
+                              </button>
+                            )
+                          },
+                        )}
 
-                            </div>
-                          )
-                        },
-                      )}
+                      </div>
+                    )}
 
-                    </div>
-                  )}
+                  </div>
 
-                </div>
+                  {/* ==================================================
+                      AKTIONEN
+                  ================================================== */}
 
-                {/* ==================================================
-                    AKTIONEN
-                ================================================== */}
+                  <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row">
 
-                <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row">
-
-                  {/* BESTÄTIGEN */}
-
-                  <button
-                    type="button"
-                    disabled={
-                      processing ||
-                      deleting ||
-                      booking.status ===
-                        "confirmed"
-                    }
-                    onClick={() =>
-                      handleStatus(
-                        booking.id,
-                        "confirmed",
-                      )
-                    }
-                    className="flex flex-1 items-center justify-center gap-2 bg-green-600 px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-
-                    <Check className="h-4 w-4" />
-
-                    {processing
-                      ? "Wird gespeichert..."
-                      : "Bestätigen"}
-
-                  </button>
-
-                  {/* STORNIEREN */}
-
-                  <button
-                    type="button"
-                    disabled={
-                      processing ||
-                      deleting ||
-                      booking.status ===
-                        "rejected"
-                    }
-                    onClick={() =>
-                      handleStatus(
-                        booking.id,
-                        "rejected",
-                      )
-                    }
-                    className="flex flex-1 items-center justify-center gap-2 border border-red-500/40 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-
-                    <X className="h-4 w-4" />
-
-                    Stornieren
-
-                  </button>
-
-                  {/* WIEDER ÖFFNEN */}
-
-                  {booking.status !==
-                    "pending" && (
+                    {/* BESTÄTIGEN */}
 
                     <button
                       type="button"
                       disabled={
                         processing ||
-                        deleting
+                        deleting ||
+                        booking.status ===
+                          "confirmed"
                       }
                       onClick={() =>
                         handleStatus(
                           booking.id,
-                          "pending",
+                          "confirmed",
                         )
                       }
-                      className="flex flex-1 items-center justify-center gap-2 border border-border px-4 py-3 text-xs font-bold uppercase tracking-widest transition hover:bg-secondary disabled:opacity-40"
+                      className="flex flex-1 items-center justify-center gap-2 bg-green-600 px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                     >
 
-                      <Clock className="h-4 w-4" />
+                      <Check className="h-4 w-4" />
 
-                      Wieder öffnen
+                      {processing
+                        ? "Wird gespeichert..."
+                        : "Bestätigen"}
 
                     </button>
 
-                  )}
+                    {/* STORNIEREN */}
+
+                    <button
+                      type="button"
+                      disabled={
+                        processing ||
+                        deleting ||
+                        booking.status ===
+                          "rejected"
+                      }
+                      onClick={() =>
+                        handleStatus(
+                          booking.id,
+                          "rejected",
+                        )
+                      }
+                      className="flex flex-1 items-center justify-center gap-2 border border-red-500/40 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+
+                      <X className="h-4 w-4" />
+
+                      Stornieren
+
+                    </button>
+
+                    {/* WIEDER ÖFFNEN */}
+
+                    {booking.status !==
+                      "pending" && (
+
+                      <button
+                        type="button"
+                        disabled={
+                          processing ||
+                          deleting
+                        }
+                        onClick={() =>
+                          handleStatus(
+                            booking.id,
+                            "pending",
+                          )
+                        }
+                        className="flex flex-1 items-center justify-center gap-2 border border-border px-4 py-3 text-xs font-bold uppercase tracking-widest transition hover:bg-secondary disabled:opacity-40"
+                      >
+
+                        <Clock className="h-4 w-4" />
+
+                        Wieder öffnen
+
+                      </button>
+
+                    )}
+
+                  </div>
 
                 </div>
+              )
+            },
+          )}
 
-              </div>
-            )
-          },
-        )}
+        </div>
 
       </div>
 
-    </div>
+      {/* ========================================================
+          BILD MODAL / LIGHTBOX
+      ======================================================== */}
+
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              closeImage()
+            }
+          }}
+        >
+
+          {/* ====================================================
+              SCHLIESSEN
+          ==================================================== */}
+
+          <button
+            type="button"
+            aria-label="Bild schließen"
+            onClick={closeImage}
+            className="absolute right-4 top-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+          >
+
+            <X className="h-6 w-6" />
+
+          </button>
+
+          {/* ====================================================
+              BILD NUMMER
+          ==================================================== */}
+
+          {selectedImages.length > 0 && (
+            <div className="absolute left-4 top-4 z-[110] rounded-full bg-black/60 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white">
+
+              Bild{" "}
+              {selectedImageIndex + 1}
+              {" / "}
+              {selectedImages.length}
+
+            </div>
+          )}
+
+          {/* ====================================================
+              VORHERIGES BILD
+          ==================================================== */}
+
+          {selectedImages.length > 1 && (
+            <button
+              type="button"
+              aria-label="Vorheriges Bild"
+              onClick={previousImage}
+              className="absolute left-3 top-1/2 z-[110] flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:left-6"
+            >
+
+              <ChevronLeft className="h-7 w-7" />
+
+            </button>
+          )}
+
+          {/* ====================================================
+              NÄCHSTES BILD
+          ==================================================== */}
+
+          {selectedImages.length > 1 && (
+            <button
+              type="button"
+              aria-label="Nächstes Bild"
+              onClick={nextImage}
+              className="absolute right-3 top-1/2 z-[110] flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6"
+            >
+
+              <ChevronRight className="h-7 w-7" />
+
+            </button>
+          )}
+
+          {/* ====================================================
+              GROSSES BILD
+          ==================================================== */}
+
+          <div className="flex max-h-[90vh] max-w-[92vw] items-center justify-center">
+
+            <img
+              src={selectedImage}
+              alt={`Kundenbild ${
+                selectedImageIndex + 1
+              }`}
+              className="max-h-[90vh] max-w-[92vw] rounded-sm object-contain shadow-2xl"
+            />
+
+          </div>
+
+        </div>
+      )}
+    </>
   )
 }
