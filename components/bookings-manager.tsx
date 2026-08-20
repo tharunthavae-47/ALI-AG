@@ -9,6 +9,8 @@ import {
   CalendarDays,
   Check,
   Clock,
+  ExternalLink,
+  Image as ImageIcon,
   Mail,
   Phone,
   Trash2,
@@ -44,7 +46,7 @@ const FILTERS: {
   },
   {
     key: "rejected",
-    label: "Storniert",
+    label: "Abgelehnt",
   },
 ]
 
@@ -53,7 +55,8 @@ const FILTERS: {
 // ============================================================
 
 type BookingsManagerProps = {
-  bookings: Booking[]
+  bookings?: Booking[]
+  initialBookings?: Booking[]
 }
 
 // ============================================================
@@ -62,12 +65,20 @@ type BookingsManagerProps = {
 
 export function BookingsManager({
   bookings,
+  initialBookings,
 }: BookingsManagerProps) {
+
+  // ==========================================================
+  // DATEN
+  // ==========================================================
+
   const safeBookings = Array.isArray(
     bookings
   )
     ? bookings
-    : []
+    : Array.isArray(initialBookings)
+      ? initialBookings
+      : []
 
   // ==========================================================
   // STATE
@@ -108,6 +119,7 @@ export function BookingsManager({
 
   const filteredBookings =
     useMemo(() => {
+
       const query =
         search
           .trim()
@@ -115,6 +127,7 @@ export function BookingsManager({
 
       return safeBookings
         .filter((booking) => {
+
           if (
             filter === "all"
           ) {
@@ -127,6 +140,7 @@ export function BookingsManager({
           )
         })
         .filter((booking) => {
+
           if (!query) {
             return true
           }
@@ -147,6 +161,7 @@ export function BookingsManager({
                 .includes(query)
             )
         })
+
     }, [
       safeBookings,
       filter,
@@ -161,6 +176,7 @@ export function BookingsManager({
     bookingId: string,
     status: BookingStatus
   ) {
+
     setError(null)
 
     setProcessingId(
@@ -168,6 +184,7 @@ export function BookingsManager({
     )
 
     try {
+
       const result =
         await updateBookingStatus(
           bookingId,
@@ -175,12 +192,23 @@ export function BookingsManager({
         )
 
       if (!result.ok) {
+
         setError(
           result.error ??
             "Die Buchung konnte nicht aktualisiert werden."
         )
+
+        return
       }
+
+      // ------------------------------------------------------
+      // SOFORTIGE AKTUALISIERUNG IM UI
+      // ------------------------------------------------------
+
+      window.location.reload()
+
     } catch (error) {
+
       console.error(
         "Status Fehler:",
         error
@@ -189,8 +217,11 @@ export function BookingsManager({
       setError(
         "Beim Aktualisieren ist ein Fehler aufgetreten."
       )
+
     } finally {
+
       setProcessingId(null)
+
     }
   }
 
@@ -201,6 +232,7 @@ export function BookingsManager({
   async function handleDelete(
     bookingId: string
   ) {
+
     const confirmed =
       window.confirm(
         "Möchtest du diese Buchung wirklich löschen?"
@@ -217,18 +249,26 @@ export function BookingsManager({
     )
 
     try {
+
       const result =
         await deleteBooking(
           bookingId
         )
 
       if (!result.ok) {
+
         setError(
           result.error ??
             "Die Buchung konnte nicht gelöscht werden."
         )
+
+        return
       }
+
+      window.location.reload()
+
     } catch (error) {
+
       console.error(
         "Delete Fehler:",
         error
@@ -237,8 +277,11 @@ export function BookingsManager({
       setError(
         "Beim Löschen ist ein Fehler aufgetreten."
       )
+
     } finally {
+
       setDeletingId(null)
+
     }
   }
 
@@ -249,12 +292,14 @@ export function BookingsManager({
   function getStatusLabel(
     status: BookingStatus
   ) {
+
     switch (status) {
+
       case "confirmed":
         return "Bestätigt"
 
       case "rejected":
-        return "Storniert"
+        return "Abgelehnt"
 
       case "pending":
       default:
@@ -269,7 +314,9 @@ export function BookingsManager({
   function getStatusClass(
     status: BookingStatus
   ) {
+
     switch (status) {
+
       case "confirmed":
         return "border-green-500/30 bg-green-500/10 text-green-600"
 
@@ -289,6 +336,7 @@ export function BookingsManager({
   function formatDate(
     value: string
   ) {
+
     if (!value) {
       return "-"
     }
@@ -314,6 +362,71 @@ export function BookingsManager({
         year: "numeric",
       }
     ).format(date)
+  }
+
+  // ==========================================================
+  // BILD URL
+  // ==========================================================
+
+  function getImageUrl(
+    value: string
+  ) {
+
+    const cleanUrl =
+      String(value ?? "").trim()
+
+    if (!cleanUrl) {
+      return ""
+    }
+
+    // Bereits vollständige URL
+    if (
+      cleanUrl.startsWith(
+        "http://"
+      ) ||
+      cleanUrl.startsWith(
+        "https://"
+      )
+    ) {
+      return cleanUrl
+    }
+
+    const supabaseUrl =
+      process.env
+        .NEXT_PUBLIC_SUPABASE_URL
+
+    if (!supabaseUrl) {
+      console.error(
+        "NEXT_PUBLIC_SUPABASE_URL fehlt."
+      )
+
+      return ""
+    }
+
+    // --------------------------------------------------------
+    // Falls image_urls bereits einen Bucket-Pfad enthält
+    // --------------------------------------------------------
+
+    if (
+      cleanUrl.startsWith(
+        "Kunden-Bilder/"
+      )
+    ) {
+
+      const path =
+        cleanUrl.replace(
+          /^Kunden-Bilder\//,
+          ""
+        )
+
+      return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${path}`
+    }
+
+    // --------------------------------------------------------
+    // Normaler Dateiname
+    // --------------------------------------------------------
+
+    return `${supabaseUrl}/storage/v1/object/public/Kunden-Bilder/${cleanUrl}`
   }
 
   // ==========================================================
@@ -361,6 +474,7 @@ export function BookingsManager({
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Offen
               </p>
@@ -368,6 +482,7 @@ export function BookingsManager({
               <p className="mt-2 text-3xl font-bold">
                 {pendingCount}
               </p>
+
             </div>
 
             <Clock className="h-7 w-7 text-yellow-500" />
@@ -383,6 +498,7 @@ export function BookingsManager({
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Bestätigt
               </p>
@@ -390,6 +506,7 @@ export function BookingsManager({
               <p className="mt-2 text-3xl font-bold">
                 {confirmedCount}
               </p>
+
             </div>
 
             <Check className="h-7 w-7 text-green-500" />
@@ -398,20 +515,22 @@ export function BookingsManager({
 
         </div>
 
-        {/* STORNIERT */}
+        {/* ABGELEHNT */}
 
         <div className="border border-border bg-card p-5">
 
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                Storniert
+                Abgelehnt
               </p>
 
               <p className="mt-2 text-3xl font-bold">
                 {rejectedCount}
               </p>
+
             </div>
 
             <X className="h-7 w-7 text-red-500" />
@@ -454,6 +573,7 @@ export function BookingsManager({
                     }
                     className={[
                       "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
+
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border hover:bg-secondary",
@@ -505,8 +625,8 @@ export function BookingsManager({
           KEINE BUCHUNGEN
       ==================================================== */}
 
-      {filteredBookings.length ===
-        0 && (
+      {filteredBookings.length === 0 && (
+
         <div className="border border-border bg-card p-12 text-center">
 
           <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -521,6 +641,7 @@ export function BookingsManager({
           </p>
 
         </div>
+
       )}
 
       {/* ====================================================
@@ -540,7 +661,21 @@ export function BookingsManager({
               deletingId ===
               booking.id
 
+            const images =
+              Array.isArray(
+                booking.image_urls
+              )
+                ? booking.image_urls.filter(
+                    (image) =>
+                      typeof image ===
+                        "string" &&
+                      image.trim()
+                        .length > 0
+                  )
+                : []
+
             return (
+
               <div
                 key={
                   booking.id
@@ -627,6 +762,8 @@ export function BookingsManager({
 
                 <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
 
+                  {/* TELEFON */}
+
                   <div>
 
                     <p className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -645,6 +782,8 @@ export function BookingsManager({
                     </a>
 
                   </div>
+
+                  {/* E-MAIL */}
 
                   <div>
 
@@ -665,6 +804,8 @@ export function BookingsManager({
 
                   </div>
 
+                  {/* FAHRZEUG */}
+
                   <div>
 
                     <p className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -676,6 +817,8 @@ export function BookingsManager({
                     </p>
 
                   </div>
+
+                  {/* TERMIN */}
 
                   <div>
 
@@ -689,8 +832,10 @@ export function BookingsManager({
 
                       {formatDate(
                         booking.booking_date
-                      )}{" "}
-                      um{" "}
+                      )}
+
+                      {" um "}
+
                       {booking.booking_time}
 
                     </p>
@@ -716,55 +861,151 @@ export function BookingsManager({
                 </div>
 
                 {/* ==================================================
-    BILDER
-================================================== */}
+                    BILDER
+                ================================================== */}
 
-{Array.isArray(booking.image_urls) &&
-  booking.image_urls.length > 0 && (
-    <div className="mt-5 border-t border-border pt-5">
+                <div className="mt-5 border-t border-border pt-5">
 
-      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-        Bilder
-      </p>
+                  <div className="flex items-center gap-2">
 
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
 
-        {booking.image_urls.map((url, index) => {
-          const cleanUrl = String(url).trim()
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                      Bilder
+                    </p>
 
-          const imageUrl = cleanUrl.startsWith("http")
-            ? cleanUrl
-            : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/Kunden-Bilder/${cleanUrl}`
+                  </div>
 
-          return (
-            <a
-              key={`${cleanUrl}-${index}`}
-              href={imageUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="group aspect-square overflow-hidden border border-border bg-secondary"
-            >
-              <img
-                src={imageUrl}
-                alt={`Buchungsbild ${index + 1}`}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                onError={(event) => {
-                  console.error(
-                    "Buchungsbild konnte nicht geladen werden:",
-                    imageUrl
-                  )
+                  {images.length === 0 ? (
 
-                  event.currentTarget.style.display = "none"
-                }}
-              />
-            </a>
-          )
-        })}
+                    <div className="mt-3 border border-dashed border-border p-6 text-center">
 
-      </div>
+                      <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
 
-    </div>
-  )}
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Keine Bilder hochgeladen.
+                      </p>
+
+                    </div>
+
+                  ) : (
+
+                    <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+
+                      {images.map(
+                        (
+                          url,
+                          index
+                        ) => {
+
+                          const imageUrl =
+                            getImageUrl(
+                              url
+                            )
+
+                          return (
+
+                            <div
+                              key={`${url}-${index}`}
+                              className="overflow-hidden border border-border bg-secondary"
+                            >
+
+                              {imageUrl ? (
+
+                                <a
+                                  href={
+                                    imageUrl
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="group block"
+                                >
+
+                                  <div className="aspect-square overflow-hidden">
+
+                                    <img
+                                      src={
+                                        imageUrl
+                                      }
+                                      alt={`Buchungsbild ${index + 1}`}
+                                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                                      onError={(
+                                        event
+                                      ) => {
+
+                                        console.error(
+                                          "Bild konnte nicht geladen werden:",
+                                          imageUrl
+                                        )
+
+                                        const target =
+                                          event.currentTarget
+
+                                        target.style.display =
+                                          "none"
+
+                                        const parent =
+                                          target.parentElement
+
+                                        if (
+                                          parent
+                                        ) {
+
+                                          parent.innerHTML =
+                                            `
+                                              <div class="flex h-full w-full flex-col items-center justify-center p-4 text-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                                                  <circle cx="9" cy="9" r="2"/>
+                                                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                                                </svg>
+                                                <span class="mt-2 text-xs">
+                                                  Bild nicht verfügbar
+                                                </span>
+                                              </div>
+                                            `
+                                        }
+                                      }}
+                                    />
+
+                                  </div>
+
+                                  <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+
+                                    <span className="truncate text-xs text-muted-foreground">
+                                      Bild{" "}
+                                      {index + 1}
+                                    </span>
+
+                                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+
+                                  </div>
+
+                                </a>
+
+                              ) : (
+
+                                <div className="flex aspect-square items-center justify-center p-4 text-center">
+
+                                  <p className="text-xs text-red-600">
+                                    Bild-URL fehlt
+                                  </p>
+
+                                </div>
+
+                              )}
+
+                            </div>
+
+                          )
+                        }
+                      )}
+
+                    </div>
+
+                  )}
+
+                </div>
 
                 {/* ==================================================
                     AKTIONEN
@@ -801,7 +1042,7 @@ export function BookingsManager({
 
                   </button>
 
-                  {/* STORNIEREN */}
+                  {/* STORNIEREN / ABLEHNEN */}
 
                   <button
                     type="button"
@@ -834,6 +1075,7 @@ export function BookingsManager({
 
                   {booking.status !==
                     "pending" && (
+
                     <button
                       type="button"
                       disabled={
@@ -854,11 +1096,13 @@ export function BookingsManager({
                       Wieder öffnen
 
                     </button>
+
                   )}
 
                 </div>
 
               </div>
+
             )
           }
         )}
