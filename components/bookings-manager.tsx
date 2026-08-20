@@ -1,1244 +1,1215 @@
 "use client"
 
+import { useMemo, useState, useTransition } from "react"
 import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react"
-
-import {
-  CalendarDays,
   Check,
-  Clock,
-  Mail,
-  Phone,
-  Trash2,
   X,
+  Phone,
+  Mail,
+  Car,
+  Calendar,
+  Clock,
   Image as ImageIcon,
-  Maximize2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
 
 import {
-  deleteBooking,
   updateBookingStatus,
   type Booking,
   type BookingStatus,
 } from "@/app/actions"
 
-// ============================================================
-// FILTER
-// ============================================================
-
 const FILTERS: {
   key: BookingStatus | "all"
   label: string
 }[] = [
-  {
-    key: "all",
-    label: "Alle",
-  },
-  {
-    key: "pending",
-    label: "Offen",
-  },
-  {
-    key: "confirmed",
-    label: "Bestätigt",
-  },
-  {
-    key: "rejected",
-    label: "Storniert",
-  },
+  { key: "pending", label: "Offen" },
+  { key: "confirmed", label: "Bestätigt" },
+  { key: "rejected", label: "Abgelehnt" },
+  { key: "all", label: "Alle" },
 ]
 
-// ============================================================
-// PROPS
-// ============================================================
-
-type BookingsManagerProps = {
-  bookings: Booking[]
+const statusStyles: Record<BookingStatus, string> = {
+  pending: "text-[var(--warn)] border-[var(--warn)]",
+  confirmed: "text-[var(--ok)] border-[var(--ok)]",
+  rejected: "text-[var(--bad)] border-[var(--bad)]",
 }
 
-// ============================================================
-// SUPABASE STORAGE
-// ============================================================
+const statusLabels: Record<BookingStatus, string> = {
+  pending: "Offen",
+  confirmed: "Bestätigt",
+  rejected: "Abgelehnt",
+}
 
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://cfiumzbuavfbahctzknr.supabase.co"
+const monthNames = [
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember",
+]
 
-const STORAGE_BUCKET = "Kunden-Bilder"
+const weekDays = [
+  "Mo",
+  "Di",
+  "Mi",
+  "Do",
+  "Fr",
+  "Sa",
+  "So",
+]
 
-// ============================================================
-// BILD URL
-// ============================================================
-
-function getSupabaseImageUrl(
-  fileName: string,
-) {
-  if (!fileName) {
-    return ""
-  }
-
-  const cleanFileName =
-    fileName.trim()
-
-  if (!cleanFileName) {
-    return ""
-  }
-
-  // Bereits komplette URL
-  if (
-    cleanFileName.startsWith("http://") ||
-    cleanFileName.startsWith("https://")
-  ) {
-    return cleanFileName
-  }
-
-  // Supabase Storage Pfad
-  const encodedPath =
-    cleanFileName
-      .split("/")
-      .map((part) =>
-        encodeURIComponent(part),
-      )
-      .join("/")
-
-  return (
-    `${SUPABASE_URL}` +
-    `/storage/v1/object/public/` +
-    `${encodeURIComponent(STORAGE_BUCKET)}/` +
-    `${encodedPath}`
+function formatDate(iso: string) {
+  return new Date(iso + "T00:00:00").toLocaleDateString(
+    "de-CH",
+    {
+      weekday: "short",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    },
   )
 }
 
-// ============================================================
-// COMPONENT
-// ============================================================
+function getImagePaths(imageUrls: unknown): string[] {
+  if (!imageUrls) {
+    return []
+  }
 
-export function BookingsManager({
-  bookings,
-}: BookingsManagerProps) {
-  // ==========================================================
-  // SAFE BOOKINGS
-  // ==========================================================
+  if (Array.isArray(imageUrls)) {
+    return imageUrls.filter(
+      (item): item is string =>
+        typeof item === "string" &&
+        item.trim() !== "",
+    )
+  }
 
-  const safeBookings =
-    Array.isArray(bookings)
-      ? bookings
-      : []
+  if (typeof imageUrls === "string") {
+    let value = imageUrls.trim()
 
-  // ==========================================================
-  // STATE
-  // ==========================================================
-
-  const [filter, setFilter] =
-    useState<
-      BookingStatus | "all"
-    >("all")
-
-  const [search, setSearch] =
-    useState("")
-
-  const [processingId, setProcessingId] =
-    useState<string | null>(null)
-
-  const [deletingId, setDeletingId] =
-    useState<string | null>(null)
-
-  const [error, setError] =
-    useState<string | null>(null)
-
-  // ==========================================================
-  // BILD MODAL
-  // ==========================================================
-
-  const [selectedImage, setSelectedImage] =
-    useState<string | null>(null)
-
-  const [selectedImageIndex, setSelectedImageIndex] =
-    useState(0)
-
-  const [selectedImages, setSelectedImages] =
-    useState<string[]>([])
-
-  // ==========================================================
-  // BILD ÖFFNEN
-  // ==========================================================
-
-  function openImage(
-    images: string[],
-    index: number,
-  ) {
     if (
-      !images.length ||
-      !images[index]
+      !value ||
+      value === "[]" ||
+      value === "{}" ||
+      value === "null"
     ) {
-      return
+      return []
     }
-
-    setSelectedImages(images)
-    setSelectedImageIndex(index)
-    setSelectedImage(images[index])
-  }
-
-  // ==========================================================
-  // BILD SCHLIESSEN
-  // ==========================================================
-
-  function closeImage() {
-    setSelectedImage(null)
-    setSelectedImages([])
-    setSelectedImageIndex(0)
-  }
-
-  // ==========================================================
-  // VORHERIGES BILD
-  // ==========================================================
-
-  function previousImage() {
-    if (
-      selectedImages.length <= 1
-    ) {
-      return
-    }
-
-    const newIndex =
-      selectedImageIndex === 0
-        ? selectedImages.length - 1
-        : selectedImageIndex - 1
-
-    setSelectedImageIndex(
-      newIndex,
-    )
-
-    setSelectedImage(
-      selectedImages[newIndex],
-    )
-  }
-
-  // ==========================================================
-  // NÄCHSTES BILD
-  // ==========================================================
-
-  function nextImage() {
-    if (
-      selectedImages.length <= 1
-    ) {
-      return
-    }
-
-    const newIndex =
-      selectedImageIndex ===
-      selectedImages.length - 1
-        ? 0
-        : selectedImageIndex + 1
-
-    setSelectedImageIndex(
-      newIndex,
-    )
-
-    setSelectedImage(
-      selectedImages[newIndex],
-    )
-  }
-
-  // ==========================================================
-  // ESC + BODY SCROLL
-  // ==========================================================
-
-  useEffect(() => {
-    if (!selectedImage) {
-      return
-    }
-
-    function handleKeyDown(
-      event: KeyboardEvent,
-    ) {
-      if (event.key === "Escape") {
-        closeImage()
-      }
-
-      if (event.key === "ArrowLeft") {
-        previousImage()
-      }
-
-      if (event.key === "ArrowRight") {
-        nextImage()
-      }
-    }
-
-    document.addEventListener(
-      "keydown",
-      handleKeyDown,
-    )
-
-    const originalOverflow =
-      document.body.style.overflow
-
-    document.body.style.overflow =
-      "hidden"
-
-    return () => {
-      document.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      )
-
-      document.body.style.overflow =
-        originalOverflow
-    }
-  }, [
-    selectedImage,
-    selectedImageIndex,
-    selectedImages,
-  ])
-
-  // ==========================================================
-  // FILTER
-  // ==========================================================
-
-  const filteredBookings =
-    useMemo(() => {
-      const query =
-        search
-          .trim()
-          .toLowerCase()
-
-      return safeBookings
-        .filter((booking) => {
-          if (
-            filter === "all"
-          ) {
-            return true
-          }
-
-          return (
-            booking.status ===
-            filter
-          )
-        })
-        .filter((booking) => {
-          if (!query) {
-            return true
-          }
-
-          return [
-            booking.name,
-            booking.email,
-            booking.phone,
-            booking.car,
-            booking.problem,
-            booking.booking_date,
-            booking.booking_time,
-          ]
-            .filter(Boolean)
-            .some((value) =>
-              String(value)
-                .toLowerCase()
-                .includes(query),
-            )
-        })
-    }, [
-      safeBookings,
-      filter,
-      search,
-    ])
-
-  // ==========================================================
-  // STATUS
-  // ==========================================================
-
-  async function handleStatus(
-    bookingId: string,
-    status: BookingStatus,
-  ) {
-    setError(null)
-    setProcessingId(bookingId)
 
     try {
-      const result =
-        await updateBookingStatus(
-          bookingId,
-          status,
-        )
+      const parsed = JSON.parse(value)
 
-      if (!result.ok) {
-        setError(
-          result.error ||
-            "Die Buchung konnte nicht aktualisiert werden.",
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is string =>
+            typeof item === "string" &&
+            item.trim() !== "",
         )
       }
-    } catch (error) {
-      console.error(
-        "Status Fehler:",
-        error,
-      )
 
-      setError(
-        "Beim Aktualisieren ist ein Fehler aufgetreten.",
-      )
-    } finally {
-      setProcessingId(null)
-    }
-  }
-
-  // ==========================================================
-  // DELETE
-  // ==========================================================
-
-  async function handleDelete(
-    bookingId: string,
-  ) {
-    const confirmed =
-      window.confirm(
-        "Möchtest du diese Buchung wirklich löschen?",
-      )
-
-    if (!confirmed) {
-      return
-    }
-
-    setError(null)
-    setDeletingId(bookingId)
-
-    try {
-      const result =
-        await deleteBooking(
-          bookingId,
-        )
-
-      if (!result.ok) {
-        setError(
-          result.error ||
-            "Die Buchung konnte nicht gelöscht werden.",
-        )
+      if (typeof parsed === "string") {
+        value = parsed
       }
-    } catch (error) {
-      console.error(
-        "Delete Fehler:",
-        error,
-      )
-
-      setError(
-        "Beim Löschen ist ein Fehler aufgetreten.",
-      )
-    } finally {
-      setDeletingId(null)
+    } catch {
+      // Kein JSON
     }
+
+    return value ? [value] : []
   }
 
-  // ==========================================================
-  // STATUS LABEL
-  // ==========================================================
+  return []
+}
 
-  function getStatusLabel(
-    status: BookingStatus,
+function getImageUrl(path: string) {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL
+
+  if (!supabaseUrl || !path) {
+    return ""
+  }
+
+  const cleanPath = path
+    .trim()
+    .replace(/^\/+/, "")
+
+  if (
+    cleanPath.startsWith("http://") ||
+    cleanPath.startsWith("https://")
   ) {
-    switch (status) {
-      case "confirmed":
-        return "Bestätigt"
-
-      case "rejected":
-        return "Storniert"
-
-      default:
-        return "Offen"
-    }
+    return cleanPath
   }
-
-  // ==========================================================
-  // STATUS STYLE
-  // ==========================================================
-
-  function getStatusClass(
-    status: BookingStatus,
-  ) {
-    switch (status) {
-      case "confirmed":
-        return [
-          "border-green-500/30",
-          "bg-green-500/10",
-          "text-green-600",
-        ].join(" ")
-
-      case "rejected":
-        return [
-          "border-red-500/30",
-          "bg-red-500/10",
-          "text-red-600",
-        ].join(" ")
-
-      default:
-        return [
-          "border-yellow-500/30",
-          "bg-yellow-500/10",
-          "text-yellow-600",
-        ].join(" ")
-    }
-  }
-
-  // ==========================================================
-  // DATUM
-  // ==========================================================
-
-  function formatDate(
-    value: string,
-  ) {
-    if (!value) {
-      return "-"
-    }
-
-    const date =
-      new Date(
-        `${value}T00:00:00`,
-      )
-
-    if (
-      Number.isNaN(
-        date.getTime(),
-      )
-    ) {
-      return value
-    }
-
-    return new Intl.DateTimeFormat(
-      "de-CH",
-      {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      },
-    ).format(date)
-  }
-
-  // ==========================================================
-  // STATISTIK
-  // ==========================================================
-
-  const pendingCount =
-    safeBookings.filter(
-      (booking) =>
-        booking.status ===
-        "pending",
-    ).length
-
-  const confirmedCount =
-    safeBookings.filter(
-      (booking) =>
-        booking.status ===
-        "confirmed",
-    ).length
-
-  const rejectedCount =
-    safeBookings.filter(
-      (booking) =>
-        booking.status ===
-        "rejected",
-    ).length
-
-  // ==========================================================
-  // RENDER
-  // ==========================================================
 
   return (
-    <>
-      <div className="space-y-6">
+    `${supabaseUrl}/storage/v1/object/public/` +
+    `Kunden-Bilder/${encodeURI(cleanPath)}`
+  )
+}
 
-        {/* ====================================================
-            STATISTIK
-        ==================================================== */}
+function toDateKey(
+  year: number,
+  month: number,
+  day: number,
+) {
+  const monthString = String(month + 1).padStart(2, "0")
+  const dayString = String(day).padStart(2, "0")
 
-        <div className="grid gap-4 sm:grid-cols-3">
+  return `${year}-${monthString}-${dayString}`
+}
 
-          <div className="border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
+function getTodayKey() {
+  const today = new Date()
 
-              <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Offen
-                </p>
+  return toDateKey(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  )
+}
 
-                <p className="mt-2 text-3xl font-bold">
-                  {pendingCount}
-                </p>
-              </div>
+function getCalendarDays(
+  year: number,
+  month: number,
+) {
+  const firstDay = new Date(
+    year,
+    month,
+    1,
+  )
 
-              <Clock className="h-7 w-7 text-yellow-500" />
+  const lastDay = new Date(
+    year,
+    month + 1,
+    0,
+  )
 
-            </div>
+  // JavaScript: Sonntag = 0
+  // Wir wollen Montag = 0
+  const firstWeekDay =
+    (firstDay.getDay() + 6) % 7
+
+  const daysInMonth =
+    lastDay.getDate()
+
+  const previousMonthDays =
+    firstWeekDay
+
+  const days = []
+
+  for (
+    let i = previousMonthDays - 1;
+    i >= 0;
+    i--
+  ) {
+    const date = new Date(
+      year,
+      month,
+      -i,
+    )
+
+    days.push({
+      day: date.getDate(),
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      currentMonth: false,
+    })
+  }
+
+  for (
+    let day = 1;
+    day <= daysInMonth;
+    day++
+  ) {
+    days.push({
+      day,
+      month,
+      year,
+      currentMonth: true,
+    })
+  }
+
+  const remaining =
+    42 - days.length
+
+  for (
+    let i = 1;
+    i <= remaining;
+    i++
+  ) {
+    const date = new Date(
+      year,
+      month + 1,
+      i,
+    )
+
+    days.push({
+      day: date.getDate(),
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      currentMonth: false,
+    })
+  }
+
+  return days
+}
+
+export function BookingsManager({
+  initialBookings,
+}: {
+  initialBookings: Booking[]
+}) {
+  const [bookings, setBookings] =
+    useState<Booking[]>(
+      initialBookings,
+    )
+
+  const [filter, setFilter] =
+    useState<BookingStatus | "all">(
+      "pending",
+    )
+
+  const [isPending, startTransition] =
+    useTransition()
+
+  const [busyId, setBusyId] =
+    useState<string | null>(null)
+
+  // =====================================================
+  // KALENDER
+  // =====================================================
+
+  const today = new Date()
+
+  const [calendarMonth, setCalendarMonth] =
+    useState(today.getMonth())
+
+  const [calendarYear, setCalendarYear] =
+    useState(today.getFullYear())
+
+  const [selectedDate, setSelectedDate] =
+    useState<string>(getTodayKey())
+
+  const calendarDays = useMemo(
+    () =>
+      getCalendarDays(
+        calendarYear,
+        calendarMonth,
+      ),
+    [calendarYear, calendarMonth],
+  )
+
+  // =====================================================
+  // BUCHUNGEN SORTIEREN
+  // =====================================================
+
+  const visible = [...bookings]
+    .filter((booking) =>
+      filter === "all"
+        ? true
+        : booking.status === filter,
+    )
+    .sort((a, b) => {
+      if (filter === "pending") {
+        return (
+          new Date(
+            b.created_at,
+          ).getTime() -
+          new Date(
+            a.created_at,
+          ).getTime()
+        )
+      }
+
+      const dateA =
+        `${a.booking_date} ${a.booking_time}`
+
+      const dateB =
+        `${b.booking_date} ${b.booking_time}`
+
+      return dateA.localeCompare(
+        dateB,
+      )
+    })
+
+  // =====================================================
+  // BUCHUNGEN FÜR AUSGEWÄHLTEN TAG
+  // =====================================================
+
+  const selectedDayBookings =
+    useMemo(() => {
+      return [...bookings]
+        .filter(
+          (booking) =>
+            booking.booking_date ===
+            selectedDate,
+        )
+        .sort((a, b) =>
+          a.booking_time.localeCompare(
+            b.booking_time,
+          ),
+        )
+    }, [
+      bookings,
+      selectedDate,
+    ])
+
+  // =====================================================
+  // STATISTIK
+  // =====================================================
+
+  const counts = {
+    pending: bookings.filter(
+      (b) =>
+        b.status === "pending",
+    ).length,
+
+    confirmed: bookings.filter(
+      (b) =>
+        b.status === "confirmed",
+    ).length,
+
+    rejected: bookings.filter(
+      (b) =>
+        b.status === "rejected",
+    ).length,
+  }
+
+  // =====================================================
+  // STATUS ÄNDERN
+  // =====================================================
+
+  function handleUpdate(
+    id: string,
+    status: Exclude<
+      BookingStatus,
+      "pending"
+    >,
+  ) {
+    setBusyId(id)
+
+    startTransition(async () => {
+      try {
+        const result =
+          await updateBookingStatus(
+            id,
+            status,
+          )
+
+        if (result.ok) {
+          setBookings(
+            (previous) =>
+              previous.map(
+                (booking) =>
+                  booking.id === id
+                    ? {
+                        ...booking,
+                        status,
+                      }
+                    : booking,
+              ),
+          )
+        } else {
+          alert(
+            result.error ??
+              "Aktualisierung fehlgeschlagen.",
+          )
+        }
+      } catch (error) {
+        console.error(error)
+
+        alert(
+          "Aktualisierung fehlgeschlagen.",
+        )
+      } finally {
+        setBusyId(null)
+      }
+    })
+  }
+
+  // =====================================================
+  // MONAT WECHSELN
+  // =====================================================
+
+  function previousMonth() {
+    if (calendarMonth === 0) {
+      setCalendarMonth(11)
+      setCalendarYear(
+        calendarYear - 1,
+      )
+    } else {
+      setCalendarMonth(
+        calendarMonth - 1,
+      )
+    }
+  }
+
+  function nextMonth() {
+    if (calendarMonth === 11) {
+      setCalendarMonth(0)
+      setCalendarYear(
+        calendarYear + 1,
+      )
+    } else {
+      setCalendarMonth(
+        calendarMonth + 1,
+      )
+    }
+  }
+
+  function goToToday() {
+    const now = new Date()
+
+    setCalendarMonth(
+      now.getMonth(),
+    )
+
+    setCalendarYear(
+      now.getFullYear(),
+    )
+
+    setSelectedDate(
+      toDateKey(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      ),
+    )
+  }
+
+  // =====================================================
+  // KALENDER STATUS
+  // =====================================================
+
+  function getDayBookings(
+    dateKey: string,
+  ) {
+    return bookings.filter(
+      (booking) =>
+        booking.booking_date ===
+        dateKey,
+    )
+  }
+
+  // =====================================================
+  // AUSGEWÄHLTES DATUM FORMATIEREN
+  // =====================================================
+
+  function formatSelectedDate(
+    dateKey: string,
+  ) {
+    const date = new Date(
+      dateKey + "T00:00:00",
+    )
+
+    return date.toLocaleDateString(
+      "de-CH",
+      {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      },
+    )
+  }
+
+  return (
+    <div>
+      {/* =================================================
+          STATISTIK
+      ================================================= */}
+
+      <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--warn)]">
+            {counts.pending}
           </div>
 
-          <div className="border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Bestätigt
-                </p>
-
-                <p className="mt-2 text-3xl font-bold">
-                  {confirmedCount}
-                </p>
-              </div>
-
-              <Check className="h-7 w-7 text-green-500" />
-
-            </div>
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
+            Offen
           </div>
-
-          <div className="border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-
-              <div>
-                <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Storniert
-                </p>
-
-                <p className="mt-2 text-3xl font-bold">
-                  {rejectedCount}
-                </p>
-              </div>
-
-              <X className="h-7 w-7 text-red-500" />
-
-            </div>
-          </div>
-
         </div>
 
-        {/* ====================================================
-            FILTER
-        ==================================================== */}
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--ok)]">
+            {counts.confirmed}
+          </div>
 
-        <div className="border border-border bg-card p-4">
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
+            Bestätigt
+          </div>
+        </div>
 
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="bg-card p-5">
+          <div className="font-display text-3xl font-bold text-[var(--bad)]">
+            {counts.rejected}
+          </div>
 
-            <div className="flex flex-wrap gap-2">
+          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
+            Abgelehnt
+          </div>
+        </div>
+      </div>
 
-              {FILTERS.map(
-                (item) => {
-                  const active =
-                    filter ===
-                    item.key
+      {/* =================================================
+          FILTER
+      ================================================= */}
+
+      <div className="mt-8 flex flex-wrap gap-2">
+        {FILTERS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() =>
+              setFilter(
+                item.key,
+              )
+            }
+            className={[
+              "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
+              filter === item.key
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
+            ].join(" ")}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {/* =================================================
+          HAUPTBEREICH
+          LINKS = BUCHUNGEN
+          RECHTS = KALENDER
+      ================================================= */}
+
+      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
+
+        {/* =================================================
+            LINKE SEITE – BUCHUNGEN
+        ================================================= */}
+
+        <div className="min-w-0">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                Buchungen
+              </p>
+
+              <h2 className="mt-1 font-display text-2xl font-bold uppercase">
+                {filter === "all"
+                  ? "Alle Termine"
+                  : statusLabels[
+                      filter
+                    ]}
+              </h2>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              {visible.length}{" "}
+              {visible.length === 1
+                ? "Termin"
+                : "Termine"}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {visible.length ===
+              0 && (
+              <p className="border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                Keine Einträge in
+                dieser Ansicht.
+              </p>
+            )}
+
+            {visible.map(
+              (booking) => {
+                const imagePaths =
+                  getImagePaths(
+                    booking.image_urls,
+                  )
+
+                return (
+                  <BookingCard
+                    key={
+                      booking.id
+                    }
+                    booking={
+                      booking
+                    }
+                    imagePaths={
+                      imagePaths
+                    }
+                    isPending={
+                      isPending
+                    }
+                    busyId={
+                      busyId
+                    }
+                    onUpdate={
+                      handleUpdate
+                    }
+                  />
+                )
+              },
+            )}
+          </div>
+        </div>
+
+        {/* =================================================
+            RECHTE SEITE – KALENDER
+        ================================================= */}
+
+        <aside className="xl:sticky xl:top-6">
+          <div className="border border-border bg-card">
+
+            {/* KALENDER HEADER */}
+
+            <div className="border-b border-border p-5">
+              <div className="flex items-center justify-between">
+
+                <div>
+                  <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                    Kalender
+                  </p>
+
+                  <h2 className="mt-1 font-display text-xl font-bold uppercase">
+                    {monthNames[
+                      calendarMonth
+                    ]}{" "}
+                    {calendarYear}
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={
+                      previousMonth
+                    }
+                    className="border border-border p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    aria-label="Vorheriger Monat"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      nextMonth
+                    }
+                    className="border border-border p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    aria-label="Nächster Monat"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  goToToday
+                }
+                className="mt-4 border border-border px-3 py-1.5 font-display text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                Heute
+              </button>
+            </div>
+
+            {/* WOCHENTAGE */}
+
+            <div className="grid grid-cols-7 border-b border-border">
+              {weekDays.map(
+                (day) => (
+                  <div
+                    key={day}
+                    className="py-3 text-center font-display text-[10px] uppercase tracking-wider text-muted-foreground"
+                  >
+                    {day}
+                  </div>
+                ),
+              )}
+            </div>
+
+            {/* TAGE */}
+
+            <div className="grid grid-cols-7 gap-px bg-border">
+              {calendarDays.map(
+                (day) => {
+                  const dateKey =
+                    toDateKey(
+                      day.year,
+                      day.month,
+                      day.day,
+                    )
+
+                  const dayBookings =
+                    getDayBookings(
+                      dateKey,
+                    )
+
+                  const hasPending =
+                    dayBookings.some(
+                      (booking) =>
+                        booking.status ===
+                        "pending",
+                    )
+
+                  const hasConfirmed =
+                    dayBookings.some(
+                      (booking) =>
+                        booking.status ===
+                        "confirmed",
+                    )
+
+                  const hasRejected =
+                    dayBookings.some(
+                      (booking) =>
+                        booking.status ===
+                        "rejected",
+                    )
+
+                  const isSelected =
+                    selectedDate ===
+                    dateKey
+
+                  const isToday =
+                    getTodayKey() ===
+                    dateKey
 
                   return (
                     <button
                       key={
-                        item.key
+                        dateKey
                       }
                       type="button"
                       onClick={() =>
-                        setFilter(
-                          item.key,
+                        setSelectedDate(
+                          dateKey,
                         )
                       }
                       className={[
-                        "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
-                        active
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border hover:bg-secondary",
+                        "relative min-h-[64px] bg-card p-2 text-left transition-colors",
+                        "hover:bg-secondary",
+                        !day.currentMonth
+                          ? "opacity-35"
+                          : "",
+                        isSelected
+                          ? "ring-2 ring-inset ring-primary"
+                          : "",
                       ].join(" ")}
                     >
-                      {item.label}
+                      <span
+                        className={[
+                          "flex h-7 w-7 items-center justify-center font-display text-sm",
+                          isToday
+                            ? "bg-primary text-primary-foreground"
+                            : "",
+                        ].join(" ")}
+                      >
+                        {
+                          day.day
+                        }
+                      </span>
+
+                      {/* STATUS-PUNKTE */}
+
+                      {dayBookings.length >
+                        0 && (
+                        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1">
+                          {hasPending && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--warn)]" />
+                          )}
+
+                          {hasConfirmed && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--ok)]" />
+                          )}
+
+                          {hasRejected && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--bad)]" />
+                          )}
+                        </div>
+                      )}
+
+                      {/* ANZAHL */}
+
+                      {dayBookings.length >
+                        0 && (
+                        <span className="absolute right-2 top-2 text-[9px] text-muted-foreground">
+                          {
+                            dayBookings.length
+                          }
+                        </span>
+                      )}
                     </button>
                   )
                 },
               )}
-
             </div>
 
-            <input
-              type="search"
-              value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value,
-                )
-              }
-              placeholder="Buchung suchen..."
-              className="w-full border border-input bg-background px-4 py-2 text-sm outline-none lg:max-w-xs"
-            />
+            {/* LEGENDE */}
 
-          </div>
+            <div className="border-t border-border p-4">
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[var(--warn)]" />
+                  Offen
+                </span>
 
-        </div>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[var(--ok)]" />
+                  Bestätigt
+                </span>
 
-        {/* ====================================================
-            ERROR
-        ==================================================== */}
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-[var(--bad)]" />
+                  Abgelehnt
+                </span>
+              </div>
+            </div>
 
-        {error && (
-          <div className="border border-red-500/30 bg-red-500/10 p-4">
+            {/* =================================================
+                AUSGEWÄHLTER TAG
+            ================================================= */}
 
-            <p className="text-sm text-red-600">
-              {error}
-            </p>
+            <div className="border-t border-border p-5">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
 
-          </div>
-        )}
+                <div>
+                  <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
+                    Ausgewählter Tag
+                  </p>
 
-        {/* ====================================================
-            KEINE BUCHUNGEN
-        ==================================================== */}
+                  <h3 className="mt-1 font-display text-lg font-semibold capitalize">
+                    {formatSelectedDate(
+                      selectedDate,
+                    )}
+                  </h3>
+                </div>
+              </div>
 
-        {filteredBookings.length === 0 && (
-          <div className="border border-border bg-card p-12 text-center">
+              {/* BUCHUNGEN DES TAGES */}
 
-            <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
+              <div className="mt-5 space-y-2">
+                {selectedDayBookings.length ===
+                  0 && (
+                  <div className="border border-border p-5 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Keine Buchungen
+                      an diesem Tag.
+                    </p>
+                  </div>
+                )}
 
-            <h3 className="mt-4 font-display text-lg font-bold uppercase">
-              Keine Buchungen
-            </h3>
+                {selectedDayBookings.map(
+                  (
+                    booking,
+                  ) => (
+                    <button
+                      key={
+                        booking.id
+                      }
+                      type="button"
+                      onClick={() => {
+                        setFilter(
+                          booking.status,
+                        )
+                      }}
+                      className="w-full border border-border p-3 text-left transition-colors hover:bg-secondary"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
 
-            <p className="mt-2 text-sm text-muted-foreground">
-              Es wurden keine passenden
-              Buchungen gefunden.
-            </p>
-
-          </div>
-        )}
-
-        {/* ====================================================
-            BUCHUNGEN
-        ==================================================== */}
-
-        <div className="space-y-4">
-
-          {filteredBookings.map(
-            (booking) => {
-
-              const processing =
-                processingId ===
-                booking.id
-
-              const deleting =
-                deletingId ===
-                booking.id
-
-              // ==================================================
-              // BILDER
-              // ==================================================
-
-              const images =
-                Array.isArray(
-                  booking.image_urls,
-                )
-                  ? booking.image_urls.filter(
-                      (image) =>
-                        typeof image ===
-                          "string" &&
-                        image.trim()
-                          .length > 0,
-                    )
-                  : []
-
-              const imageUrls =
-                images
-                  .map(
-                    (image) =>
-                      getSupabaseImageUrl(
-                        image,
-                      ),
-                  )
-                  .filter(Boolean)
-
-              return (
-                <div
-                  key={
-                    booking.id
-                  }
-                  className="border border-border bg-card p-5 md:p-6"
-                >
-
-                  {/* ==================================================
-                      HEADER
-                  ================================================== */}
-
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-
-                    <div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-
-                        <h3 className="text-lg font-bold">
-                          {booking.name}
-                        </h3>
+                          <span className="font-display text-sm font-semibold">
+                            {
+                              booking.booking_time
+                            }
+                          </span>
+                        </div>
 
                         <span
-                          className={[
-                            "border px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
-                            getStatusClass(
-                              booking.status,
-                            ),
-                          ].join(" ")}
+                          className={`border px-2 py-0.5 text-[9px] uppercase tracking-widest ${statusStyles[booking.status]}`}
                         >
-                          {getStatusLabel(
-                            booking.status,
-                          )}
+                          {
+                            statusLabels[
+                              booking.status
+                            ]
+                          }
                         </span>
-
                       </div>
 
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-
-                        <span>
-                          {formatDate(
-                            booking.booking_date,
-                          )}
-                        </span>
-
-                        <span>
-                          {booking.booking_time}
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={
-                        deleting ||
-                        processing
-                      }
-                      onClick={() =>
-                        handleDelete(
-                          booking.id,
-                        )
-                      }
-                      className="flex items-center gap-2 self-start border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
-                    >
-
-                      <Trash2 className="h-4 w-4" />
-
-                      {deleting
-                        ? "Löschen..."
-                        : "Löschen"}
-
-                    </button>
-
-                  </div>
-
-                  {/* ==================================================
-                      KUNDENDATEN
-                  ================================================== */}
-
-                  <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
-
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Telefon
-                      </p>
-
-                      <a
-                        href={`tel:${booking.phone}`}
-                        className="mt-1 flex items-center gap-2 text-sm font-medium hover:underline"
-                      >
-
-                        <Phone className="h-4 w-4" />
-
-                        {booking.phone}
-
-                      </a>
-                    </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                        E-Mail
-                      </p>
-
-                      <a
-                        href={`mailto:${booking.email}`}
-                        className="mt-1 flex items-center gap-2 break-all text-sm font-medium hover:underline"
-                      >
-
-                        <Mail className="h-4 w-4" />
-
-                        {booking.email}
-
-                      </a>
-                    </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Fahrzeug
-                      </p>
-
-                      <p className="mt-1 text-sm font-medium">
-                        {booking.car}
-                      </p>
-                    </div>
-
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                        Termin
-                      </p>
-
-                      <p className="mt-1 flex items-center gap-2 text-sm font-medium">
-
-                        <CalendarDays className="h-4 w-4" />
-
-                        {formatDate(
-                          booking.booking_date,
-                        )}
-
-                        {" "}um{" "}
-
-                        {booking.booking_time}
-
-                      </p>
-                    </div>
-
-                  </div>
-
-                  {/* ==================================================
-                      PROBLEM
-                  ================================================== */}
-
-                  <div className="mt-5 border-t border-border pt-5">
-
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground">
-                      Problem / Anliegen
-                    </p>
-
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                      {booking.problem}
-                    </p>
-
-                  </div>
-
-                  {/* ==================================================
-                      KUNDEN-BILDER
-                  ================================================== */}
-
-                  <div className="mt-5 border-t border-border pt-5">
-
-                    <div className="flex items-center gap-2">
-
-                      <ImageIcon className="h-5 w-5" />
-
-                      <p className="text-xs font-bold uppercase tracking-widest">
-                        Kunden-Bilder
-                      </p>
-
-                      {imageUrls.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          ({imageUrls.length})
-                        </span>
-                      )}
-
-                    </div>
-
-                    {/* ==================================================
-                        KEINE BILDER
-                    ================================================== */}
-
-                    {imageUrls.length === 0 ? (
-
-                      <div className="mt-4 border border-dashed border-border p-6 text-center">
-
-                        <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
-
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          Keine Bilder hochgeladen.
-                        </p>
-
-                      </div>
-
-                    ) : (
-
-                      /* ==================================================
-                         BILDER
-                      ================================================== */
-
-                      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-
-                        {imageUrls.map(
-                          (
-                            imageUrl,
-                            index,
-                          ) => {
-
-                            return (
-                              <button
-                                key={`${imageUrl}-${index}`}
-                                type="button"
-                                onClick={() =>
-                                  openImage(
-                                    imageUrls,
-                                    index,
-                                  )
-                                }
-                                className="group relative overflow-hidden border border-border bg-background text-left focus:outline-none focus:ring-2 focus:ring-primary"
-                              >
-
-                                {/* BILD */}
-
-                                <div className="relative aspect-square overflow-hidden bg-secondary">
-
-                                  <img
-                                    src={
-                                      imageUrl
-                                    }
-                                    alt={`Kundenbild ${
-                                      index +
-                                      1
-                                    }`}
-                                    className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                                    loading="lazy"
-                                    onLoad={() => {
-                                      console.log(
-                                        "SUPABASE BILD GELADEN:",
-                                        imageUrl,
-                                      )
-                                    }}
-                                    onError={() => {
-                                      console.error(
-                                        "SUPABASE BILD KONNTE NICHT GELADEN WERDEN:",
-                                        imageUrl,
-                                      )
-                                    }}
-                                  />
-
-                                  {/* OVERLAY */}
-
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition duration-300 group-hover:bg-black/40">
-
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-lg transition duration-300 group-hover:opacity-100">
-
-                                      <Maximize2 className="h-5 w-5 text-black" />
-
-                                    </div>
-
-                                  </div>
-
-                                </div>
-
-                                {/* BESCHRIFTUNG */}
-
-                                <div className="border-t border-border px-3 py-2">
-
-                                  <p className="truncate text-xs font-bold">
-                                    Bild{" "}
-                                    {index + 1}
-                                  </p>
-
-                                  <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                                    Vergrössern
-                                  </p>
-
-                                </div>
-
-                              </button>
-                            )
-                          },
-                        )}
-
-                      </div>
-                    )}
-
-                  </div>
-
-                  {/* ==================================================
-                      AKTIONEN
-                  ================================================== */}
-
-                  <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row">
-
-                    {/* BESTÄTIGEN */}
-
-                    <button
-                      type="button"
-                      disabled={
-                        processing ||
-                        deleting ||
-                        booking.status ===
-                          "confirmed"
-                      }
-                      onClick={() =>
-                        handleStatus(
-                          booking.id,
-                          "confirmed",
-                        )
-                      }
-                      className="flex flex-1 items-center justify-center gap-2 bg-green-600 px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-
-                      <Check className="h-4 w-4" />
-
-                      {processing
-                        ? "Wird gespeichert..."
-                        : "Bestätigen"}
-
-                    </button>
-
-                    {/* STORNIEREN */}
-
-                    <button
-                      type="button"
-                      disabled={
-                        processing ||
-                        deleting ||
-                        booking.status ===
-                          "rejected"
-                      }
-                      onClick={() =>
-                        handleStatus(
-                          booking.id,
-                          "rejected",
-                        )
-                      }
-                      className="flex flex-1 items-center justify-center gap-2 border border-red-500/40 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-
-                      <X className="h-4 w-4" />
-
-                      Stornieren
-
-                    </button>
-
-                    {/* WIEDER ÖFFNEN */}
-
-                    {booking.status !==
-                      "pending" && (
-
-                      <button
-                        type="button"
-                        disabled={
-                          processing ||
-                          deleting
+                      <p className="mt-2 truncate text-sm">
+                        {
+                          booking.name
                         }
-                        onClick={() =>
-                          handleStatus(
-                            booking.id,
-                            "pending",
-                          )
+                      </p>
+
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {
+                          booking.car
                         }
-                        className="flex flex-1 items-center justify-center gap-2 border border-border px-4 py-3 text-xs font-bold uppercase tracking-widest transition hover:bg-secondary disabled:opacity-40"
-                      >
+                      </p>
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  )
+}
 
-                        <Clock className="h-4 w-4" />
+// =====================================================
+// BUCHUNGSKARTE
+// =====================================================
 
-                        Wieder öffnen
+function BookingCard({
+  booking,
+  imagePaths,
+  isPending,
+  busyId,
+  onUpdate,
+}: {
+  booking: Booking
+  imagePaths: string[]
+  isPending: boolean
+  busyId: string | null
+  onUpdate: (
+    id: string,
+    status: Exclude<
+      BookingStatus,
+      "pending"
+    >,
+  ) => void
+}) {
+  return (
+    <article
+      className="border border-border bg-card p-6"
+    >
+      {/* NAME + STATUS */}
 
-                      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="font-display text-lg font-semibold uppercase tracking-wide">
+          {booking.name}
+        </h3>
 
-                    )}
-
-                  </div>
-
-                </div>
-              )
-            },
-          )}
-
-        </div>
-
+        <span
+          className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
+        >
+          {
+            statusLabels[
+              booking.status
+            ]
+          }
+        </span>
       </div>
 
-      {/* ========================================================
-          BILD MODAL / LIGHTBOX
-      ======================================================== */}
+      {/* DATUM / ZEIT */}
 
-      {selectedImage && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (
-              event.target ===
-              event.currentTarget
-            ) {
-              closeImage()
-            }
-          }}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Calendar className="h-4 w-4" />
+
+          {formatDate(
+            booking.booking_date,
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="h-4 w-4" />
+
+          {booking.booking_time}
+        </div>
+      </div>
+
+      {/* KONTAKT */}
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <a
+          href={`tel:${booking.phone}`}
+          className="flex items-center gap-2 text-sm text-foreground hover:underline"
         >
+          <Phone className="h-4 w-4" />
 
-          {/* ====================================================
-              SCHLIESSEN
-          ==================================================== */}
+          {booking.phone}
+        </a>
+
+        <a
+          href={`mailto:${booking.email}`}
+          className="flex items-center gap-2 break-all text-sm text-foreground hover:underline"
+        >
+          <Mail className="h-4 w-4" />
+
+          {booking.email}
+        </a>
+      </div>
+
+      {/* FAHRZEUG */}
+
+      <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+        <Car className="h-4 w-4" />
+
+        {booking.car}
+      </div>
+
+      {/* PROBLEM */}
+
+      <div className="mt-5 border-t border-border pt-5">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">
+          Problem / Anliegen
+        </p>
+
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+          {booking.problem}
+        </p>
+      </div>
+
+      {/* BILDER */}
+
+      <div className="mt-6 border-t border-border pt-5">
+        <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
+          <ImageIcon className="h-4 w-4" />
+
+          Kundenbilder
+
+          {imagePaths.length >
+            0 &&
+            ` (${imagePaths.length})`}
+        </div>
+
+        {imagePaths.length ===
+        0 ? (
+          <div className="mt-3 border border-border p-5 text-center">
+            <ImageIcon className="mx-auto h-6 w-6 text-muted-foreground" />
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              Keine Kundenbilder
+              vorhanden
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {imagePaths.map(
+              (
+                path,
+                index,
+              ) => {
+                const url =
+                  getImageUrl(
+                    path,
+                  )
+
+                if (!url) {
+                  return null
+                }
+
+                return (
+                  <a
+                    key={`${path}-${index}`}
+                    href={
+                      url
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative block aspect-square overflow-hidden border border-border bg-background"
+                  >
+                    <img
+                      src={
+                        url
+                      }
+                      alt={`Kundenbild ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      onError={(
+                        e,
+                      ) => {
+                        console.error(
+                          "Bild konnte nicht geladen werden:",
+                          url,
+                        )
+
+                        e.currentTarget.style.display =
+                          "none"
+                      }}
+                    />
+
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-2 text-center text-[10px] uppercase tracking-wider text-white">
+                      Bild{" "}
+                      {index +
+                        1}
+                    </div>
+                  </a>
+                )
+              },
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* BUTTONS */}
+
+      {booking.status ===
+        "pending" && (
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={
+              isPending &&
+              busyId ===
+                booking.id
+            }
+            onClick={() =>
+              onUpdate(
+                booking.id,
+                "confirmed",
+              )
+            }
+            className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+          >
+            <Check className="h-4 w-4" />
+
+            {isPending &&
+            busyId ===
+              booking.id
+              ? "Wird gespeichert..."
+              : "Bestätigen"}
+          </button>
 
           <button
             type="button"
-            aria-label="Bild schließen"
-            onClick={closeImage}
-            className="absolute right-4 top-4 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            disabled={
+              isPending &&
+              busyId ===
+                booking.id
+            }
+            onClick={() =>
+              onUpdate(
+                booking.id,
+                "rejected",
+              )
+            }
+            className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
           >
+            <X className="h-4 w-4" />
 
-            <X className="h-6 w-6" />
-
+            {isPending &&
+            busyId ===
+              booking.id
+              ? "Wird gespeichert..."
+              : "Ablehnen"}
           </button>
-
-          {/* ====================================================
-              BILD NUMMER
-          ==================================================== */}
-
-          {selectedImages.length > 0 && (
-            <div className="absolute left-4 top-4 z-[110] rounded-full bg-black/60 px-4 py-2 text-xs font-bold uppercase tracking-widest text-white">
-
-              Bild{" "}
-              {selectedImageIndex + 1}
-              {" / "}
-              {selectedImages.length}
-
-            </div>
-          )}
-
-          {/* ====================================================
-              VORHERIGES BILD
-          ==================================================== */}
-
-          {selectedImages.length > 1 && (
-            <button
-              type="button"
-              aria-label="Vorheriges Bild"
-              onClick={previousImage}
-              className="absolute left-3 top-1/2 z-[110] flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:left-6"
-            >
-
-              <ChevronLeft className="h-7 w-7" />
-
-            </button>
-          )}
-
-          {/* ====================================================
-              NÄCHSTES BILD
-          ==================================================== */}
-
-          {selectedImages.length > 1 && (
-            <button
-              type="button"
-              aria-label="Nächstes Bild"
-              onClick={nextImage}
-              className="absolute right-3 top-1/2 z-[110] flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6"
-            >
-
-              <ChevronRight className="h-7 w-7" />
-
-            </button>
-          )}
-
-          {/* ====================================================
-              GROSSES BILD
-          ==================================================== */}
-
-          <div className="flex max-h-[90vh] max-w-[92vw] items-center justify-center">
-
-            <img
-              src={selectedImage}
-              alt={`Kundenbild ${
-                selectedImageIndex + 1
-              }`}
-              className="max-h-[90vh] max-w-[92vw] rounded-sm object-contain shadow-2xl"
-            />
-
-          </div>
-
         </div>
       )}
-    </>
+    </article>
   )
 }
