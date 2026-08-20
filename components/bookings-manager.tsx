@@ -65,10 +65,6 @@ type BookingsManagerProps = {
 // SUPABASE
 // ============================================================
 
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "https://cfiumzbuavfbahctzknr.supabase.co"
-
 const STORAGE_BUCKET = "Kunden-Bilder"
 
 // ============================================================
@@ -78,19 +74,26 @@ const STORAGE_BUCKET = "Kunden-Bilder"
 export function BookingsManager({
   bookings,
 }: BookingsManagerProps) {
-  const safeBookings =
-    Array.isArray(bookings)
-      ? bookings
-      : []
+  // ==========================================================
+  // SICHERHEIT
+  // ==========================================================
+
+  const safeBookings = Array.isArray(bookings)
+    ? bookings
+    : []
+
+  // ==========================================================
+  // SUPABASE CLIENT
+  // ==========================================================
+
+  const supabase = createClient()
 
   // ==========================================================
   // STATE
   // ==========================================================
 
   const [filter, setFilter] =
-    useState<
-      BookingStatus | "all"
-    >("all")
+    useState<BookingStatus | "all">("all")
 
   const [search, setSearch] =
     useState("")
@@ -105,7 +108,78 @@ export function BookingsManager({
     useState<string | null>(null)
 
   // ==========================================================
-  // FILTER
+  // BILD-URLS
+  //
+  // Hier werden die Bilder DIREKT aus dem öffentlichen
+  // Supabase Storage Bucket geladen.
+  // ==========================================================
+
+  const [imageUrls, setImageUrls] =
+    useState<Record<string, string>>({})
+
+  // ==========================================================
+  // BILDER AUS SUPABASE LADEN
+  // ==========================================================
+
+  useEffect(() => {
+    async function loadImages() {
+      const urls: Record<string, string> = {}
+
+      for (const booking of safeBookings) {
+        if (
+          !Array.isArray(
+            booking.image_urls,
+          )
+        ) {
+          continue
+        }
+
+        for (
+          const fileName of booking.image_urls
+        ) {
+          if (
+            typeof fileName !== "string" ||
+            !fileName.trim()
+          ) {
+            continue
+          }
+
+          const cleanFileName =
+            fileName.trim()
+
+          // ==================================================
+          // DIREKT AUS SUPABASE STORAGE
+          // ==================================================
+
+          const {
+            data,
+          } =
+            supabase.storage
+              .from(
+                STORAGE_BUCKET,
+              )
+              .getPublicUrl(
+                cleanFileName,
+              )
+
+          if (
+            data?.publicUrl
+          ) {
+            urls[
+              cleanFileName
+            ] = data.publicUrl
+          }
+        }
+      }
+
+      setImageUrls(urls)
+    }
+
+    loadImages()
+  }, [safeBookings, supabase])
+
+  // ==========================================================
+  // FILTERED BOOKINGS
   // ==========================================================
 
   const filteredBookings =
@@ -179,11 +253,6 @@ export function BookingsManager({
             "Die Buchung konnte nicht aktualisiert werden.",
         )
       }
-
-      /*
-       * Server Action:
-       * revalidatePath("/besitzer")
-       */
     } catch (error) {
       console.error(
         "Status Fehler:",
@@ -296,7 +365,7 @@ export function BookingsManager({
   }
 
   // ==========================================================
-  // DATUM
+  // DATUM FORMATIEREN
   // ==========================================================
 
   function formatDate(
@@ -328,36 +397,6 @@ export function BookingsManager({
       },
     ).format(date)
   }
-
-  // ==========================================================
-  // BILD URL
-  // ==========================================================
-
-  function getImageUrl(value: string) {
-  if (!value) {
-    return ""
-  }
-
-  // Falls bereits eine komplette URL gespeichert ist
-  if (
-    value.startsWith("http://") ||
-    value.startsWith("https://")
-  ) {
-    return value
-  }
-
-  // Dateiname aus der Datenbank
-  const filePath = value
-    .split("/")
-    .map((part) =>
-      encodeURIComponent(part),
-    )
-    .join("/")
-
-  return `${SUPABASE_URL}/storage/v1/object/public/${encodeURIComponent(
-    STORAGE_BUCKET,
-  )}/${filePath}`
-}
 
   // ==========================================================
   // STATISTIK
@@ -397,10 +436,14 @@ export function BookingsManager({
 
       <div className="grid gap-4 sm:grid-cols-3">
 
+        {/* OFFEN */}
+
         <div className="border border-border bg-card p-5">
+
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Offen
               </p>
@@ -408,17 +451,23 @@ export function BookingsManager({
               <p className="mt-2 text-3xl font-bold">
                 {pendingCount}
               </p>
+
             </div>
 
             <Clock className="h-7 w-7 text-yellow-500" />
 
           </div>
+
         </div>
 
+        {/* BESTÄTIGT */}
+
         <div className="border border-border bg-card p-5">
+
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Bestätigt
               </p>
@@ -426,17 +475,23 @@ export function BookingsManager({
               <p className="mt-2 text-3xl font-bold">
                 {confirmedCount}
               </p>
+
             </div>
 
             <Check className="h-7 w-7 text-green-500" />
 
           </div>
+
         </div>
 
+        {/* STORNIERT */}
+
         <div className="border border-border bg-card p-5">
+
           <div className="flex items-center justify-between">
 
             <div>
+
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Storniert
               </p>
@@ -444,17 +499,19 @@ export function BookingsManager({
               <p className="mt-2 text-3xl font-bold">
                 {rejectedCount}
               </p>
+
             </div>
 
             <X className="h-7 w-7 text-red-500" />
 
           </div>
+
         </div>
 
       </div>
 
       {/* ====================================================
-          FILTER
+          FILTER + SUCHE
       ==================================================== */}
 
       <div className="border border-border bg-card p-4">
@@ -465,6 +522,7 @@ export function BookingsManager({
 
             {FILTERS.map(
               (item) => {
+
                 const active =
                   filter ===
                   item.key
@@ -482,10 +540,13 @@ export function BookingsManager({
                     }
                     className={[
                       "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
+
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border hover:bg-secondary",
-                    ].join(" ")}
+                    ].join(
+                      " ",
+                    )}
                   >
                     {
                       item.label
@@ -518,19 +579,23 @@ export function BookingsManager({
       ==================================================== */}
 
       {error && (
+
         <div className="border border-red-500/30 bg-red-500/10 p-4">
+
           <p className="text-sm text-red-600">
             {error}
           </p>
+
         </div>
+
       )}
 
       {/* ====================================================
           KEINE BUCHUNGEN
       ==================================================== */}
 
-      {filteredBookings.length ===
-        0 && (
+      {filteredBookings.length === 0 && (
+
         <div className="border border-border bg-card p-12 text-center">
 
           <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -545,6 +610,7 @@ export function BookingsManager({
           </p>
 
         </div>
+
       )}
 
       {/* ====================================================
@@ -564,6 +630,10 @@ export function BookingsManager({
               deletingId ===
               booking.id
 
+            // ================================================
+            // BILDER DER BUCHUNG
+            // ================================================
+
             const images =
               Array.isArray(
                 booking.image_urls,
@@ -578,6 +648,7 @@ export function BookingsManager({
                 : []
 
             return (
+
               <div
                 key={
                   booking.id
@@ -585,9 +656,9 @@ export function BookingsManager({
                 className="border border-border bg-card p-5 md:p-6"
               >
 
-                {/* ==================================================
+                {/* ==========================================
                     HEADER
-                ================================================== */}
+                ========================================== */}
 
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
 
@@ -638,6 +709,8 @@ export function BookingsManager({
 
                   </div>
 
+                  {/* LÖSCHEN */}
+
                   <button
                     type="button"
                     disabled={
@@ -662,11 +735,13 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==================================================
+                {/* ==========================================
                     KUNDENDATEN
-                ================================================== */}
+                ========================================== */}
 
                 <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
+
+                  {/* TELEFON */}
 
                   <div>
 
@@ -689,6 +764,8 @@ export function BookingsManager({
 
                   </div>
 
+                  {/* EMAIL */}
+
                   <div>
 
                     <p className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -710,6 +787,8 @@ export function BookingsManager({
 
                   </div>
 
+                  {/* FAHRZEUG */}
+
                   <div>
 
                     <p className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -723,6 +802,8 @@ export function BookingsManager({
                     </p>
 
                   </div>
+
+                  {/* TERMIN */}
 
                   <div>
 
@@ -750,9 +831,9 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==================================================
+                {/* ==========================================
                     PROBLEM
-                ================================================== */}
+                ========================================== */}
 
                 <div className="mt-5 border-t border-border pt-5">
 
@@ -768,9 +849,9 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==================================================
+                {/* ==========================================
                     KUNDEN-BILDER
-                ================================================== */}
+                ========================================== */}
 
                 <div className="mt-5 border-t border-border pt-5">
 
@@ -782,21 +863,22 @@ export function BookingsManager({
                       Kunden-Bilder
                     </p>
 
-                    {images.length >
-                      0 && (
+                    {images.length > 0 && (
+
                       <span className="text-xs text-muted-foreground">
-                        (
-                        {
-                          images.length
-                        }
-                        )
+                        ({images.length})
                       </span>
+
                     )}
 
                   </div>
 
-                  {images.length ===
-                    0 ? (
+                  {/* ========================================
+                      KEINE BILDER
+                  ======================================== */}
+
+                  {images.length === 0 ? (
+
                     <div className="mt-4 border border-dashed border-border p-6 text-center">
 
                       <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
@@ -806,7 +888,13 @@ export function BookingsManager({
                       </p>
 
                     </div>
+
                   ) : (
+
+                    /* ======================================
+                       BILDER
+                    ====================================== */
+
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 
                       {images.map(
@@ -815,72 +903,93 @@ export function BookingsManager({
                           index,
                         ) => {
 
+                          const cleanFileName =
+                            image.trim()
+
+                          // =================================
+                          // DIREKTE SUPABASE PUBLIC URL
+                          // =================================
+
                           const imageUrl =
-                            getImageUrl(
-                              image,
-                            )
+                            imageUrls[
+                              cleanFileName
+                            ]
 
                           return (
-                            <a
-                              key={`${image}-${index}`}
-                              href={
-                                imageUrl
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="group block overflow-hidden border border-border bg-background"
+
+                            <div
+                              key={`${cleanFileName}-${index}`}
+                              className="overflow-hidden border border-border bg-background"
                             >
+
+                              {/* BILD */}
 
                               <div className="relative aspect-square overflow-hidden bg-secondary">
 
-                                <img
-                                  src={
-                                    imageUrl
-                                  }
-                                  alt={`Kundenbild ${
-                                    index +
-                                    1
-                                  }`}
-                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                  loading="lazy"
-                                  onError={(
-                                    event,
-                                  ) => {
-                                    console.error(
-                                      "Kundenbild konnte nicht geladen werden:",
-                                      imageUrl,
-                                    )
+                                {imageUrl ? (
 
-                                    event.currentTarget.style.display =
-                                      "none"
-
-                                    const parent =
-                                      event
-                                        .currentTarget
-                                        .parentElement
-
-                                    if (
-                                      parent
-                                    ) {
-                                      parent.innerHTML =
-                                        `
-                                        <div class="flex h-full w-full flex-col items-center justify-center p-3 text-center">
-                                          <div class="text-xs text-muted-foreground">
-                                            Bild konnte nicht geladen werden
-                                          </div>
-                                        </div>
-                                        `
+                                  <a
+                                    href={
+                                      imageUrl
                                     }
-                                  }}
-                                />
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="group block h-full w-full"
+                                  >
 
-                                <div className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center bg-black/60 text-white opacity-0 transition group-hover:opacity-100">
+                                    <img
+                                      src={
+                                        imageUrl
+                                      }
+                                      alt={`Kundenbild ${
+                                        index +
+                                        1
+                                      }`}
+                                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                      loading="lazy"
+                                      onError={(
+                                        event,
+                                      ) => {
 
-                                  <ExternalLink className="h-4 w-4" />
+                                        console.error(
+                                          "SUPABASE BILD FEHLER:",
+                                          imageUrl,
+                                        )
 
-                                </div>
+                                        event.currentTarget.style.display =
+                                          "none"
+                                      }}
+                                    />
+
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+
+                                      <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
+
+                                    </div>
+
+                                  </a>
+
+                                ) : (
+
+                                  <div className="flex h-full w-full items-center justify-center">
+
+                                    <div className="text-center">
+
+                                      <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+
+                                      <p className="mt-2 text-xs text-muted-foreground">
+                                        Bild wird geladen...
+                                      </p>
+
+                                    </div>
+
+                                  </div>
+
+                                )}
 
                               </div>
+
+                              {/* DATEINAME */}
 
                               <div className="border-t border-border px-3 py-2">
 
@@ -892,25 +1001,27 @@ export function BookingsManager({
 
                                 <p className="mt-1 truncate text-[10px] text-muted-foreground">
                                   {
-                                    image
+                                    cleanFileName
                                   }
                                 </p>
 
                               </div>
 
-                            </a>
+                            </div>
+
                           )
                         },
                       )}
 
                     </div>
+
                   )}
 
                 </div>
 
-                {/* ==================================================
+                {/* ==========================================
                     AKTIONEN
-                ================================================== */}
+                ========================================== */}
 
                 <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row">
 
@@ -972,6 +1083,7 @@ export function BookingsManager({
 
                   {booking.status !==
                     "pending" && (
+
                     <button
                       type="button"
                       disabled={
@@ -992,11 +1104,13 @@ export function BookingsManager({
                       Wieder öffnen
 
                     </button>
+
                   )}
 
                 </div>
 
               </div>
+
             )
           },
         )}
