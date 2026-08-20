@@ -94,11 +94,17 @@ export async function createBooking(
       data.image_urls
     )
       ? data.image_urls
+          .filter(
+            (url) =>
+              typeof url === "string" &&
+              url.trim().length > 0
+          )
+          .map((url) => url.trim())
       : []
 
-    // ----------------------------------------------------------
-    // Pflichtfelder
-    // ----------------------------------------------------------
+    // ==========================================================
+    // PFLICHTFELDER
+    // ==========================================================
 
     if (
       !booking_date ||
@@ -111,13 +117,14 @@ export async function createBooking(
     ) {
       return {
         ok: false,
-        error: "Bitte fülle alle Pflichtfelder aus.",
+        error:
+          "Bitte fülle alle Pflichtfelder aus.",
       }
     }
 
-    // ----------------------------------------------------------
-    // Datum prüfen
-    // ----------------------------------------------------------
+    // ==========================================================
+    // DATUM PRÜFEN
+    // ==========================================================
 
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(
@@ -162,9 +169,9 @@ export async function createBooking(
       }
     }
 
-    // ----------------------------------------------------------
-    // Uhrzeit prüfen
-    // ----------------------------------------------------------
+    // ==========================================================
+    // UHRZEIT PRÜFEN
+    // ==========================================================
 
     if (
       !/^\d{2}:\d{2}$/.test(
@@ -204,9 +211,9 @@ export async function createBooking(
       }
     }
 
-    // ----------------------------------------------------------
-    // E-Mail prüfen
-    // ----------------------------------------------------------
+    // ==========================================================
+    // E-MAIL PRÜFEN
+    // ==========================================================
 
     const emailRegex =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -219,9 +226,9 @@ export async function createBooking(
       }
     }
 
-    // ----------------------------------------------------------
-    // Textlängen
-    // ----------------------------------------------------------
+    // ==========================================================
+    // TEXTLÄNGEN
+    // ==========================================================
 
     if (name.length > 200) {
       return {
@@ -262,9 +269,9 @@ export async function createBooking(
       }
     }
 
-    // ----------------------------------------------------------
-    // Termin bereits vergeben?
-    // ----------------------------------------------------------
+    // ==========================================================
+    // PRÜFEN, OB TERMIN SCHON VERGEBEN IST
+    // ==========================================================
 
     const {
       data: existingBooking,
@@ -308,9 +315,9 @@ export async function createBooking(
       }
     }
 
-    // ----------------------------------------------------------
-    // Buchung erstellen
-    // ----------------------------------------------------------
+    // ==========================================================
+    // BUCHUNG ERSTELLEN
+    // ==========================================================
 
     const {
       data: booking,
@@ -361,7 +368,8 @@ export async function createBooking(
     return {
       ok: true,
       bookingId: booking.id,
-      booking: booking as Booking,
+      booking:
+        booking as Booking,
     }
   } catch (error) {
     console.error(
@@ -409,8 +417,7 @@ export async function saveBookingImages(
       imageUrls
         .filter(
           (url) =>
-            typeof url ===
-              "string" &&
+            typeof url === "string" &&
             url.trim().length > 0
         )
         .map((url) =>
@@ -509,9 +516,11 @@ export async function listBookings() {
       return []
     }
 
-    return (
-      data ?? []
-    ) as Booking[]
+    if (!Array.isArray(data)) {
+      return []
+    }
+
+    return data as Booking[]
   } catch (error) {
     console.error(
       "listBookings Fehler:",
@@ -556,6 +565,10 @@ export async function updateBookingStatus(
       }
     }
 
+    // ========================================================
+    // ERLAUBTE STATUS
+    // ========================================================
+
     const allowedStatuses:
       BookingStatus[] = [
         "pending",
@@ -574,6 +587,10 @@ export async function updateBookingStatus(
           "Ungültiger Buchungsstatus.",
       }
     }
+
+    // ========================================================
+    // STATUS AKTUALISIEREN
+    // ========================================================
 
     const {
       data: booking,
