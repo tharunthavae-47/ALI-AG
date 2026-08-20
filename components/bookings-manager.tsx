@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  useEffect,
   useMemo,
   useState,
 } from "react"
@@ -24,8 +23,6 @@ import {
   type Booking,
   type BookingStatus,
 } from "@/app/actions"
-
-import { createClient } from "@/lib/supabase/client"
 
 // ============================================================
 // FILTER
@@ -62,10 +59,68 @@ type BookingsManagerProps = {
 }
 
 // ============================================================
-// SUPABASE
+// SUPABASE STORAGE
 // ============================================================
 
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://cfiumzbuavfbahctzknr.supabase.co"
+
 const STORAGE_BUCKET = "Kunden-Bilder"
+
+// ============================================================
+// SUPABASE PUBLIC IMAGE URL
+// ============================================================
+
+function getPublicImageUrl(
+  fileName: string,
+) {
+  if (!fileName) {
+    return ""
+  }
+
+  const cleanFileName =
+    fileName.trim()
+
+  if (!cleanFileName) {
+    return ""
+  }
+
+  // Falls bereits eine komplette URL gespeichert wurde
+  if (
+    cleanFileName.startsWith(
+      "http://",
+    ) ||
+    cleanFileName.startsWith(
+      "https://",
+    )
+  ) {
+    return cleanFileName
+  }
+
+  /*
+   * Beispiel:
+   *
+   * Dateiname:
+   * tom-1787209954179-cnmym0-1.jpg
+   *
+   * wird zu:
+   *
+   * https://cfiumzbuavfbahctzknr.supabase.co/storage/v1/object/public/Kunden-Bilder/tom-1787209954179-cnmym0-1.jpg
+   */
+
+  const encodedPath =
+    cleanFileName
+      .split("/")
+      .map((part) =>
+        encodeURIComponent(part),
+      )
+      .join("/")
+
+  return `${SUPABASE_URL}/storage/v1/object/public/${encodeURIComponent(
+    STORAGE_BUCKET,
+  )}/${encodedPath}`
+}
 
 // ============================================================
 // COMPONENT
@@ -78,22 +133,19 @@ export function BookingsManager({
   // SICHERHEIT
   // ==========================================================
 
-  const safeBookings = Array.isArray(bookings)
-    ? bookings
-    : []
-
-  // ==========================================================
-  // SUPABASE CLIENT
-  // ==========================================================
-
-  const supabase = createClient()
+  const safeBookings =
+    Array.isArray(bookings)
+      ? bookings
+      : []
 
   // ==========================================================
   // STATE
   // ==========================================================
 
   const [filter, setFilter] =
-    useState<BookingStatus | "all">("all")
+    useState<
+      BookingStatus | "all"
+    >("all")
 
   const [search, setSearch] =
     useState("")
@@ -108,78 +160,7 @@ export function BookingsManager({
     useState<string | null>(null)
 
   // ==========================================================
-  // BILD-URLS
-  //
-  // Hier werden die Bilder DIREKT aus dem öffentlichen
-  // Supabase Storage Bucket geladen.
-  // ==========================================================
-
-  const [imageUrls, setImageUrls] =
-    useState<Record<string, string>>({})
-
-  // ==========================================================
-  // BILDER AUS SUPABASE LADEN
-  // ==========================================================
-
-  useEffect(() => {
-    async function loadImages() {
-      const urls: Record<string, string> = {}
-
-      for (const booking of safeBookings) {
-        if (
-          !Array.isArray(
-            booking.image_urls,
-          )
-        ) {
-          continue
-        }
-
-        for (
-          const fileName of booking.image_urls
-        ) {
-          if (
-            typeof fileName !== "string" ||
-            !fileName.trim()
-          ) {
-            continue
-          }
-
-          const cleanFileName =
-            fileName.trim()
-
-          // ==================================================
-          // DIREKT AUS SUPABASE STORAGE
-          // ==================================================
-
-          const {
-            data,
-          } =
-            supabase.storage
-              .from(
-                STORAGE_BUCKET,
-              )
-              .getPublicUrl(
-                cleanFileName,
-              )
-
-          if (
-            data?.publicUrl
-          ) {
-            urls[
-              cleanFileName
-            ] = data.publicUrl
-          }
-        }
-      }
-
-      setImageUrls(urls)
-    }
-
-    loadImages()
-  }, [safeBookings, supabase])
-
-  // ==========================================================
-  // FILTERED BOOKINGS
+  // FILTER
   // ==========================================================
 
   const filteredBookings =
@@ -540,17 +521,12 @@ export function BookingsManager({
                     }
                     className={[
                       "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
-
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border hover:bg-secondary",
-                    ].join(
-                      " ",
-                    )}
+                    ].join(" ")}
                   >
-                    {
-                      item.label
-                    }
+                    {item.label}
                   </button>
                 )
               },
@@ -630,9 +606,9 @@ export function BookingsManager({
               deletingId ===
               booking.id
 
-            // ================================================
-            // BILDER DER BUCHUNG
-            // ================================================
+            // ==================================================
+            // BILDER
+            // ==================================================
 
             const images =
               Array.isArray(
@@ -656,9 +632,9 @@ export function BookingsManager({
                 className="border border-border bg-card p-5 md:p-6"
               >
 
-                {/* ==========================================
+                {/* ============================================
                     HEADER
-                ========================================== */}
+                ============================================ */}
 
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
 
@@ -667,9 +643,7 @@ export function BookingsManager({
                     <div className="flex flex-wrap items-center gap-3">
 
                       <h3 className="text-lg font-bold">
-                        {
-                          booking.name
-                        }
+                        {booking.name}
                       </h3>
 
                       <span
@@ -678,15 +652,11 @@ export function BookingsManager({
                           getStatusClass(
                             booking.status,
                           ),
-                        ].join(
-                          " ",
-                        )}
+                        ].join(" ")}
                       >
-                        {
-                          getStatusLabel(
-                            booking.status,
-                          )
-                        }
+                        {getStatusLabel(
+                          booking.status,
+                        )}
                       </span>
 
                     </div>
@@ -700,9 +670,7 @@ export function BookingsManager({
                       </span>
 
                       <span>
-                        {
-                          booking.booking_time
-                        }
+                        {booking.booking_time}
                       </span>
 
                     </div>
@@ -735,9 +703,9 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==========================================
+                {/* ============================================
                     KUNDENDATEN
-                ========================================== */}
+                ============================================ */}
 
                 <div className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
 
@@ -756,9 +724,7 @@ export function BookingsManager({
 
                       <Phone className="h-4 w-4" />
 
-                      {
-                        booking.phone
-                      }
+                      {booking.phone}
 
                     </a>
 
@@ -779,9 +745,7 @@ export function BookingsManager({
 
                       <Mail className="h-4 w-4" />
 
-                      {
-                        booking.email
-                      }
+                      {booking.email}
 
                     </a>
 
@@ -796,9 +760,7 @@ export function BookingsManager({
                     </p>
 
                     <p className="mt-1 text-sm font-medium">
-                      {
-                        booking.car
-                      }
+                      {booking.car}
                     </p>
 
                   </div>
@@ -821,9 +783,7 @@ export function BookingsManager({
 
                       {" "}um{" "}
 
-                      {
-                        booking.booking_time
-                      }
+                      {booking.booking_time}
 
                     </p>
 
@@ -831,9 +791,9 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==========================================
+                {/* ============================================
                     PROBLEM
-                ========================================== */}
+                ============================================ */}
 
                 <div className="mt-5 border-t border-border pt-5">
 
@@ -842,16 +802,14 @@ export function BookingsManager({
                   </p>
 
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                    {
-                      booking.problem
-                    }
+                    {booking.problem}
                   </p>
 
                 </div>
 
-                {/* ==========================================
+                {/* ============================================
                     KUNDEN-BILDER
-                ========================================== */}
+                ============================================ */}
 
                 <div className="mt-5 border-t border-border pt-5">
 
@@ -873,9 +831,7 @@ export function BookingsManager({
 
                   </div>
 
-                  {/* ========================================
-                      KEINE BILDER
-                  ======================================== */}
+                  {/* KEINE BILDER */}
 
                   {images.length === 0 ? (
 
@@ -891,10 +847,6 @@ export function BookingsManager({
 
                   ) : (
 
-                    /* ======================================
-                       BILDER
-                    ====================================== */
-
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 
                       {images.map(
@@ -906,14 +858,24 @@ export function BookingsManager({
                           const cleanFileName =
                             image.trim()
 
-                          // =================================
-                          // DIREKTE SUPABASE PUBLIC URL
-                          // =================================
+                          // =================================================
+                          // DIREKTE ÖFFENTLICHE SUPABASE URL
+                          // =================================================
 
                           const imageUrl =
-                            imageUrls[
-                              cleanFileName
-                            ]
+                            getPublicImageUrl(
+                              cleanFileName,
+                            )
+
+                          console.log(
+                            "KUNDENBILD:",
+                            {
+                              fileName:
+                                cleanFileName,
+                              url:
+                                imageUrl,
+                            },
+                          )
 
                           return (
 
@@ -926,66 +888,77 @@ export function BookingsManager({
 
                               <div className="relative aspect-square overflow-hidden bg-secondary">
 
-                                {imageUrl ? (
+                                <a
+                                  href={
+                                    imageUrl
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group block h-full w-full"
+                                >
 
-                                  <a
-                                    href={
+                                  <img
+                                    src={
                                       imageUrl
                                     }
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="group block h-full w-full"
-                                  >
+                                    alt={`Kundenbild ${
+                                      index +
+                                      1
+                                    }`}
+                                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                    loading="lazy"
+                                    onLoad={() => {
+                                      console.log(
+                                        "KUNDENBILD GELADEN:",
+                                        imageUrl,
+                                      )
+                                    }}
+                                    onError={(
+                                      event,
+                                    ) => {
+                                      console.error(
+                                        "KUNDENBILD FEHLER:",
+                                        imageUrl,
+                                      )
 
-                                    <img
-                                      src={
-                                        imageUrl
+                                      event.currentTarget.style.display =
+                                        "none"
+
+                                      const parent =
+                                        event
+                                          .currentTarget
+                                          .parentElement
+
+                                      if (
+                                        parent
+                                      ) {
+                                        parent.innerHTML =
+                                          `
+                                          <div class="flex h-full w-full flex-col items-center justify-center p-4 text-center">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto opacity-50">
+                                              <rect width="18" height="18" x="3" y="3" rx="2"/>
+                                              <circle cx="9" cy="9" r="2"/>
+                                              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                                            </svg>
+
+                                            <p class="mt-2 text-xs">
+                                              Bild konnte nicht geladen werden
+                                            </p>
+                                          </div>
+                                          `
                                       }
-                                      alt={`Kundenbild ${
-                                        index +
-                                        1
-                                      }`}
-                                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                      loading="lazy"
-                                      onError={(
-                                        event,
-                                      ) => {
+                                    }}
+                                  />
 
-                                        console.error(
-                                          "SUPABASE BILD FEHLER:",
-                                          imageUrl,
-                                        )
+                                  {/* HOVER */}
 
-                                        event.currentTarget.style.display =
-                                          "none"
-                                      }}
-                                    />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
 
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
-
-                                      <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
-
-                                    </div>
-
-                                  </a>
-
-                                ) : (
-
-                                  <div className="flex h-full w-full items-center justify-center">
-
-                                    <div className="text-center">
-
-                                      <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
-
-                                      <p className="mt-2 text-xs text-muted-foreground">
-                                        Bild wird geladen...
-                                      </p>
-
-                                    </div>
+                                    <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
 
                                   </div>
 
-                                )}
+                                </a>
 
                               </div>
 
@@ -1019,9 +992,9 @@ export function BookingsManager({
 
                 </div>
 
-                {/* ==========================================
+                {/* ============================================
                     AKTIONEN
-                ========================================== */}
+                ============================================ */}
 
                 <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 sm:flex-row">
 
