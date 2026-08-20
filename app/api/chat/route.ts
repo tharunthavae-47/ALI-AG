@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic"
 
 const apiKey = process.env.GEMINI_API_KEY
 
+const modelName =
+  process.env.GEMINI_MODEL || "gemini-2.5-flash"
+
 // =====================================================
 // TYPES
 // =====================================================
@@ -33,15 +36,10 @@ type BookingData = {
   problem: string | null
 }
 
-type JarvisAnalysis = {
-  intent: "chat" | "booking"
+type GeminiBookingResult = {
   booking: BookingData
   answer: string
 }
-
-// =====================================================
-// LEERE TERMIN-DATEN
-// =====================================================
 
 const EMPTY_BOOKING: BookingData = {
   booking_date: null,
@@ -51,12 +49,6 @@ const EMPTY_BOOKING: BookingData = {
   email: null,
   car: null,
   problem: null,
-}
-
-function emptyBooking(): BookingData {
-  return {
-    ...EMPTY_BOOKING,
-  }
 }
 
 // =====================================================
@@ -72,10 +64,6 @@ function getZurichDate() {
   }).format(new Date())
 }
 
-// =====================================================
-// ZÜRICH DATUM + UHRZEIT
-// =====================================================
-
 function getZurichDateTime() {
   return new Intl.DateTimeFormat("de-CH", {
     timeZone: "Europe/Zurich",
@@ -85,7 +73,7 @@ function getZurichDateTime() {
 }
 
 // =====================================================
-// JSON BEREINIGEN
+// JSON CLEAN
 // =====================================================
 
 function cleanJson(text: string) {
@@ -97,10 +85,59 @@ function cleanJson(text: string) {
 }
 
 // =====================================================
-// BOOKING DATA ZUSAMMENFÜHREN
+// BOOKING NORMALISIEREN
 // =====================================================
 
-function mergeBookingData(
+function normalizeBooking(input: unknown): BookingData {
+  if (!input || typeof input !== "object") {
+    return { ...EMPTY_BOOKING }
+  }
+
+  const data = input as Partial<BookingData>
+
+  return {
+    booking_date:
+      typeof data.booking_date === "string"
+        ? data.booking_date
+        : null,
+
+    booking_time:
+      typeof data.booking_time === "string"
+        ? data.booking_time
+        : null,
+
+    name:
+      typeof data.name === "string"
+        ? data.name
+        : null,
+
+    phone:
+      typeof data.phone === "string"
+        ? data.phone
+        : null,
+
+    email:
+      typeof data.email === "string"
+        ? data.email
+        : null,
+
+    car:
+      typeof data.car === "string"
+        ? data.car
+        : null,
+
+    problem:
+      typeof data.problem === "string"
+        ? data.problem
+        : null,
+  }
+}
+
+// =====================================================
+// BOOKING MERGEN
+// =====================================================
+
+function mergeBooking(
   oldData: BookingData,
   newData: Partial<BookingData>,
 ): BookingData {
@@ -140,128 +177,6 @@ function mergeBookingData(
       oldData.problem ||
       null,
   }
-}
-
-// =====================================================
-// UHRZEIT ERKENNEN
-// =====================================================
-
-function normalizeTime(
-  text: string,
-): string | null {
-  const value = text
-    .toLowerCase()
-    .trim()
-    .replace(/,/g, ".")
-    .replace(/\s+/g, " ")
-
-  // ---------------------------------------------------
-  // HALB 8 = 19:30
-  // ---------------------------------------------------
-
-  const halbMatch = value.match(
-    /\bhalb\s+(\d{1,2})\b/,
-  )
-
-  if (halbMatch) {
-    let hour = Number(halbMatch[1]) - 1
-
-    if (hour < 15) {
-      hour += 12
-    }
-
-    if (hour >= 15 && hour <= 21) {
-      return `${String(hour).padStart(2, "0")}:30`
-    }
-  }
-
-  // ---------------------------------------------------
-  // 20 UHR
-  // 20 UHR ABENDS
-  // ---------------------------------------------------
-
-  const hourMatch = value.match(
-    /\b(?:um\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/,
-  )
-
-  if (hourMatch) {
-    let hour = Number(hourMatch[1])
-
-    const minute = Number(
-      hourMatch[2] || "0",
-    )
-
-    if (
-      value.includes("abends") &&
-      hour >= 1 &&
-      hour <= 12
-    ) {
-      hour += 12
-    }
-
-    if (
-      hour >= 15 &&
-      hour <= 22 &&
-      minute >= 0 &&
-      minute <= 59
-    ) {
-      return `${String(hour).padStart(2, "0")}:${String(
-        minute,
-      ).padStart(2, "0")}`
-    }
-
-    return null
-  }
-
-  // ---------------------------------------------------
-  // 20:00
-  // 20.00
-  // ---------------------------------------------------
-
-  const numericMatch = value.match(
-    /\b(?:um\s*)?(\d{1,2})[:.](\d{2})\b/,
-  )
-
-  if (numericMatch) {
-    const hour = Number(numericMatch[1])
-    const minute = Number(numericMatch[2])
-
-    if (
-      hour >= 15 &&
-      hour <= 22 &&
-      minute >= 0 &&
-      minute <= 59
-    ) {
-      return `${String(hour).padStart(
-        2,
-        "0",
-      )}:${String(minute).padStart(
-        2,
-        "0",
-      )}`
-    }
-  }
-
-  // ---------------------------------------------------
-  // NUR 20
-  // ---------------------------------------------------
-
-  const onlyHour = value.match(
-    /^(?:um\s*)?(\d{1,2})$/,
-  )
-
-  if (onlyHour) {
-    const hour = Number(onlyHour[1])
-
-    if (hour >= 15 && hour <= 22) {
-      return `${String(hour).padStart(
-        2,
-        "0",
-      )}:00`
-    }
-  }
-
-  return null
 }
 
 // =====================================================
@@ -308,6 +223,90 @@ const MONTHS: Record<string, number> = {
 }
 
 // =====================================================
+// ZEIT ERKENNEN
+// =====================================================
+
+function normalizeTime(text: string): string | null {
+  const value = text
+    .toLowerCase()
+    .replace(/,/g, ".")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  // halb 8 = 19:30
+  const halb = value.match(
+    /\bhalb\s+(\d{1,2})\b/,
+  )
+
+  if (halb) {
+    let hour = Number(halb[1]) - 1
+
+    if (hour < 12) {
+      hour += 12
+    }
+
+    if (hour >= 15 && hour <= 22) {
+      return `${String(hour).padStart(2, "0")}:30`
+    }
+  }
+
+  // 8 Uhr abends
+  const hourMatch = value.match(
+    /\b(?:um\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/,
+  )
+
+  if (hourMatch) {
+    let hour = Number(hourMatch[1])
+
+    const minute = Number(
+      hourMatch[2] || "0",
+    )
+
+    if (
+      value.includes("abends") &&
+      hour >= 1 &&
+      hour <= 12
+    ) {
+      hour += 12
+    }
+
+    if (
+      hour >= 15 &&
+      hour <= 22 &&
+      minute >= 0 &&
+      minute <= 59
+    ) {
+      return `${String(hour).padStart(2, "0")}:${String(
+        minute,
+      ).padStart(2, "0")}`
+    }
+  }
+
+  // 20:00 / 20.00
+  const numeric = value.match(
+    /\b(?:um\s*)?(\d{1,2})[:.](\d{2})\b/,
+  )
+
+  if (numeric) {
+    const hour = Number(numeric[1])
+    const minute = Number(numeric[2])
+
+    if (
+      hour >= 15 &&
+      hour <= 22 &&
+      minute >= 0 &&
+      minute <= 59
+    ) {
+      return `${String(hour).padStart(2, "0")}:${String(
+        minute,
+      ).padStart(2, "0")}`
+    }
+  }
+
+  return null
+}
+
+// =====================================================
 // DATUM ERKENNEN
 // =====================================================
 
@@ -317,9 +316,9 @@ function normalizeDate(
 ): string | null {
   const value = text
     .toLowerCase()
-    .trim()
     .replace(/,/g, " ")
     .replace(/\s+/g, " ")
+    .trim()
 
   const [
     currentYear,
@@ -327,10 +326,7 @@ function normalizeDate(
     currentDay,
   ] = today.split("-").map(Number)
 
-  // ---------------------------------------------------
-  // MORGEN
-  // ---------------------------------------------------
-
+  // morgen
   if (/\bmorgen\b/.test(value)) {
     const date = new Date(
       Date.UTC(
@@ -343,10 +339,7 @@ function normalizeDate(
     return date.toISOString().slice(0, 10)
   }
 
-  // ---------------------------------------------------
-  // ÜBERMORGEN
-  // ---------------------------------------------------
-
+  // übermorgen
   if (
     /\bübermorgen\b/.test(value) ||
     /\buebermorgen\b/.test(value)
@@ -362,20 +355,17 @@ function normalizeDate(
     return date.toISOString().slice(0, 10)
   }
 
-  // ---------------------------------------------------
   // 18.10.2026
-  // ---------------------------------------------------
-
-  const numericFull = value.match(
+  const numeric = value.match(
     /\b(?:am\s+)?(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/,
   )
 
-  if (numericFull) {
-    const day = Number(numericFull[1])
-    const month = Number(numericFull[2])
+  if (numeric) {
+    const day = Number(numeric[1])
+    const month = Number(numeric[2])
 
-    let year = numericFull[3]
-      ? Number(numericFull[3])
+    let year = numeric[3]
+      ? Number(numeric[3])
       : currentYear
 
     if (year < 100) {
@@ -383,48 +373,39 @@ function normalizeDate(
     }
 
     if (
-      month >= 1 &&
-      month <= 12 &&
       day >= 1 &&
-      day <= 31
+      day <= 31 &&
+      month >= 1 &&
+      month <= 12
     ) {
-      return `${String(year).padStart(
-        4,
-        "0",
-      )}-${String(month).padStart(
-        2,
-        "0",
-      )}-${String(day).padStart(
+      return `${String(year).padStart(4, "0")}-${String(
+        month,
+      ).padStart(2, "0")}-${String(day).padStart(
         2,
         "0",
       )}`
     }
   }
 
-  // ---------------------------------------------------
-  // 18. OKTOBER
-  // ---------------------------------------------------
-
+  // 18. Oktober
   const monthNames =
     Object.keys(MONTHS).join("|")
 
-  const namedDate = value.match(
+  const named = value.match(
     new RegExp(
       `\\b(?:am\\s+)?(\\d{1,2})\\.?\\s+(${monthNames})(?:\\s+(\\d{4}))?\\b`,
       "i",
     ),
   )
 
-  if (namedDate) {
-    const day = Number(namedDate[1])
+  if (named) {
+    const day = Number(named[1])
 
     const month =
-      MONTHS[
-        namedDate[2].toLowerCase()
-      ]
+      MONTHS[named[2].toLowerCase()]
 
-    const year = namedDate[3]
-      ? Number(namedDate[3])
+    const year = named[3]
+      ? Number(named[3])
       : currentYear
 
     if (
@@ -432,13 +413,9 @@ function normalizeDate(
       day >= 1 &&
       day <= 31
     ) {
-      return `${String(year).padStart(
-        4,
-        "0",
-      )}-${String(month).padStart(
-        2,
-        "0",
-      )}-${String(day).padStart(
+      return `${String(year).padStart(4, "0")}-${String(
+        month,
+      ).padStart(2, "0")}-${String(day).padStart(
         2,
         "0",
       )}`
@@ -449,71 +426,62 @@ function normalizeDate(
 }
 
 // =====================================================
-// DATUM GÜLTIG
+// DIREKTE DATEN
 // =====================================================
 
-function isValidDate(
-  value: string | null,
-) {
-  if (!value) return false
+function extractBookingData(
+  text: string,
+  today: string,
+): Partial<BookingData> {
+  const result: Partial<BookingData> = {}
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false
+  const time = normalizeTime(text)
+
+  if (time) {
+    result.booking_time = time
   }
 
-  const date = new Date(
-    `${value}T00:00:00`,
+  const date = normalizeDate(
+    text,
+    today,
   )
 
-  return !Number.isNaN(
-    date.getTime(),
-  )
-}
-
-// =====================================================
-// UHRZEIT GÜLTIG
-// =====================================================
-
-function isValidTime(
-  value: string | null,
-) {
-  if (!value) return false
-
-  if (!/^\d{2}:\d{2}$/.test(value)) {
-    return false
+  if (date) {
+    result.booking_date = date
   }
 
-  const [
-    hour,
-    minute,
-  ] = value.split(":").map(Number)
+  return result
+}
 
-  return (
-    hour >= 15 &&
-    hour <= 22 &&
-    minute >= 0 &&
-    minute <= 59
+// =====================================================
+// TERMIN-ABSICHT
+// =====================================================
+
+function containsBookingIntent(
+  text: string,
+): boolean {
+  const value = text.toLowerCase()
+
+  const patterns = [
+    /\btermin\b/,
+    /\bwerkstatttermin\b/,
+    /\bbuchen\b/,
+    /\btermin buchen\b/,
+    /\btermin machen\b/,
+    /\btermin erstellen\b/,
+    /\btermin vereinbaren\b/,
+    /\bvereinbaren\b/,
+    /\breservieren\b/,
+    /\bbuchung\b/,
+  ]
+
+  return patterns.some((pattern) =>
+    pattern.test(value),
   )
 }
 
 // =====================================================
-// DATUM FORMATIEREN
-// =====================================================
-
-function formatDate(
-  value: string,
-) {
-  const [
-    year,
-    month,
-    day,
-  ] = value.split("-")
-
-  return `${day}.${month}.${year}`
-}
-
-// =====================================================
-// FEHLENDES BOOKING-FELD
+// FEHLENDES FELD
 // =====================================================
 
 function getMissingField(
@@ -551,7 +519,7 @@ function getMissingField(
 }
 
 // =====================================================
-// FRAGE FÜR FEHLENDES FELD
+// FRAGE
 // =====================================================
 
 function questionForField(
@@ -585,164 +553,15 @@ function questionForField(
 }
 
 // =====================================================
-// TERMIN-INTENT
-// =====================================================
-
-function containsBookingIntent(
-  text: string,
-) {
-  const value = text
-    .toLowerCase()
-    .trim()
-
-  const patterns = [
-    "termin",
-    "termin machen",
-    "termin erstellen",
-    "termin buchen",
-    "termin vereinbaren",
-    "werkstatttermin",
-    "buchung",
-    "buchen",
-    "reservieren",
-    "vereinbaren",
-    "mach mir einen termin",
-    "mache mir einen termin",
-    "ich möchte einen termin",
-    "ich will einen termin",
-    "ich brauche einen termin",
-    "kann ich einen termin haben",
-    "kann ich einen termin machen",
-    "auto bringen",
-    "wagen bringen",
-  ]
-
-  return patterns.some(
-    (pattern) =>
-      value.includes(pattern),
-  )
-}
-
-// =====================================================
-// DIREKTE BOOKING-DATEN
-// =====================================================
-
-function extractDirectBookingData(
-  text: string,
-  today: string,
-): Partial<BookingData> {
-  const result: Partial<BookingData> = {}
-
-  const detectedTime =
-    normalizeTime(text)
-
-  if (detectedTime) {
-    result.booking_time =
-      detectedTime
-  }
-
-  const detectedDate =
-    normalizeDate(
-      text,
-      today,
-    )
-
-  if (detectedDate) {
-    result.booking_date =
-      detectedDate
-  }
-
-  return result
-}
-
-// =====================================================
-// CLIENT BOOKING NORMALISIEREN
-// =====================================================
-
-function normalizeClientBooking(
-  input: unknown,
-): BookingData {
-  if (
-    !input ||
-    typeof input !== "object"
-  ) {
-    return emptyBooking()
-  }
-
-  const data =
-    input as Partial<BookingData>
-
-  return {
-    booking_date:
-      typeof data.booking_date ===
-      "string"
-        ? data.booking_date
-        : null,
-
-    booking_time:
-      typeof data.booking_time ===
-      "string"
-        ? data.booking_time
-        : null,
-
-    name:
-      typeof data.name ===
-      "string"
-        ? data.name
-        : null,
-
-    phone:
-      typeof data.phone ===
-      "string"
-        ? data.phone
-        : null,
-
-    email:
-      typeof data.email ===
-      "string"
-        ? data.email
-        : null,
-
-    car:
-      typeof data.car ===
-      "string"
-        ? data.car
-        : null,
-
-    problem:
-      typeof data.problem ===
-      "string"
-        ? data.problem
-        : null,
-  }
-}
-
-// =====================================================
-// PRÜFEN OB BOOKING-DATEN VORHANDEN
-// =====================================================
-
-function hasBookingProgress(
-  booking: BookingData,
-) {
-  return Object.values(
-    booking,
-  ).some(
-    (value) =>
-      typeof value === "string" &&
-      value.trim().length > 0,
-  )
-}
-
-// =====================================================
 // GEMINI
 // =====================================================
 
-async function askGemini(
+async function callGemini(
   prompt: string,
-) {
+): Promise<string> {
   if (!apiKey) {
     throw new Error(
-      "GEMINI_API_KEY ist nicht eingerichtet.",
+      "GEMINI_API_KEY fehlt.",
     )
   }
 
@@ -750,34 +569,237 @@ async function askGemini(
     apiKey,
   })
 
-  /*
-   * Du kannst das Modell über
-   * GEMINI_MODEL in Vercel einstellen.
-   *
-   * Beispiel:
-   * GEMINI_MODEL=gemini-2.5-flash
-   */
-
-  const model =
-    process.env.GEMINI_MODEL ||
-    "gemini-2.5-flash"
-
   const response =
     await ai.models.generateContent({
-      model,
+      model: modelName,
+
       contents: prompt,
+
       config: {
-        temperature: 0.4,
+        temperature: 0.7,
         maxOutputTokens: 1000,
-        responseMimeType:
-          "application/json",
       },
     })
 
-  return (
-    response.text?.trim() ||
-    ""
+  return response.text?.trim() || ""
+}
+
+// =====================================================
+// GEMINI BOOKING EXTRACTION
+// =====================================================
+
+async function extractBookingWithGemini(
+  conversation: string,
+  booking: BookingData,
+  lastUserMessage: string,
+  currentDate: string,
+): Promise<GeminiBookingResult> {
+  const prompt = `
+Du bist JARVIS von MB-Performance.
+
+Du sollst NUR die Daten für einen Werkstatttermin
+aus der Unterhaltung erkennen.
+
+Aktuelles Datum:
+${currentDate}
+
+Bereits bekannte Daten:
+${JSON.stringify(
+  booking,
+  null,
+  2,
+)}
+
+Letzte Nachricht:
+${lastUserMessage}
+
+Gesamte Unterhaltung:
+${conversation}
+
+WICHTIG:
+
+Erfinde niemals Daten.
+
+Bereits bekannte Daten dürfen nicht verloren gehen.
+
+Wenn der Benutzer zum Beispiel vorher gesagt hat:
+
+"Mein Name ist Max"
+
+und später:
+
+"Ich möchte morgen um 18 Uhr kommen"
+
+müssen Name, Datum und Uhrzeit erhalten bleiben.
+
+Datum:
+
+"morgen" muss in ein echtes YYYY-MM-DD Datum
+umgewandelt werden.
+
+"18. Oktober" muss in YYYY-MM-DD umgewandelt werden.
+
+Uhrzeit:
+
+"20 Uhr" = "20:00"
+
+"18 Uhr" = "18:00"
+
+"20:30" = "20:30"
+
+"halb 8" = "19:30"
+
+Antworte ausschließlich mit diesem JSON:
+
+{
+  "booking_date": "YYYY-MM-DD" oder null,
+  "booking_time": "HH:MM" oder null,
+  "name": "..." oder null,
+  "phone": "..." oder null,
+  "email": "..." oder null,
+  "car": "..." oder null,
+  "problem": "..." oder null
+}
+`
+
+  const raw = await callGemini(prompt)
+
+  const parsed = JSON.parse(
+    cleanJson(raw),
   )
+
+  return {
+    booking: normalizeBooking(parsed),
+    answer: "",
+  }
+}
+
+// =====================================================
+// NORMALE GEMINI ANTWORT
+// =====================================================
+
+async function answerNormally(
+  conversation: string,
+  currentDateTime: string,
+): Promise<string> {
+  const prompt = `
+Du bist JARVIS, der intelligente KI-Assistent
+von MB-Performance.
+
+Du kommunizierst natürlich auf Deutsch.
+
+Aktuelles Datum und Uhrzeit:
+${currentDateTime}
+
+Du darfst normale Fragen beantworten.
+
+Beispiele:
+
+- Was ist ein BMW M4?
+- Was ist ein Turbolader?
+- Wie funktioniert ein Motor?
+- Wie viel PS hat ein BMW M4?
+- Was bedeutet MFK?
+- Was ist ein Ölwechsel?
+- Erkläre mir ABS.
+- Was ist der Unterschied zwischen BMW M3 und M4?
+- Allgemeine Fragen über Autos
+- Allgemeine Wissensfragen
+- Smalltalk
+
+WICHTIG:
+
+Der Benutzer möchte NICHT automatisch einen Termin,
+nur weil er über ein Auto, eine Reparatur,
+eine Diagnose oder MB-Performance spricht.
+
+Nur wenn der Benutzer ausdrücklich einen Termin
+vereinbaren oder buchen möchte, soll der
+Termin-Workflow verwendet werden.
+
+Antworte direkt und natürlich.
+
+Du bist kein Formular.
+
+Frage nicht automatisch nach:
+Datum,
+Uhrzeit,
+Name,
+Telefon,
+E-Mail
+
+wenn der Benutzer keinen Termin möchte.
+
+Wenn Informationen aus der bisherigen Unterhaltung
+relevant sind, benutze sie.
+
+GESAMTE KONVERSATION:
+
+${conversation}
+
+Beantworte die letzte Nachricht des Benutzers.
+`
+
+  return await callGemini(prompt)
+}
+
+// =====================================================
+// DATUM VALIDIEREN
+// =====================================================
+
+function isValidDate(
+  value: string | null,
+) {
+  if (!value) return false
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+
+  const date = new Date(
+    `${value}T00:00:00`,
+  )
+
+  return !Number.isNaN(
+    date.getTime(),
+  )
+}
+
+// =====================================================
+// ZEIT VALIDIEREN
+// =====================================================
+
+function isValidTime(
+  value: string | null,
+) {
+  if (!value) return false
+
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    return false
+  }
+
+  const [hour, minute] =
+    value.split(":").map(Number)
+
+  return (
+    hour >= 15 &&
+    hour <= 22 &&
+    minute >= 0 &&
+    minute <= 59
+  )
+}
+
+// =====================================================
+// DATUM FORMAT
+// =====================================================
+
+function formatDate(
+  value: string,
+) {
+  const [year, month, day] =
+    value.split("-")
+
+  return `${day}.${month}.${year}`
 }
 
 // =====================================================
@@ -796,20 +818,17 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
+            "GEMINI_API_KEY fehlt in Vercel.",
         },
-        {
-          status: 500,
-        },
+        { status: 500 },
       )
     }
 
     // =================================================
-    // REQUEST
+    // BODY
     // =================================================
 
-    const body =
-      await request.json()
+    const body = await request.json()
 
     const messages =
       body?.messages as ChatMessage[]
@@ -823,40 +842,34 @@ export async function POST(
           error:
             "Keine Chatnachrichten erhalten.",
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       )
     }
 
     // =================================================
-    // GÜLTIGE NACHRICHTEN
+    // NUR GÜLTIGE MESSAGES
     // =================================================
 
     const validMessages =
       messages.filter(
-        (item) =>
-          item &&
+        (message) =>
+          message &&
           (
-            item.role === "user" ||
-            item.role === "assistant"
+            message.role === "user" ||
+            message.role === "assistant"
           ) &&
-          typeof item.content ===
+          typeof message.content ===
             "string" &&
-          item.content.trim().length > 0,
+          message.content.trim().length > 0,
       )
 
-    if (
-      validMessages.length === 0
-    ) {
+    if (validMessages.length === 0) {
       return NextResponse.json(
         {
           error:
-            "Keine gültigen Nachrichten erhalten.",
+            "Keine gültigen Nachrichten.",
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       )
     }
 
@@ -871,558 +884,83 @@ export async function POST(
       getZurichDateTime()
 
     // =================================================
-    // BOOKING AUS CLIENT
+    // BOOKING VOM CLIENT
     // =================================================
 
     let booking =
-      normalizeClientBooking(
+      normalizeBooking(
         body?.bookingData,
       )
 
     // =================================================
-    // LETZTE USER-NACHRICHT
+    // LETZTE USER MESSAGE
     // =================================================
 
     const lastUserMessage =
       [...validMessages]
         .reverse()
         .find(
-          (item) =>
-            item.role === "user",
+          (message) =>
+            message.role === "user",
         )
 
     const lastUserText =
-      lastUserMessage?.content ||
-      ""
+      lastUserMessage?.content || ""
 
     // =================================================
-    // DIREKTE DATEN ERKENNEN
-    // =================================================
-
-    const directData =
-      extractDirectBookingData(
-        lastUserText,
-        currentDate,
-      )
-
-    // =================================================
-    // WICHTIG:
-    //
-    // Direkte Datum/Uhrzeit-Erkennung
-    // NUR bei einem tatsächlichen
-    // Terminwunsch oder laufender Buchung.
-    // =================================================
-
-    const explicitBookingIntent =
-      containsBookingIntent(
-        lastUserText,
-      )
-
-    const existingBookingProgress =
-      hasBookingProgress(
-        booking,
-      )
-
-    const bookingIntent =
-      explicitBookingIntent ||
-      existingBookingProgress
-
-    console.log(
-      "========================================",
-    )
-
-    console.log(
-      "JARVIS MESSAGE:",
-      lastUserText,
-    )
-
-    console.log(
-      "EXPLICIT BOOKING:",
-      explicitBookingIntent,
-    )
-
-    console.log(
-      "BOOKING PROGRESS:",
-      existingBookingProgress,
-    )
-
-    console.log(
-      "FINAL BOOKING INTENT:",
-      bookingIntent,
-    )
-
-    console.log(
-      "DIRECT DATA:",
-      directData,
-    )
-
-    console.log(
-      "BOOKING BEFORE GEMINI:",
-      booking,
-    )
-
-    console.log(
-      "========================================",
-    )
-
-    // =================================================
-    // NUR WENN TERMIN:
-    // DATEN ÜBERNEHMEN
-    // =================================================
-
-    if (bookingIntent) {
-      booking =
-        mergeBookingData(
-          booking,
-          directData,
-        )
-    }
-
-    // =================================================
-    // KONVERSATION FÜR GEMINI
+    // KONVERSATION
     // =================================================
 
     const conversation =
       validMessages
         .map(
-          (item) =>
+          (message) =>
             `${
-              item.role === "user"
+              message.role === "user"
                 ? "BENUTZER"
                 : "JARVIS"
-            }: ${item.content}`,
+            }: ${message.content}`,
         )
         .join("\n")
 
     // =================================================
-    // GEMINI PROMPT
+    // GANZ WICHTIG
+    //
+    // TERMIN NUR WENN DER BENUTZER
+    // WIRKLICH EINEN TERMIN WILL
     // =================================================
 
-    const prompt = `
-Du bist JARVIS, der intelligente KI-Assistent
-von MB-Performance in der Schweiz.
-
-Du antwortest auf Deutsch.
-
-Du kannst zwei Dinge:
-
-1. NORMALE FRAGEN beantworten
-2. Werkstatttermine erstellen
-
-=====================================================
-AKTUELLES DATUM
-=====================================================
-
-${currentDate}
-
-Aktuelles Datum und Uhrzeit:
-
-${currentDateTime}
-
-Zeitzone:
-
-Europe/Zurich
-
-=====================================================
-SEHR WICHTIG
-=====================================================
-
-Eine normale Frage darf NIEMALS automatisch
-als Terminwunsch interpretiert werden.
-
-Nur weil bookingData existiert, bedeutet das
-NICHT automatisch, dass der Benutzer einen Termin
-möchte.
-
-=====================================================
-NORMALE FRAGEN
-=====================================================
-
-Wenn der Benutzer keinen Termin möchte:
-
-intent = "chat"
-
-Beispiele:
-
-BENUTZER:
-Was ist ein BMW M4?
-
--> chat
-
-BENUTZER:
-Wie viel PS hat ein BMW M4?
-
--> chat
-
-BENUTZER:
-Was ist ein Turbolader?
-
--> chat
-
-BENUTZER:
-Wie funktioniert ein Motor?
-
--> chat
-
-BENUTZER:
-Was bietet MB-Performance an?
-
--> chat
-
-BENUTZER:
-Was kostet ein Ölwechsel?
-
--> chat
-
-BENUTZER:
-Was ist der Unterschied zwischen BMW M3
-und BMW M4?
-
--> chat
-
-Bei einer normalen Frage:
-
-NIEMALS nach folgenden Daten fragen:
-
-- Datum
-- Uhrzeit
-- Name
-- Telefonnummer
-- E-Mail
-- Fahrzeug
-- Problem
-
-=====================================================
-TERMINWUNSCH
-=====================================================
-
-intent = "booking"
-
-NUR wenn der Benutzer tatsächlich einen
-Werkstatttermin möchte.
-
-Beispiele:
-
-"Ich möchte einen Termin"
-
-"Ich brauche einen Termin"
-
-"Kann ich einen Termin machen?"
-
-"Ich möchte mein Auto vorbeibringen"
-
-"Mach mir einen Werkstatttermin"
-
-"Ich möchte morgen einen Termin"
-
-"Kannst du mein Auto am Freitag anschauen?"
-
-=====================================================
-LAUFENDE BUCHUNG
-=====================================================
-
-Wenn bereits Buchungsdaten vorhanden sind,
-befindet sich der Benutzer wahrscheinlich in
-einem laufenden Buchungsvorgang.
-
-Dann bleibt:
-
-intent = "booking"
-
-Beispiel:
-
-JARVIS:
-Wie ist dein Name?
-
-BENUTZER:
-Max Mustermann
-
--> booking
-
-JARVIS:
-Welche E-Mail-Adresse hast du?
-
-BENUTZER:
-max@test.ch
-
--> booking
-
-=====================================================
-WICHTIGER UNTERSCHIED
-=====================================================
-
-LEERES bookingData:
-
-{
-  "booking_date": null,
-  "booking_time": null,
-  "name": null,
-  "phone": null,
-  "email": null,
-  "car": null,
-  "problem": null
-}
-
-bedeutet NICHT automatisch booking.
-
-Normale Frage:
-
-"Was ist ein BMW M4?"
-
-muss chat bleiben.
-
-=====================================================
-TERMINZEITEN
-=====================================================
-
-Termine sind zwischen:
-
-15:00 und 22:00 Uhr
-
-möglich.
-
-=====================================================
-UHRZEIT
-=====================================================
-
-"20 Uhr" = "20:00"
-
-"20 uhr" = "20:00"
-
-"um 20 Uhr" = "20:00"
-
-"20:00" = "20:00"
-
-"20.00" = "20:00"
-
-"halb 8" = "19:30"
-
-"8 Uhr abends" = "20:00"
-
-=====================================================
-DATUM
-=====================================================
-
-Datum immer als:
-
-YYYY-MM-DD
-
-Beispiele:
-
-18. Oktober
--> ${currentDate.slice(0, 4)}-10-18
-
-18.10.2026
--> 2026-10-18
-
-morgen
--> tatsächliches morgiges Datum
-
-übermorgen
--> tatsächliches übermorgiges Datum
-
-=====================================================
-BEREITS ERKANNTE DATEN
-=====================================================
-
-${JSON.stringify(
-  booking,
-  null,
-  2,
-)}
-
-Diese Daten dürfen NICHT verloren gehen.
-
-Wenn booking_time bereits "20:00" ist,
-darf booking_time nicht wieder null werden.
-
-Wenn booking_date bereits gesetzt ist,
-darf booking_date nicht wieder null werden.
-
-=====================================================
-BENÖTIGTE BUCHUNGSDATEN
-=====================================================
-
-booking_date
-booking_time
-name
-phone
-email
-car
-problem
-
-=====================================================
-JSON FORMAT
-=====================================================
-
-Antworte ausschließlich mit gültigem JSON.
-
-Format:
-
-{
-  "intent": "chat" oder "booking",
-  "booking": {
-    "booking_date": "YYYY-MM-DD" oder null,
-    "booking_time": "HH:MM" oder null,
-    "name": "..." oder null,
-    "phone": "..." oder null,
-    "email": "..." oder null,
-    "car": "..." oder null,
-    "problem": "..." oder null
-  },
-  "answer": "..."
-}
-
-=====================================================
-ANTWORTSTIL
-=====================================================
-
-Sei natürlich.
-
-Nicht unnötig kompliziert.
-
-Keine langen Einleitungen.
-
-Wenn der Benutzer eine normale Frage stellt,
-beantworte sie direkt.
-
-Wenn der Benutzer einen Termin möchte,
-frage immer nur nach der nächsten fehlenden
-Information.
-
-=====================================================
-CHAT
-=====================================================
-
-${conversation}
-
-=====================================================
-LETZTE BENUTZER-NACHRICHT
-=====================================================
-
-${lastUserText}
-
-=====================================================
-INTERNE INFORMATION
-=====================================================
-
-Der Server hat den Terminstatus bereits geprüft.
-
-Expliziter Terminwunsch:
-
-${explicitBookingIntent}
-
-Bereits laufende Buchung:
-
-${existingBookingProgress}
-
-Daraus folgt:
-
-bookingIntent = ${bookingIntent}
-
-Wenn bookingIntent = false:
-
-intent MUSS "chat" sein.
-
-Wenn bookingIntent = true:
-
-intent darf "booking" sein.
-
-Gib ausschließlich gültiges JSON zurück.
-`
-
-    // =================================================
-    // GEMINI AUFRUF
-    // =================================================
-
-    let analysis: JarvisAnalysis
-
-    try {
-      const raw =
-        await askGemini(prompt)
-
-      if (!raw) {
-        throw new Error(
-          "Gemini hat keine Antwort zurückgegeben.",
-        )
-      }
-
-      console.log(
-        "GEMINI RAW:",
-        raw,
+    const bookingIntent =
+      containsBookingIntent(
+        lastUserText,
       )
 
-      const parsed =
-        JSON.parse(
-          cleanJson(raw),
-        )
+    console.log(
+      "JARVIS LAST USER:",
+      lastUserText,
+    )
 
-      const parsedBooking =
-        parsed?.booking &&
-        typeof parsed.booking ===
-          "object"
-          ? parsed.booking
-          : {}
+    console.log(
+      "JARVIS BOOKING INTENT:",
+      bookingIntent,
+    )
 
-      /*
-       * WICHTIG:
-       *
-       * Der Server entscheidet,
-       * ob tatsächlich ein Terminmodus
-       * aktiv ist.
-       *
-       * Eine normale Frage kann deshalb
-       * nicht versehentlich booking werden.
-       */
+    // =================================================
+    // NORMALE FRAGE
+    // =================================================
 
-      const geminiIntent =
-        parsed?.intent === "booking"
-          ? "booking"
-          : "chat"
+    if (!bookingIntent) {
+      try {
+        const answer =
+          await answerNormally(
+            conversation,
+            currentDateTime,
+          )
 
-      analysis = {
-        intent:
-          bookingIntent
-            ? "booking"
-            : geminiIntent === "booking"
-            ? "booking"
-            : "chat",
-
-        booking: {
-          ...EMPTY_BOOKING,
-          ...parsedBooking,
-        },
-
-        answer:
-          typeof parsed?.answer ===
-          "string"
-            ? parsed.answer
-            : "",
-      }
-    } catch (error) {
-      console.error(
-        "GEMINI ERROR:",
-        error,
-      )
-
-      // =================================================
-      // FALLBACK
-      // =================================================
-
-      if (bookingIntent) {
-        analysis = {
-          intent: "booking",
-
-          booking: {
-            ...EMPTY_BOOKING,
-          },
-
-          answer: "",
-        }
-      } else {
         return NextResponse.json({
           answer:
-            "Entschuldigung, ich konnte deine Frage gerade nicht verarbeiten.",
+            answer ||
+            "Natürlich. Wie kann ich dir helfen?",
 
           bookingCreated: false,
 
@@ -1430,65 +968,79 @@ Gib ausschließlich gültiges JSON zurück.
 
           bookingData: booking,
         })
-      }
-    }
-
-    // =================================================
-    // BOOKING ZUSAMMENFÜHREN
-    // =================================================
-
-    if (
-      analysis.intent === "booking"
-    ) {
-      booking =
-        mergeBookingData(
-          booking,
-          analysis.booking,
+      } catch (error) {
+        console.error(
+          "NORMAL GEMINI ERROR:",
+          error,
         )
 
-      // Direkte Erkennung hat Priorität
+        return NextResponse.json(
+          {
+            error:
+              "Entschuldigung, ich konnte deine Frage gerade nicht verarbeiten.",
+          },
+          { status: 500 },
+        )
+      }
+    }
 
-      if (
+    // =================================================
+    // TERMIN-DATEN DIREKT ERKENNEN
+    // =================================================
+
+    const directData =
+      extractBookingData(
+        lastUserText,
+        currentDate,
+      )
+
+    booking = mergeBooking(
+      booking,
+      directData,
+    )
+
+    // =================================================
+    // GEMINI TERMIN-DATEN
+    // =================================================
+
+    try {
+      const extracted =
+        await extractBookingWithGemini(
+          conversation,
+          booking,
+          lastUserText,
+          currentDate,
+        )
+
+      booking = mergeBooking(
+        booking,
+        extracted.booking,
+      )
+    } catch (error) {
+      console.error(
+        "BOOKING GEMINI EXTRACTION ERROR:",
+        error,
+      )
+
+      // Direkt erkannte Daten bleiben erhalten.
+    }
+
+    // =================================================
+    // DIREKTE ERKENNUNG HAT PRIORITÄT
+    // =================================================
+
+    if (directData.booking_date) {
+      booking.booking_date =
         directData.booking_date
-      ) {
-        booking.booking_date =
-          directData.booking_date
-      }
+    }
 
-      if (
+    if (directData.booking_time) {
+      booking.booking_time =
         directData.booking_time
-      ) {
-        booking.booking_time =
-          directData.booking_time
-      }
     }
-
-    // =================================================
-    // NORMALE FRAGE
-    // =================================================
-
-    if (
-      analysis.intent !== "booking"
-    ) {
-      return NextResponse.json({
-        answer:
-          analysis.answer ||
-          "Natürlich. Wie kann ich dir helfen?",
-
-        bookingCreated: false,
-
-        bookingInProgress: false,
-
-        bookingData: booking,
-      })
-    }
-
-    // =================================================
-    // TERMIN
-    // =================================================
 
     console.log(
-      "JARVIS FINAL BOOKING:",
+      "JARVIS BOOKING:",
       booking,
     )
 
@@ -1506,7 +1058,7 @@ Gib ausschließlich gültiges JSON zurück.
     }
 
     // =================================================
-    // UHRZEIT PRÜFEN
+    // ZEIT PRÜFEN
     // =================================================
 
     if (
@@ -1524,8 +1076,7 @@ Gib ausschließlich gültiges JSON zurück.
 
     if (
       booking.booking_date &&
-      booking.booking_date <
-        currentDate
+      booking.booking_date < currentDate
     ) {
       return NextResponse.json({
         answer:
@@ -1539,8 +1090,6 @@ Gib ausschließlich gültiges JSON zurück.
           ...booking,
           booking_date: null,
         },
-
-        missing: "booking_date",
       })
     }
 
@@ -1563,32 +1112,6 @@ Gib ausschließlich gültiges JSON zurück.
         bookingData: booking,
 
         missing,
-      })
-    }
-
-    // =================================================
-    // UHRZEIT NOCHMAL PRÜFEN
-    // =================================================
-
-    if (
-      !isValidTime(
-        booking.booking_time,
-      )
-    ) {
-      return NextResponse.json({
-        answer:
-          "Diese Uhrzeit ist nicht möglich. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
-
-        bookingCreated: false,
-
-        bookingInProgress: true,
-
-        bookingData: {
-          ...booking,
-          booking_time: null,
-        },
-
-        missing: "booking_time",
       })
     }
 
@@ -1631,24 +1154,8 @@ Gib ausschließlich gültiges JSON zurück.
     }
 
     // =================================================
-    // TERMIN ERSTELLEN
+    // BOOKING ERSTELLEN
     // =================================================
-
-    console.log(
-      "========================================",
-    )
-
-    console.log(
-      "JARVIS → CREATE BOOKING",
-    )
-
-    console.log(
-      booking,
-    )
-
-    console.log(
-      "========================================",
-    )
 
     const result =
       await createBooking({
@@ -1658,59 +1165,26 @@ Gib ausschließlich gültiges JSON zurück.
         booking_time:
           booking.booking_time!,
 
-        name:
-          booking.name!,
+        name: booking.name!,
 
-        phone:
-          booking.phone!,
+        phone: booking.phone!,
 
-        email:
-          booking.email!,
+        email: booking.email!,
 
-        car:
-          booking.car!,
+        car: booking.car!,
 
-        problem:
-          booking.problem!,
+        problem: booking.problem!,
       })
 
     // =================================================
-    // BOOKING FEHLER
+    // FEHLER
     // =================================================
 
     if (!result.ok) {
       console.error(
-        "CREATE BOOKING FAILED:",
+        "CREATE BOOKING ERROR:",
         result.error,
       )
-
-      if (
-        result.error
-          ?.toLowerCase()
-          .includes(
-            "bereits vergeben",
-          )
-      ) {
-        return NextResponse.json({
-          answer:
-            `Der Termin am ${formatDate(
-              booking.booking_date!,
-            )} um ${
-              booking.booking_time
-            } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
-
-          bookingCreated: false,
-
-          bookingInProgress: true,
-
-          bookingData: {
-            ...booking,
-            booking_time: null,
-          },
-
-          missing: "booking_time",
-        })
-      }
 
       return NextResponse.json({
         answer:
@@ -1728,37 +1202,20 @@ Gib ausschließlich gültiges JSON zurück.
     }
 
     // =================================================
-    // ERFOLGREICH
+    // ERFOLG
     // =================================================
-
-    const dateText =
-      formatDate(
-        booking.booking_date!,
-      )
-
-    const timeText =
-      booking.booking_time!
-
-    console.log(
-      "========================================",
-    )
-
-    console.log(
-      "JARVIS BOOKING CREATED",
-    )
-
-    console.log(
-      "Booking ID:",
-      result.bookingId,
-    )
-
-    console.log(
-      "========================================",
-    )
 
     return NextResponse.json({
       answer:
-        `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich erstellt. 📅 ${dateText} um ${timeText} Uhr für ${booking.car}. Dein Anliegen: ${booking.problem}. Der Termin wurde als Anfrage eingetragen.`,
+        `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich erstellt. 📅 ${formatDate(
+          booking.booking_date!,
+        )} um ${
+          booking.booking_time
+        } Uhr für ${
+          booking.car
+        }. Dein Anliegen: ${
+          booking.problem
+        }. Der Termin wurde als Anfrage eingetragen.`,
 
       bookingCreated: true,
 
@@ -1772,29 +1229,16 @@ Gib ausschließlich gültiges JSON zurück.
     })
   } catch (error) {
     console.error(
-      "========================================",
-    )
-
-    console.error(
-      "JARVIS CHAT ERROR",
-    )
-
-    console.error(error)
-
-    console.error(
-      "========================================",
+      "JARVIS GLOBAL ERROR:",
+      error,
     )
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "JARVIS konnte die Anfrage nicht verarbeiten.",
+          "Entschuldigung, ich konnte deine Frage gerade nicht verarbeiten.",
       },
-      {
-        status: 500,
-      },
+      { status: 500 },
     )
   }
 }
