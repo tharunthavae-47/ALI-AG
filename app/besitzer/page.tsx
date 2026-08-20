@@ -7,15 +7,7 @@ export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export default async function OwnerPage() {
-  // ============================================================
-  // SUPABASE
-  // ============================================================
-
   const supabase = await createClient()
-
-  // ============================================================
-  // USER PRÜFEN
-  // ============================================================
 
   const {
     data: { user },
@@ -30,7 +22,6 @@ export default async function OwnerPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="w-full max-w-md border border-border bg-card p-8 text-center">
-
           <div className="mb-6">
             <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">
               MB-Performance
@@ -61,36 +52,16 @@ export default async function OwnerPage() {
           >
             Zur Startseite
           </Link>
-
         </div>
       </main>
     )
   }
 
   // ============================================================
-  // BUCHUNGEN AUS SUPABASE LADEN
+  // BUCHUNGEN AUS SUPABASE
   // ============================================================
 
   const bookings = await listBookings()
-
-  // ============================================================
-  // STATISTIK
-  // ============================================================
-
-  const pendingCount = bookings.filter(
-    (booking) =>
-      booking.status === "pending",
-  ).length
-
-  const confirmedCount = bookings.filter(
-    (booking) =>
-      booking.status === "confirmed",
-  ).length
-
-  const rejectedCount = bookings.filter(
-    (booking) =>
-      booking.status === "rejected",
-  ).length
 
   // ============================================================
   // OWNER PAGE
@@ -107,8 +78,6 @@ export default async function OwnerPage() {
 
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
 
-          {/* LOGO / TITEL */}
-
           <div className="min-w-0">
 
             <p className="font-display text-[10px] uppercase tracking-[0.35em] text-muted-foreground sm:text-xs">
@@ -124,8 +93,6 @@ export default async function OwnerPage() {
             </p>
 
           </div>
-
-          {/* NAVIGATION */}
 
           <div className="flex shrink-0 items-center gap-2">
 
@@ -173,70 +140,8 @@ export default async function OwnerPage() {
 
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Hier sehen Sie alle eingegangenen Terminanfragen.
-            Sie können Termine bestätigen, stornieren oder löschen.
+            Sie können Termine bestätigen oder ablehnen.
           </p>
-
-        </div>
-
-        {/* ====================================================
-            STATISTIK
-        ==================================================== */}
-
-        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-          {/* OFFEN */}
-
-          <div className="border border-border bg-card p-5">
-
-            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-              Offen
-            </p>
-
-            <p className="mt-2 font-display text-3xl font-bold">
-              {pendingCount}
-            </p>
-
-            <p className="mt-1 text-xs text-muted-foreground">
-              Neue Terminanfragen
-            </p>
-
-          </div>
-
-          {/* BESTÄTIGT */}
-
-          <div className="border border-border bg-card p-5">
-
-            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-              Bestätigt
-            </p>
-
-            <p className="mt-2 font-display text-3xl font-bold">
-              {confirmedCount}
-            </p>
-
-            <p className="mt-1 text-xs text-muted-foreground">
-              Bestätigte Termine
-            </p>
-
-          </div>
-
-          {/* STORNIERT */}
-
-          <div className="border border-border bg-card p-5">
-
-            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-              Storniert
-            </p>
-
-            <p className="mt-2 font-display text-3xl font-bold">
-              {rejectedCount}
-            </p>
-
-            <p className="mt-1 text-xs text-muted-foreground">
-              Stornierte Termine
-            </p>
-
-          </div>
 
         </div>
 
@@ -244,7 +149,7 @@ export default async function OwnerPage() {
             SUPABASE STATUS
         ==================================================== */}
 
-        <div className="mb-6 border border-border bg-card px-5 py-4">
+        <div className="mb-8 border border-border bg-card px-5 py-4">
 
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
 
@@ -261,7 +166,11 @@ export default async function OwnerPage() {
             </div>
 
             <p className="font-display text-sm font-bold">
-              {bookings.length} insgesamt
+              {bookings.length}{" "}
+              {bookings.length === 1
+                ? "Termin"
+                : "Termine"}{" "}
+              insgesamt
             </p>
 
           </div>
@@ -297,13 +206,8 @@ export default async function OwnerPage() {
 
         ) : (
 
-          /*
-           * WICHTIG:
-           * bookings statt initialBookings
-           */
-
           <BookingsManager
-            bookings={bookings}
+            initialBookings={bookings}
           />
 
         )}
