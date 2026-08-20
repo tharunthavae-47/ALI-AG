@@ -333,33 +333,31 @@ export function BookingsManager({
   // BILD URL
   // ==========================================================
 
-  function getImageUrl(
-    value: string,
-  ) {
-    if (!value) {
-      return ""
-    }
-
-    const cleanValue =
-      value.trim()
-
-    // Bereits vollständige URL
-    if (
-      cleanValue.startsWith(
-        "http://",
-      ) ||
-      cleanValue.startsWith(
-        "https://",
-      )
-    ) {
-      return cleanValue
-    }
-
-    // Supabase Public Storage URL
-    return `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${encodeURIComponent(
-      cleanValue,
-    )}`
+  function getImageUrl(value: string) {
+  if (!value) {
+    return ""
   }
+
+  // Falls bereits eine komplette URL gespeichert ist
+  if (
+    value.startsWith("http://") ||
+    value.startsWith("https://")
+  ) {
+    return value
+  }
+
+  // Dateiname aus der Datenbank
+  const filePath = value
+    .split("/")
+    .map((part) =>
+      encodeURIComponent(part),
+    )
+    .join("/")
+
+  return `${SUPABASE_URL}/storage/v1/object/public/${encodeURIComponent(
+    STORAGE_BUCKET,
+  )}/${filePath}`
+}
 
   // ==========================================================
   // STATISTIK
