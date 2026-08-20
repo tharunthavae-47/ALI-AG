@@ -255,7 +255,7 @@ export default async function OwnerPage() {
             </Link>
           </div>
         ) : (
-          <BookingsManager initialBookings={bookings} />
+          <BookingsManager bookings={bookings} />
         )}
       </section>
     </main>
