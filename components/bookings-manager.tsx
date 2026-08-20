@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
+
 import {
   Check,
   X,
@@ -12,6 +13,7 @@ import {
   Image as ImageIcon,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
 } from "lucide-react"
 
 import {
@@ -20,27 +22,62 @@ import {
   type BookingStatus,
 } from "@/app/actions"
 
+// =====================================================
+// FILTER
+// =====================================================
+
 const FILTERS: {
   key: BookingStatus | "all"
   label: string
 }[] = [
-  { key: "pending", label: "Offen" },
-  { key: "confirmed", label: "Bestätigt" },
-  { key: "rejected", label: "Abgelehnt" },
-  { key: "all", label: "Alle" },
+  {
+    key: "pending",
+    label: "Offen",
+  },
+  {
+    key: "confirmed",
+    label: "Bestätigt",
+  },
+  {
+    key: "rejected",
+    label: "Abgelehnt",
+  },
+  {
+    key: "all",
+    label: "Alle",
+  },
 ]
 
-const statusStyles: Record<BookingStatus, string> = {
-  pending: "text-[var(--warn)] border-[var(--warn)]",
-  confirmed: "text-[var(--ok)] border-[var(--ok)]",
-  rejected: "text-[var(--bad)] border-[var(--bad)]",
+// =====================================================
+// STATUS
+// =====================================================
+
+const statusStyles: Record<
+  BookingStatus,
+  string
+> = {
+  pending:
+    "text-[var(--warn)] border-[var(--warn)]",
+
+  confirmed:
+    "text-[var(--ok)] border-[var(--ok)]",
+
+  rejected:
+    "text-[var(--bad)] border-[var(--bad)]",
 }
 
-const statusLabels: Record<BookingStatus, string> = {
+const statusLabels: Record<
+  BookingStatus,
+  string
+> = {
   pending: "Offen",
   confirmed: "Bestätigt",
   rejected: "Abgelehnt",
 }
+
+// =====================================================
+// KALENDER
+// =====================================================
 
 const monthNames = [
   "Januar",
@@ -67,8 +104,42 @@ const weekDays = [
   "So",
 ]
 
-function formatDate(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(
+// =====================================================
+// SUPABASE
+// =====================================================
+
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://cfiumzbuavfbahctzknr.supabase.co"
+
+const STORAGE_BUCKET =
+  "Kunden-Bilder"
+
+// =====================================================
+// DATUM
+// =====================================================
+
+function formatDate(
+  iso: string,
+) {
+  if (!iso) {
+    return "-"
+  }
+
+  const date =
+    new Date(
+      iso + "T00:00:00",
+    )
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return iso
+  }
+
+  return date.toLocaleDateString(
     "de-CH",
     {
       weekday: "short",
@@ -79,21 +150,40 @@ function formatDate(iso: string) {
   )
 }
 
-function getImagePaths(imageUrls: unknown): string[] {
+// =====================================================
+// BILDER AUS DB LESEN
+// =====================================================
+
+function getImagePaths(
+  imageUrls: unknown,
+): string[] {
   if (!imageUrls) {
     return []
   }
 
-  if (Array.isArray(imageUrls)) {
+  // Array
+  if (
+    Array.isArray(
+      imageUrls,
+    )
+  ) {
     return imageUrls.filter(
-      (item): item is string =>
-        typeof item === "string" &&
+      (
+        item,
+      ): item is string =>
+        typeof item ===
+          "string" &&
         item.trim() !== "",
     )
   }
 
-  if (typeof imageUrls === "string") {
-    let value = imageUrls.trim()
+  // String
+  if (
+    typeof imageUrls ===
+    "string"
+  ) {
+    let value =
+      imageUrls.trim()
 
     if (
       !value ||
@@ -104,68 +194,150 @@ function getImagePaths(imageUrls: unknown): string[] {
       return []
     }
 
+    // JSON Array
     try {
-      const parsed = JSON.parse(value)
+      const parsed =
+        JSON.parse(
+          value,
+        )
 
-      if (Array.isArray(parsed)) {
+      if (
+        Array.isArray(
+          parsed,
+        )
+      ) {
         return parsed.filter(
-          (item): item is string =>
-            typeof item === "string" &&
+          (
+            item,
+          ): item is string =>
+            typeof item ===
+              "string" &&
             item.trim() !== "",
         )
       }
 
-      if (typeof parsed === "string") {
-        value = parsed
+      if (
+        typeof parsed ===
+        "string"
+      ) {
+        value =
+          parsed
       }
     } catch {
       // Kein JSON
     }
 
-    return value ? [value] : []
+    return value
+      ? [value]
+      : []
   }
 
   return []
 }
 
-function getImageUrl(path: string) {
-  const supabaseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL
+// =====================================================
+// SUPABASE BILD URL
+// =====================================================
 
-  if (!supabaseUrl || !path) {
+function getImageUrl(
+  path: string,
+) {
+  if (!path) {
     return ""
   }
 
-  const cleanPath = path
-    .trim()
-    .replace(/^\/+/, "")
+  let cleanPath =
+    path.trim()
 
+  if (!cleanPath) {
+    return ""
+  }
+
+  // Bereits komplette URL
   if (
-    cleanPath.startsWith("http://") ||
-    cleanPath.startsWith("https://")
+    cleanPath.startsWith(
+      "http://",
+    ) ||
+    cleanPath.startsWith(
+      "https://",
+    )
   ) {
     return cleanPath
   }
 
+  // Führende Slashes entfernen
+  cleanPath =
+    cleanPath.replace(
+      /^\/+/,
+      "",
+    )
+
+  // Falls bereits ein Storage-Pfad gespeichert wurde
+  cleanPath =
+    cleanPath.replace(
+      /^storage\/v1\/object\/public\/Kunden-Bilder\//,
+      "",
+    )
+
+  // Falls Bucketname mitgespeichert wurde
+  cleanPath =
+    cleanPath.replace(
+      /^Kunden-Bilder\//,
+      "",
+    )
+
+  // Jeden Pfadteil separat encoden
+  const encodedPath =
+    cleanPath
+      .split("/")
+      .map(
+        (part) =>
+          encodeURIComponent(
+            part,
+          ),
+      )
+      .join("/")
+
   return (
-    `${supabaseUrl}/storage/v1/object/public/` +
-    `Kunden-Bilder/${encodeURI(cleanPath)}`
+    `${SUPABASE_URL}` +
+    `/storage/v1/object/public/` +
+    `${encodeURIComponent(
+      STORAGE_BUCKET,
+    )}/` +
+    encodedPath
   )
 }
+
+// =====================================================
+// DATE KEY
+// =====================================================
 
 function toDateKey(
   year: number,
   month: number,
   day: number,
 ) {
-  const monthString = String(month + 1).padStart(2, "0")
-  const dayString = String(day).padStart(2, "0")
+  const monthString =
+    String(
+      month + 1,
+    ).padStart(2, "0")
+
+  const dayString =
+    String(day).padStart(
+      2,
+      "0",
+    )
 
   return `${year}-${monthString}-${dayString}`
 }
 
+// =====================================================
+// HEUTE
+// =====================================================
+
 function getTodayKey() {
-  const today = new Date()
+  const today =
+    new Date()
 
   return toDateKey(
     today.getFullYear(),
@@ -174,64 +346,80 @@ function getTodayKey() {
   )
 }
 
+// =====================================================
+// KALENDERTAGE
+// =====================================================
+
 function getCalendarDays(
   year: number,
   month: number,
 ) {
-  const firstDay = new Date(
-    year,
-    month,
-    1,
-  )
+  const firstDay =
+    new Date(
+      year,
+      month,
+      1,
+    )
 
-  const lastDay = new Date(
-    year,
-    month + 1,
-    0,
-  )
+  const lastDay =
+    new Date(
+      year,
+      month + 1,
+      0,
+    )
 
-  // JavaScript: Sonntag = 0
-  // Wir wollen Montag = 0
   const firstWeekDay =
-    (firstDay.getDay() + 6) % 7
+    (firstDay.getDay() +
+      6) %
+    7
 
   const daysInMonth =
     lastDay.getDate()
 
-  const previousMonthDays =
-    firstWeekDay
-
-  const days = []
+  const days: {
+    day: number
+    month: number
+    year: number
+    currentMonth: boolean
+  }[] = []
 
   for (
-    let i = previousMonthDays - 1;
+    let i =
+      firstWeekDay - 1;
     i >= 0;
     i--
   ) {
-    const date = new Date(
-      year,
-      month,
-      -i,
-    )
+    const date =
+      new Date(
+        year,
+        month,
+        -i,
+      )
 
     days.push({
-      day: date.getDate(),
-      month: date.getMonth(),
-      year: date.getFullYear(),
-      currentMonth: false,
+      day:
+        date.getDate(),
+      month:
+        date.getMonth(),
+      year:
+        date.getFullYear(),
+      currentMonth:
+        false,
     })
   }
 
   for (
     let day = 1;
-    day <= daysInMonth;
+    day <=
+    daysInMonth;
     day++
   ) {
     days.push({
       day,
       month,
       year,
-      currentMonth: true,
+      currentMonth:
+        true,
     })
   }
 
@@ -243,147 +431,219 @@ function getCalendarDays(
     i <= remaining;
     i++
   ) {
-    const date = new Date(
-      year,
-      month + 1,
-      i,
-    )
+    const date =
+      new Date(
+        year,
+        month + 1,
+        i,
+      )
 
     days.push({
-      day: date.getDate(),
-      month: date.getMonth(),
-      year: date.getFullYear(),
-      currentMonth: false,
+      day:
+        date.getDate(),
+      month:
+        date.getMonth(),
+      year:
+        date.getFullYear(),
+      currentMonth:
+        false,
     })
   }
 
   return days
 }
 
+// =====================================================
+// MAIN COMPONENT
+// =====================================================
+
 export function BookingsManager({
   initialBookings,
 }: {
   initialBookings: Booking[]
 }) {
-  const [bookings, setBookings] =
+  const [
+    bookings,
+    setBookings,
+  ] =
     useState<Booking[]>(
-      initialBookings,
+      Array.isArray(
+        initialBookings,
+      )
+        ? initialBookings
+        : [],
     )
 
-  const [filter, setFilter] =
-    useState<BookingStatus | "all">(
-      "pending",
-    )
+  const [
+    filter,
+    setFilter,
+  ] =
+    useState<
+      BookingStatus | "all"
+    >("pending")
 
-  const [isPending, startTransition] =
+  const [
+    isPending,
+    startTransition,
+  ] =
     useTransition()
 
-  const [busyId, setBusyId] =
-    useState<string | null>(null)
+  const [
+    busyId,
+    setBusyId,
+  ] =
+    useState<
+      string | null
+    >(null)
 
-  // =====================================================
+  // ===================================================
   // KALENDER
-  // =====================================================
+  // ===================================================
 
-  const today = new Date()
+  const today =
+    new Date()
 
-  const [calendarMonth, setCalendarMonth] =
-    useState(today.getMonth())
+  const [
+    calendarMonth,
+    setCalendarMonth,
+  ] =
+    useState(
+      today.getMonth(),
+    )
 
-  const [calendarYear, setCalendarYear] =
-    useState(today.getFullYear())
+  const [
+    calendarYear,
+    setCalendarYear,
+  ] =
+    useState(
+      today.getFullYear(),
+    )
 
-  const [selectedDate, setSelectedDate] =
-    useState<string>(getTodayKey())
+  const [
+    selectedDate,
+    setSelectedDate,
+  ] =
+    useState(
+      getTodayKey(),
+    )
 
-  const calendarDays = useMemo(
-    () =>
-      getCalendarDays(
+  const calendarDays =
+    useMemo(
+      () =>
+        getCalendarDays(
+          calendarYear,
+          calendarMonth,
+        ),
+      [
         calendarYear,
         calendarMonth,
-      ),
-    [calendarYear, calendarMonth],
-  )
-
-  // =====================================================
-  // BUCHUNGEN SORTIEREN
-  // =====================================================
-
-  const visible = [...bookings]
-    .filter((booking) =>
-      filter === "all"
-        ? true
-        : booking.status === filter,
+      ],
     )
-    .sort((a, b) => {
-      if (filter === "pending") {
-        return (
-          new Date(
-            b.created_at,
-          ).getTime() -
-          new Date(
-            a.created_at,
-          ).getTime()
+
+  // ===================================================
+  // FILTER
+  // ===================================================
+
+  const visible =
+    useMemo(() => {
+      return [
+        ...bookings,
+      ]
+        .filter(
+          (booking) =>
+            filter ===
+            "all"
+              ? true
+              : booking.status ===
+                filter,
         )
-      }
+        .sort(
+          (a, b) => {
+            if (
+              filter ===
+              "pending"
+            ) {
+              return (
+                new Date(
+                  b.created_at,
+                ).getTime() -
+                new Date(
+                  a.created_at,
+                ).getTime()
+              )
+            }
 
-      const dateA =
-        `${a.booking_date} ${a.booking_time}`
+            const dateA =
+              `${a.booking_date} ${a.booking_time}`
 
-      const dateB =
-        `${b.booking_date} ${b.booking_time}`
+            const dateB =
+              `${b.booking_date} ${b.booking_time}`
 
-      return dateA.localeCompare(
-        dateB,
-      )
-    })
+            return dateA.localeCompare(
+              dateB,
+            )
+          },
+        )
+    }, [
+      bookings,
+      filter,
+    ])
 
-  // =====================================================
-  // BUCHUNGEN FÜR AUSGEWÄHLTEN TAG
-  // =====================================================
+  // ===================================================
+  // AUSGEWÄHLTER TAG
+  // ===================================================
 
   const selectedDayBookings =
     useMemo(() => {
-      return [...bookings]
+      return [
+        ...bookings,
+      ]
         .filter(
           (booking) =>
             booking.booking_date ===
             selectedDate,
         )
-        .sort((a, b) =>
-          a.booking_time.localeCompare(
-            b.booking_time,
-          ),
+        .sort(
+          (a, b) =>
+            a.booking_time.localeCompare(
+              b.booking_time,
+            ),
         )
     }, [
       bookings,
       selectedDate,
     ])
 
-  // =====================================================
+  // ===================================================
   // STATISTIK
-  // =====================================================
+  // ===================================================
 
   const counts = {
-    pending: bookings.filter(
-      (b) =>
-        b.status === "pending",
-    ).length,
+    pending:
+      bookings.filter(
+        (booking) =>
+          booking.status ===
+          "pending",
+      ).length,
 
-    confirmed: bookings.filter(
-      (b) =>
-        b.status === "confirmed",
-    ).length,
+    confirmed:
+      bookings.filter(
+        (booking) =>
+          booking.status ===
+          "confirmed",
+      ).length,
 
-    rejected: bookings.filter(
-      (b) =>
-        b.status === "rejected",
-    ).length,
+    rejected:
+      bookings.filter(
+        (booking) =>
+          booking.status ===
+          "rejected",
+      ).length,
   }
 
-  // =====================================================
+  // ===================================================
   // STATUS ÄNDERN
-  // =====================================================
+  // ===================================================
 
   function handleUpdate(
     id: string,
@@ -394,52 +654,69 @@ export function BookingsManager({
   ) {
     setBusyId(id)
 
-    startTransition(async () => {
-      try {
-        const result =
-          await updateBookingStatus(
-            id,
-            status,
+    startTransition(
+      async () => {
+        try {
+          const result =
+            await updateBookingStatus(
+              id,
+              status,
+            )
+
+          if (
+            result.ok
+          ) {
+            setBookings(
+              (
+                previous,
+              ) =>
+                previous.map(
+                  (
+                    booking,
+                  ) =>
+                    booking.id ===
+                    id
+                      ? {
+                          ...booking,
+                          status,
+                        }
+                      : booking,
+                ),
+            )
+          } else {
+            alert(
+              result.error ??
+                "Aktualisierung fehlgeschlagen.",
+            )
+          }
+        } catch (error) {
+          console.error(
+            error,
           )
 
-        if (result.ok) {
-          setBookings(
-            (previous) =>
-              previous.map(
-                (booking) =>
-                  booking.id === id
-                    ? {
-                        ...booking,
-                        status,
-                      }
-                    : booking,
-              ),
-          )
-        } else {
           alert(
-            result.error ??
-              "Aktualisierung fehlgeschlagen.",
+            "Aktualisierung fehlgeschlagen.",
           )
+        } finally {
+          setBusyId(null)
         }
-      } catch (error) {
-        console.error(error)
-
-        alert(
-          "Aktualisierung fehlgeschlagen.",
-        )
-      } finally {
-        setBusyId(null)
-      }
-    })
+      },
+    )
   }
 
-  // =====================================================
-  // MONAT WECHSELN
-  // =====================================================
+  // ===================================================
+  // MONAT
+  // ===================================================
 
   function previousMonth() {
-    if (calendarMonth === 0) {
-      setCalendarMonth(11)
+    if (
+      calendarMonth ===
+      0
+    ) {
+      setCalendarMonth(
+        11,
+      )
+
       setCalendarYear(
         calendarYear - 1,
       )
@@ -451,8 +728,14 @@ export function BookingsManager({
   }
 
   function nextMonth() {
-    if (calendarMonth === 11) {
-      setCalendarMonth(0)
+    if (
+      calendarMonth ===
+      11
+    ) {
+      setCalendarMonth(
+        0,
+      )
+
       setCalendarYear(
         calendarYear + 1,
       )
@@ -464,7 +747,8 @@ export function BookingsManager({
   }
 
   function goToToday() {
-    const now = new Date()
+    const now =
+      new Date()
 
     setCalendarMonth(
       now.getMonth(),
@@ -483,9 +767,9 @@ export function BookingsManager({
     )
   }
 
-  // =====================================================
-  // KALENDER STATUS
-  // =====================================================
+  // ===================================================
+  // BUCHUNGEN EINES TAGES
+  // ===================================================
 
   function getDayBookings(
     dateKey: string,
@@ -497,27 +781,34 @@ export function BookingsManager({
     )
   }
 
-  // =====================================================
-  // AUSGEWÄHLTES DATUM FORMATIEREN
-  // =====================================================
+  // ===================================================
+  // DATUM
+  // ===================================================
 
   function formatSelectedDate(
     dateKey: string,
   ) {
-    const date = new Date(
-      dateKey + "T00:00:00",
-    )
+    const date =
+      new Date(
+        dateKey +
+          "T00:00:00",
+      )
 
     return date.toLocaleDateString(
       "de-CH",
       {
-        weekday: "long",
+        weekday:
+          "long",
         day: "2-digit",
         month: "long",
         year: "numeric",
       },
     )
   }
+
+  // ===================================================
+  // RENDER
+  // ===================================================
 
   return (
     <div>
@@ -562,37 +853,44 @@ export function BookingsManager({
       ================================================= */}
 
       <div className="mt-8 flex flex-wrap gap-2">
-        {FILTERS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() =>
-              setFilter(
-                item.key,
-              )
-            }
-            className={[
-              "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
-              filter === item.key
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-          >
-            {item.label}
-          </button>
-        ))}
+        {FILTERS.map(
+          (item) => (
+            <button
+              key={
+                item.key
+              }
+              type="button"
+              onClick={() =>
+                setFilter(
+                  item.key,
+                )
+              }
+              className={[
+                "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
+                filter ===
+                item.key
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground",
+              ].join(
+                " ",
+              )}
+            >
+              {
+                item.label
+              }
+            </button>
+          ),
+        )}
       </div>
 
       {/* =================================================
           HAUPTBEREICH
-          LINKS = BUCHUNGEN
-          RECHTS = KALENDER
       ================================================= */}
 
       <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
 
         {/* =================================================
-            LINKE SEITE – BUCHUNGEN
+            BUCHUNGEN
         ================================================= */}
 
         <div className="min-w-0">
@@ -603,7 +901,8 @@ export function BookingsManager({
               </p>
 
               <h2 className="mt-1 font-display text-2xl font-bold uppercase">
-                {filter === "all"
+                {filter ===
+                "all"
                   ? "Alle Termine"
                   : statusLabels[
                       filter
@@ -612,8 +911,11 @@ export function BookingsManager({
             </div>
 
             <div className="text-sm text-muted-foreground">
-              {visible.length}{" "}
-              {visible.length === 1
+              {
+                visible.length
+              }{" "}
+              {visible.length ===
+              1
                 ? "Termin"
                 : "Termine"}
             </div>
@@ -623,67 +925,59 @@ export function BookingsManager({
             {visible.length ===
               0 && (
               <p className="border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                Keine Einträge in
-                dieser Ansicht.
+                Keine Einträge
+                in dieser
+                Ansicht.
               </p>
             )}
 
             {visible.map(
-              (booking) => {
-                const imagePaths =
-                  getImagePaths(
-                    booking.image_urls,
-                  )
-
-                return (
-                  <BookingCard
-                    key={
-                      booking.id
-                    }
-                    booking={
-                      booking
-                    }
-                    imagePaths={
-                      imagePaths
-                    }
-                    isPending={
-                      isPending
-                    }
-                    busyId={
-                      busyId
-                    }
-                    onUpdate={
-                      handleUpdate
-                    }
-                  />
-                )
-              },
+              (booking) => (
+                <BookingCard
+                  key={
+                    booking.id
+                  }
+                  booking={
+                    booking
+                  }
+                  isPending={
+                    isPending
+                  }
+                  busyId={
+                    busyId
+                  }
+                  onUpdate={
+                    handleUpdate
+                  }
+                />
+              ),
             )}
           </div>
         </div>
 
         {/* =================================================
-            RECHTE SEITE – KALENDER
+            KALENDER
         ================================================= */}
 
         <aside className="xl:sticky xl:top-6">
           <div className="border border-border bg-card">
 
-            {/* KALENDER HEADER */}
-
             <div className="border-b border-border p-5">
               <div className="flex items-center justify-between">
-
                 <div>
                   <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
                     Kalender
                   </p>
 
                   <h2 className="mt-1 font-display text-xl font-bold uppercase">
-                    {monthNames[
-                      calendarMonth
-                    ]}{" "}
-                    {calendarYear}
+                    {
+                      monthNames[
+                        calendarMonth
+                      ]
+                    }{" "}
+                    {
+                      calendarYear
+                    }
                   </h2>
                 </div>
 
@@ -693,8 +987,7 @@ export function BookingsManager({
                     onClick={
                       previousMonth
                     }
-                    className="border border-border p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                    aria-label="Vorheriger Monat"
+                    className="border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
@@ -704,8 +997,7 @@ export function BookingsManager({
                     onClick={
                       nextMonth
                     }
-                    className="border border-border p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                    aria-label="Nächster Monat"
+                    className="border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     <ChevronRight className="h-4 w-4" />
                   </button>
@@ -717,7 +1009,7 @@ export function BookingsManager({
                 onClick={
                   goToToday
                 }
-                className="mt-4 border border-border px-3 py-1.5 font-display text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                className="mt-4 border border-border px-3 py-1.5 font-display text-[10px] uppercase tracking-widest text-muted-foreground hover:bg-secondary hover:text-foreground"
               >
                 Heute
               </button>
@@ -757,21 +1049,27 @@ export function BookingsManager({
 
                   const hasPending =
                     dayBookings.some(
-                      (booking) =>
+                      (
+                        booking,
+                      ) =>
                         booking.status ===
                         "pending",
                     )
 
                   const hasConfirmed =
                     dayBookings.some(
-                      (booking) =>
+                      (
+                        booking,
+                      ) =>
                         booking.status ===
                         "confirmed",
                     )
 
                   const hasRejected =
                     dayBookings.some(
-                      (booking) =>
+                      (
+                        booking,
+                      ) =>
                         booking.status ===
                         "rejected",
                     )
@@ -796,15 +1094,16 @@ export function BookingsManager({
                         )
                       }
                       className={[
-                        "relative min-h-[64px] bg-card p-2 text-left transition-colors",
-                        "hover:bg-secondary",
+                        "relative min-h-[64px] bg-card p-2 text-left hover:bg-secondary",
                         !day.currentMonth
                           ? "opacity-35"
                           : "",
                         isSelected
                           ? "ring-2 ring-inset ring-primary"
                           : "",
-                      ].join(" ")}
+                      ].join(
+                        " ",
+                      )}
                     >
                       <span
                         className={[
@@ -812,14 +1111,14 @@ export function BookingsManager({
                           isToday
                             ? "bg-primary text-primary-foreground"
                             : "",
-                        ].join(" ")}
+                        ].join(
+                          " ",
+                        )}
                       >
                         {
                           day.day
                         }
                       </span>
-
-                      {/* STATUS-PUNKTE */}
 
                       {dayBookings.length >
                         0 && (
@@ -837,8 +1136,6 @@ export function BookingsManager({
                           )}
                         </div>
                       )}
-
-                      {/* ANZAHL */}
 
                       {dayBookings.length >
                         0 && (
@@ -875,9 +1172,7 @@ export function BookingsManager({
               </div>
             </div>
 
-            {/* =================================================
-                AUSGEWÄHLTER TAG
-            ================================================= */}
+            {/* AUSGEWÄHLTER TAG */}
 
             <div className="border-t border-border p-5">
               <div className="flex items-center gap-2">
@@ -896,15 +1191,15 @@ export function BookingsManager({
                 </div>
               </div>
 
-              {/* BUCHUNGEN DES TAGES */}
-
               <div className="mt-5 space-y-2">
                 {selectedDayBookings.length ===
                   0 && (
                   <div className="border border-border p-5 text-center">
                     <p className="text-sm text-muted-foreground">
-                      Keine Buchungen
-                      an diesem Tag.
+                      Keine
+                      Buchungen
+                      an diesem
+                      Tag.
                     </p>
                   </div>
                 )}
@@ -918,12 +1213,12 @@ export function BookingsManager({
                         booking.id
                       }
                       type="button"
-                      onClick={() => {
+                      onClick={() =>
                         setFilter(
                           booking.status,
                         )
-                      }}
-                      className="w-full border border-border p-3 text-left transition-colors hover:bg-secondary"
+                      }
+                      className="w-full border border-border p-3 text-left hover:bg-secondary"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
@@ -976,13 +1271,11 @@ export function BookingsManager({
 
 function BookingCard({
   booking,
-  imagePaths,
   isPending,
   busyId,
   onUpdate,
 }: {
   booking: Booking
-  imagePaths: string[]
   isPending: boolean
   busyId: string | null
   onUpdate: (
@@ -993,11 +1286,17 @@ function BookingCard({
     >,
   ) => void
 }) {
+  const imagePaths =
+    getImagePaths(
+      booking.image_urls,
+    )
+
   return (
-    <article
-      className="border border-border bg-card p-6"
-    >
-      {/* NAME + STATUS */}
+    <article className="border border-border bg-card p-6">
+
+      {/* =================================================
+          NAME + STATUS
+      ================================================= */}
 
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="font-display text-lg font-semibold uppercase tracking-wide">
@@ -1015,7 +1314,9 @@ function BookingCard({
         </span>
       </div>
 
-      {/* DATUM / ZEIT */}
+      {/* =================================================
+          DATUM / ZEIT
+      ================================================= */}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1033,12 +1334,14 @@ function BookingCard({
         </div>
       </div>
 
-      {/* KONTAKT */}
+      {/* =================================================
+          KONTAKT
+      ================================================= */}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <a
           href={`tel:${booking.phone}`}
-          className="flex items-center gap-2 text-sm text-foreground hover:underline"
+          className="flex items-center gap-2 text-sm hover:underline"
         >
           <Phone className="h-4 w-4" />
 
@@ -1047,7 +1350,7 @@ function BookingCard({
 
         <a
           href={`mailto:${booking.email}`}
-          className="flex items-center gap-2 break-all text-sm text-foreground hover:underline"
+          className="flex items-center gap-2 break-all text-sm hover:underline"
         >
           <Mail className="h-4 w-4" />
 
@@ -1055,7 +1358,9 @@ function BookingCard({
         </a>
       </div>
 
-      {/* FAHRZEUG */}
+      {/* =================================================
+          FAHRZEUG
+      ================================================= */}
 
       <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
         <Car className="h-4 w-4" />
@@ -1063,7 +1368,9 @@ function BookingCard({
         {booking.car}
       </div>
 
-      {/* PROBLEM */}
+      {/* =================================================
+          PROBLEM
+      ================================================= */}
 
       <div className="mt-5 border-t border-border pt-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -1075,92 +1382,194 @@ function BookingCard({
         </p>
       </div>
 
-      {/* BILDER */}
+      {/* =================================================
+          KUNDENBILDER
+      ================================================= */}
 
       <div className="mt-6 border-t border-border pt-5">
-        <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
-          <ImageIcon className="h-4 w-4" />
 
-          Kundenbilder
+        <div className="flex items-center gap-2">
+          <ImageIcon className="h-5 w-5 text-muted-foreground" />
+
+          <span className="font-display text-xs uppercase tracking-widest">
+            Kundenbilder
+          </span>
 
           {imagePaths.length >
-            0 &&
-            ` (${imagePaths.length})`}
+            0 && (
+            <span className="text-xs text-muted-foreground">
+              ({imagePaths.length})
+            </span>
+          )}
         </div>
+
+        {/* KEINE BILDER */}
 
         {imagePaths.length ===
         0 ? (
-          <div className="mt-3 border border-border p-5 text-center">
-            <ImageIcon className="mx-auto h-6 w-6 text-muted-foreground" />
+          <div className="mt-4 border border-dashed border-border p-8 text-center">
+            <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
 
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-3 text-sm text-muted-foreground">
               Keine Kundenbilder
-              vorhanden
+              vorhanden.
             </p>
           </div>
         ) : (
+          /* BILDER */
+
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+
             {imagePaths.map(
               (
                 path,
                 index,
               ) => {
-                const url =
+                const imageUrl =
                   getImageUrl(
                     path,
                   )
 
-                if (!url) {
+                if (
+                  !imageUrl
+                ) {
                   return null
                 }
 
                 return (
-                  <a
+                  <div
                     key={`${path}-${index}`}
-                    href={
-                      url
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group relative block aspect-square overflow-hidden border border-border bg-background"
+                    className="overflow-hidden border border-border bg-background"
                   >
-                    <img
-                      src={
-                        url
+
+                    {/* BILD */}
+
+                    <a
+                      href={
+                        imageUrl
                       }
-                      alt={`Kundenbild ${index + 1}`}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      onError={(
-                        e,
-                      ) => {
-                        console.error(
-                          "Bild konnte nicht geladen werden:",
-                          url,
-                        )
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative block aspect-square overflow-hidden"
+                    >
 
-                        e.currentTarget.style.display =
-                          "none"
-                      }}
-                    />
+                      <img
+                        src={
+                          imageUrl
+                        }
+                        alt={`Kundenbild ${index + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="eager"
+                        decoding="async"
+                        onLoad={() => {
+                          console.log(
+                            "KUNDENBILD GELADEN:",
+                            imageUrl,
+                          )
+                        }}
+                        onError={(
+                          event,
+                        ) => {
+                          console.error(
+                            "KUNDENBILD FEHLER:",
+                            imageUrl,
+                          )
 
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-2 text-center text-[10px] uppercase tracking-wider text-white">
-                      Bild{" "}
-                      {index +
-                        1}
+                          const img =
+                            event.currentTarget
+
+                          img.style.display =
+                            "none"
+
+                          const parent =
+                            img.parentElement
+
+                          if (
+                            parent &&
+                            !parent.querySelector(
+                              "[data-image-error]",
+                            )
+                          ) {
+                            const error =
+                              document.createElement(
+                                "div",
+                              )
+
+                            error.dataset.imageError =
+                              "true"
+
+                            error.className =
+                              "absolute inset-0 flex flex-col items-center justify-center p-3 text-center"
+
+                            error.innerHTML =
+                              `
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="28"
+                                height="28"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                class="mb-2 opacity-50"
+                              >
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path d="m21 15-5-5L5 21" />
+                              </svg>
+
+                              <span class="text-xs text-muted-foreground">
+                                Bild konnte nicht geladen werden
+                              </span>
+                              `
+
+                            parent.appendChild(
+                              error,
+                            )
+                          }
+                        }}
+                      />
+
+                      {/* HOVER */}
+
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/40">
+                        <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
+                      </div>
+
+                    </a>
+
+                    {/* BILD INFO */}
+
+                    <div className="border-t border-border px-3 py-2">
+                      <p className="text-xs font-medium">
+                        Bild{" "}
+                        {index +
+                          1}
+                      </p>
+
+                      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                        {path}
+                      </p>
                     </div>
-                  </a>
+
+                  </div>
                 )
               },
             )}
+
           </div>
         )}
+
       </div>
 
-      {/* BUTTONS */}
+      {/* =================================================
+          BUTTONS
+      ================================================= */}
 
       {booking.status ===
         "pending" && (
         <div className="mt-6 flex flex-wrap gap-2">
+
           <button
             type="button"
             disabled={
@@ -1174,7 +1583,7 @@ function BookingCard({
                 "confirmed",
               )
             }
-            className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+            className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
           >
             <Check className="h-4 w-4" />
 
@@ -1198,7 +1607,7 @@ function BookingCard({
                 "rejected",
               )
             }
-            className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
+            className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
           >
             <X className="h-4 w-4" />
 
@@ -1208,8 +1617,10 @@ function BookingCard({
               ? "Wird gespeichert..."
               : "Ablehnen"}
           </button>
+
         </div>
       )}
+
     </article>
   )
 }
