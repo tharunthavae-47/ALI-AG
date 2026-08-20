@@ -1,6 +1,10 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import {
+  useMemo,
+  useState,
+  useTransition,
+} from "react"
 
 import {
   Check,
@@ -14,9 +18,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Trash2,
 } from "lucide-react"
 
 import {
+  deleteBooking,
   updateBookingStatus,
   type Booking,
   type BookingStatus,
@@ -76,7 +82,7 @@ const statusLabels: Record<
 }
 
 // =====================================================
-// KALENDER
+// MONATE
 // =====================================================
 
 const monthNames = [
@@ -93,6 +99,10 @@ const monthNames = [
   "November",
   "Dezember",
 ]
+
+// =====================================================
+// WOCHENTAGE
+// =====================================================
 
 const weekDays = [
   "Mo",
@@ -151,7 +161,7 @@ function formatDate(
 }
 
 // =====================================================
-// BILDER AUS DB LESEN
+// BILDER AUS SUPABASE
 // =====================================================
 
 function getImagePaths(
@@ -194,7 +204,7 @@ function getImagePaths(
       return []
     }
 
-    // JSON Array
+    // Falls JSON-Array
     try {
       const parsed =
         JSON.parse(
@@ -220,8 +230,7 @@ function getImagePaths(
         typeof parsed ===
         "string"
       ) {
-        value =
-          parsed
+        value = parsed
       }
     } catch {
       // Kein JSON
@@ -236,7 +245,7 @@ function getImagePaths(
 }
 
 // =====================================================
-// SUPABASE BILD URL
+// BILD URL
 // =====================================================
 
 function getImageUrl(
@@ -246,8 +255,13 @@ function getImageUrl(
     return ""
   }
 
-  let cleanPath =
-    path.trim()
+  const cleanPath =
+    path
+      .trim()
+      .replace(
+        /^\/+/,
+        "",
+      )
 
   if (!cleanPath) {
     return ""
@@ -265,33 +279,25 @@ function getImageUrl(
     return cleanPath
   }
 
-  // Führende Slashes entfernen
-  cleanPath =
-    cleanPath.replace(
-      /^\/+/,
-      "",
-    )
+  /*
+    Wenn in Supabase z.B. gespeichert ist:
 
-  // Falls bereits ein Storage-Pfad gespeichert wurde
-  cleanPath =
-    cleanPath.replace(
-      /^storage\/v1\/object\/public\/Kunden-Bilder\//,
-      "",
-    )
+    abc123.jpg
 
-  // Falls Bucketname mitgespeichert wurde
-  cleanPath =
-    cleanPath.replace(
-      /^Kunden-Bilder\//,
-      "",
-    )
+    wird:
 
-  // Jeden Pfadteil separat encoden
+    https://cfiumzbuavfbahctzknr.supabase.co
+    /storage/v1/object/public/
+    Kunden-Bilder/abc123.jpg
+  */
+
   const encodedPath =
     cleanPath
       .split("/")
       .map(
-        (part) =>
+        (
+          part,
+        ) =>
           encodeURIComponent(
             part,
           ),
@@ -309,7 +315,7 @@ function getImageUrl(
 }
 
 // =====================================================
-// DATE KEY
+// DATUM KEY
 // =====================================================
 
 function toDateKey(
@@ -320,7 +326,10 @@ function toDateKey(
   const monthString =
     String(
       month + 1,
-    ).padStart(2, "0")
+    ).padStart(
+      2,
+      "0",
+    )
 
   const dayString =
     String(day).padStart(
@@ -347,7 +356,7 @@ function getTodayKey() {
 }
 
 // =====================================================
-// KALENDERTAGE
+// KALENDER
 // =====================================================
 
 function getCalendarDays(
@@ -383,6 +392,7 @@ function getCalendarDays(
     currentMonth: boolean
   }[] = []
 
+  // Vorheriger Monat
   for (
     let i =
       firstWeekDay - 1;
@@ -408,6 +418,7 @@ function getCalendarDays(
     })
   }
 
+  // Aktueller Monat
   for (
     let day = 1;
     day <=
@@ -423,6 +434,7 @@ function getCalendarDays(
     })
   }
 
+  // Rest
   const remaining =
     42 - days.length
 
@@ -454,7 +466,7 @@ function getCalendarDays(
 }
 
 // =====================================================
-// MAIN COMPONENT
+// COMPONENT
 // =====================================================
 
 export function BookingsManager({
@@ -462,10 +474,7 @@ export function BookingsManager({
 }: {
   initialBookings: Booking[]
 }) {
-  const [
-    bookings,
-    setBookings,
-  ] =
+  const [bookings, setBookings] =
     useState<Booking[]>(
       Array.isArray(
         initialBookings,
@@ -485,16 +494,23 @@ export function BookingsManager({
   const [
     isPending,
     startTransition,
-  ] =
-    useTransition()
+  ] = useTransition()
 
   const [
     busyId,
     setBusyId,
   ] =
-    useState<
-      string | null
-    >(null)
+    useState<string | null>(
+      null,
+    )
+
+  const [
+    deletingId,
+    setDeletingId,
+  ] =
+    useState<string | null>(
+      null,
+    )
 
   // ===================================================
   // KALENDER
@@ -541,38 +557,26 @@ export function BookingsManager({
     )
 
   // ===================================================
-  // FILTER
+  // SICHTBARE BUCHUNGEN
   // ===================================================
 
   const visible =
     useMemo(() => {
-      return [
-        ...bookings,
-      ]
+      return [...bookings]
         .filter(
-          (booking) =>
+          (
+            booking,
+          ) =>
             filter ===
-            "all"
-              ? true
-              : booking.status ===
-                filter,
+              "all" ||
+            booking.status ===
+              filter,
         )
         .sort(
-          (a, b) => {
-            if (
-              filter ===
-              "pending"
-            ) {
-              return (
-                new Date(
-                  b.created_at,
-                ).getTime() -
-                new Date(
-                  a.created_at,
-                ).getTime()
-              )
-            }
-
+          (
+            a,
+            b,
+          ) => {
             const dateA =
               `${a.booking_date} ${a.booking_time}`
 
@@ -590,7 +594,7 @@ export function BookingsManager({
     ])
 
   // ===================================================
-  // AUSGEWÄHLTER TAG
+  // BUCHUNGEN DES AUSGEWÄHLTEN TAGES
   // ===================================================
 
   const selectedDayBookings =
@@ -599,12 +603,17 @@ export function BookingsManager({
         ...bookings,
       ]
         .filter(
-          (booking) =>
+          (
+            booking,
+          ) =>
             booking.booking_date ===
             selectedDate,
         )
         .sort(
-          (a, b) =>
+          (
+            a,
+            b,
+          ) =>
             a.booking_time.localeCompare(
               b.booking_time,
             ),
@@ -615,7 +624,7 @@ export function BookingsManager({
     ])
 
   // ===================================================
-  // STATISTIK
+  // STATUS COUNTS
   // ===================================================
 
   const counts = {
@@ -647,10 +656,7 @@ export function BookingsManager({
 
   function handleUpdate(
     id: string,
-    status: Exclude<
-      BookingStatus,
-      "pending"
-    >,
+    status: BookingStatus,
   ) {
     setBusyId(id)
 
@@ -698,14 +704,80 @@ export function BookingsManager({
             "Aktualisierung fehlgeschlagen.",
           )
         } finally {
-          setBusyId(null)
+          setBusyId(
+            null,
+          )
         }
       },
     )
   }
 
   // ===================================================
-  // MONAT
+  // LÖSCHEN
+  // ===================================================
+
+  function handleDelete(
+    id: string,
+  ) {
+    const confirmed =
+      window.confirm(
+        "Möchtest du diese Buchung wirklich löschen?",
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingId(id)
+
+    startTransition(
+      async () => {
+        try {
+          const result =
+            await deleteBooking(
+              id,
+            )
+
+          if (
+            result.ok
+          ) {
+            setBookings(
+              (
+                previous,
+              ) =>
+                previous.filter(
+                  (
+                    booking,
+                  ) =>
+                    booking.id !==
+                    id,
+                ),
+            )
+          } else {
+            alert(
+              result.error ??
+                "Die Buchung konnte nicht gelöscht werden.",
+            )
+          }
+        } catch (error) {
+          console.error(
+            error,
+          )
+
+          alert(
+            "Beim Löschen ist ein Fehler aufgetreten.",
+          )
+        } finally {
+          setDeletingId(
+            null,
+          )
+        }
+      },
+    )
+  }
+
+  // ===================================================
+  // MONAT ZURÜCK
   // ===================================================
 
   function previousMonth() {
@@ -727,6 +799,10 @@ export function BookingsManager({
     }
   }
 
+  // ===================================================
+  // MONAT VOR
+  // ===================================================
+
   function nextMonth() {
     if (
       calendarMonth ===
@@ -745,6 +821,10 @@ export function BookingsManager({
       )
     }
   }
+
+  // ===================================================
+  // HEUTE
+  // ===================================================
 
   function goToToday() {
     const now =
@@ -775,14 +855,16 @@ export function BookingsManager({
     dateKey: string,
   ) {
     return bookings.filter(
-      (booking) =>
+      (
+        booking,
+      ) =>
         booking.booking_date ===
         dateKey,
     )
   }
 
   // ===================================================
-  // DATUM
+  // AUSGEWÄHLTES DATUM
   // ===================================================
 
   function formatSelectedDate(
@@ -800,8 +882,10 @@ export function BookingsManager({
         weekday:
           "long",
         day: "2-digit",
-        month: "long",
-        year: "numeric",
+        month:
+          "long",
+        year:
+          "numeric",
       },
     )
   }
@@ -811,147 +895,240 @@ export function BookingsManager({
   // ===================================================
 
   return (
-    <div>
+    <div className="space-y-8">
+
       {/* =================================================
-          STATISTIK
+          HAUPTÜBERSCHRIFT
       ================================================= */}
 
-      <div className="grid grid-cols-3 gap-px overflow-hidden border border-border bg-border">
-        <div className="bg-card p-5">
-          <div className="font-display text-3xl font-bold text-[var(--warn)]">
-            {counts.pending}
+      <div>
+        <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
+          Verwaltung
+        </p>
+
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-display text-2xl font-bold uppercase">
+              Terminanfragen
+            </h1>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              Hier sehen Sie alle
+              eingegangenen
+              Terminanfragen.
+              Sie können Termine
+              bestätigen,
+              stornieren oder
+              löschen.
+            </p>
           </div>
 
-          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
-            Offen
-          </div>
-        </div>
-
-        <div className="bg-card p-5">
-          <div className="font-display text-3xl font-bold text-[var(--ok)]">
-            {counts.confirmed}
-          </div>
-
-          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
-            Bestätigt
-          </div>
-        </div>
-
-        <div className="bg-card p-5">
-          <div className="font-display text-3xl font-bold text-[var(--bad)]">
-            {counts.rejected}
-          </div>
-
-          <div className="mt-1 text-xs uppercase tracking-wider text-muted-foreground">
-            Abgelehnt
+          <div className="text-sm text-muted-foreground">
+            <strong className="text-foreground">
+              {bookings.length}
+            </strong>{" "}
+            insgesamt
           </div>
         </div>
       </div>
 
       {/* =================================================
-          FILTER
+          FILTER + ANZAHLEN
+          KEINE EXTRA STATISTIK-KARTEN
       ================================================= */}
 
-      <div className="mt-8 flex flex-wrap gap-2">
-        {FILTERS.map(
-          (item) => (
-            <button
-              key={
-                item.key
-              }
-              type="button"
-              onClick={() =>
-                setFilter(
-                  item.key,
-                )
-              }
-              className={[
-                "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
-                filter ===
-                item.key
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              ].join(
-                " ",
-              )}
-            >
-              {
-                item.label
-              }
-            </button>
-          ),
-        )}
+      <div className="border border-border bg-card">
+
+        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
+
+          {/* FILTER */}
+
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map(
+              (
+                item,
+              ) => (
+                <button
+                  key={
+                    item.key
+                  }
+                  type="button"
+                  onClick={() =>
+                    setFilter(
+                      item.key,
+                    )
+                  }
+                  className={[
+                    "border px-4 py-2 font-display text-xs uppercase tracking-widest transition-colors",
+                    filter ===
+                    item.key
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  ].join(
+                    " ",
+                  )}
+                >
+                  {
+                    item.label
+                  }
+
+                  {/* ANZAHL DIREKT IM FILTER */}
+
+                  {item.key !==
+                    "all" && (
+                    <span className="ml-2 opacity-70">
+                      {
+                        counts[
+                          item.key
+                        ]
+                      }
+                    </span>
+                  )}
+
+                  {item.key ===
+                    "all" && (
+                    <span className="ml-2 opacity-70">
+                      {
+                        bookings.length
+                      }
+                    </span>
+                  )}
+                </button>
+              ),
+            )}
+          </div>
+
+          {/* STATUS INFO */}
+
+          <div className="flex flex-wrap gap-4 text-xs uppercase tracking-wider text-muted-foreground">
+            <span>
+              Offen:{" "}
+              <strong className="text-[var(--warn)]">
+                {
+                  counts.pending
+                }
+              </strong>
+            </span>
+
+            <span>
+              Bestätigt:{" "}
+              <strong className="text-[var(--ok)]">
+                {
+                  counts.confirmed
+                }
+              </strong>
+            </span>
+
+            <span>
+              Abgelehnt:{" "}
+              <strong className="text-[var(--bad)]">
+                {
+                  counts.rejected
+                }
+              </strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="border-t border-border px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            {visible.length}{" "}
+            {visible.length ===
+            1
+              ? "Termin"
+              : "Termine"}{" "}
+            in dieser Ansicht
+          </p>
+        </div>
       </div>
 
       {/* =================================================
           HAUPTBEREICH
       ================================================= */}
 
-      <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_430px] xl:items-start">
 
         {/* =================================================
             BUCHUNGEN
         ================================================= */}
 
         <div className="min-w-0">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                Buchungen
-              </p>
 
-              <h2 className="mt-1 font-display text-2xl font-bold uppercase">
-                {filter ===
-                "all"
-                  ? "Alle Termine"
-                  : statusLabels[
-                      filter
-                    ]}
-              </h2>
-            </div>
+          <div className="mb-5">
+            <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
+              Buchungen
+            </p>
 
-            <div className="text-sm text-muted-foreground">
-              {
-                visible.length
-              }{" "}
-              {visible.length ===
-              1
-                ? "Termin"
-                : "Termine"}
-            </div>
+            <h2 className="mt-1 font-display text-2xl font-bold uppercase">
+              {filter ===
+              "all"
+                ? "Alle Termine"
+                : statusLabels[
+                    filter
+                  ]}
+            </h2>
           </div>
 
-          <div className="space-y-4">
-            {visible.length ===
-              0 && (
-              <p className="border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                Keine Einträge
-                in dieser
-                Ansicht.
+          {/* KEINE BUCHUNGEN */}
+
+          {visible.length ===
+            0 && (
+            <div className="border border-border bg-card p-10 text-center">
+
+              <Calendar className="mx-auto h-8 w-8 text-muted-foreground" />
+
+              <p className="mt-4 text-sm text-muted-foreground">
+                Keine Einträge in
+                dieser Ansicht.
               </p>
-            )}
+
+            </div>
+          )}
+
+          {/* BUCHUNGEN */}
+
+          <div className="space-y-4">
 
             {visible.map(
-              (booking) => (
-                <BookingCard
-                  key={
-                    booking.id
-                  }
-                  booking={
-                    booking
-                  }
-                  isPending={
-                    isPending
-                  }
-                  busyId={
-                    busyId
-                  }
-                  onUpdate={
-                    handleUpdate
-                  }
-                />
-              ),
+              (
+                booking,
+              ) => {
+                const imagePaths =
+                  getImagePaths(
+                    booking.image_urls,
+                  )
+
+                return (
+                  <BookingCard
+                    key={
+                      booking.id
+                    }
+                    booking={
+                      booking
+                    }
+                    imagePaths={
+                      imagePaths
+                    }
+                    isPending={
+                      isPending
+                    }
+                    busyId={
+                      busyId
+                    }
+                    deletingId={
+                      deletingId
+                    }
+                    onUpdate={
+                      handleUpdate
+                    }
+                    onDelete={
+                      handleDelete
+                    }
+                  />
+                )
+              },
             )}
+
           </div>
         </div>
 
@@ -960,10 +1137,15 @@ export function BookingsManager({
         ================================================= */}
 
         <aside className="xl:sticky xl:top-6">
+
           <div className="border border-border bg-card">
 
+            {/* HEADER */}
+
             <div className="border-b border-border p-5">
+
               <div className="flex items-center justify-between">
+
                 <div>
                   <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
                     Kalender
@@ -981,13 +1163,15 @@ export function BookingsManager({
                   </h2>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex gap-1">
+
                   <button
                     type="button"
                     onClick={
                       previousMonth
                     }
-                    className="border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className="border border-border p-2 hover:bg-secondary"
+                    aria-label="Vorheriger Monat"
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
@@ -997,11 +1181,14 @@ export function BookingsManager({
                     onClick={
                       nextMonth
                     }
-                    className="border border-border p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    className="border border-border p-2 hover:bg-secondary"
+                    aria-label="Nächster Monat"
                   >
                     <ChevronRight className="h-4 w-4" />
                   </button>
+
                 </div>
+
               </div>
 
               <button
@@ -1009,32 +1196,45 @@ export function BookingsManager({
                 onClick={
                   goToToday
                 }
-                className="mt-4 border border-border px-3 py-1.5 font-display text-[10px] uppercase tracking-widest text-muted-foreground hover:bg-secondary hover:text-foreground"
+                className="mt-4 border border-border px-3 py-1.5 font-display text-[10px] uppercase tracking-widest text-muted-foreground hover:bg-secondary"
               >
                 Heute
               </button>
+
             </div>
 
             {/* WOCHENTAGE */}
 
             <div className="grid grid-cols-7 border-b border-border">
+
               {weekDays.map(
-                (day) => (
+                (
+                  day,
+                ) => (
                   <div
-                    key={day}
+                    key={
+                      day
+                    }
                     className="py-3 text-center font-display text-[10px] uppercase tracking-wider text-muted-foreground"
                   >
-                    {day}
+                    {
+                      day
+                    }
                   </div>
                 ),
               )}
+
             </div>
 
             {/* TAGE */}
 
             <div className="grid grid-cols-7 gap-px bg-border">
+
               {calendarDays.map(
-                (day) => {
+                (
+                  day,
+                ) => {
+
                   const dateKey =
                     toDateKey(
                       day.year,
@@ -1094,7 +1294,7 @@ export function BookingsManager({
                         )
                       }
                       className={[
-                        "relative min-h-[64px] bg-card p-2 text-left hover:bg-secondary",
+                        "relative min-h-[64px] bg-card p-2 text-left transition-colors hover:bg-secondary",
                         !day.currentMonth
                           ? "opacity-35"
                           : "",
@@ -1105,6 +1305,7 @@ export function BookingsManager({
                         " ",
                       )}
                     >
+
                       <span
                         className={[
                           "flex h-7 w-7 items-center justify-center font-display text-sm",
@@ -1120,9 +1321,12 @@ export function BookingsManager({
                         }
                       </span>
 
+                      {/* PUNKTE */}
+
                       {dayBookings.length >
                         0 && (
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1">
+                        <div className="absolute bottom-2 left-2 flex gap-1">
+
                           {hasPending && (
                             <span className="h-1.5 w-1.5 rounded-full bg-[var(--warn)]" />
                           )}
@@ -1134,8 +1338,11 @@ export function BookingsManager({
                           {hasRejected && (
                             <span className="h-1.5 w-1.5 rounded-full bg-[var(--bad)]" />
                           )}
+
                         </div>
                       )}
+
+                      {/* ANZAHL */}
 
                       {dayBookings.length >
                         0 && (
@@ -1145,16 +1352,20 @@ export function BookingsManager({
                           }
                         </span>
                       )}
+
                     </button>
                   )
                 },
               )}
+
             </div>
 
             {/* LEGENDE */}
 
             <div className="border-t border-border p-4">
-              <div className="flex flex-wrap gap-x-4 gap-y-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+
+              <div className="flex flex-wrap gap-4 text-[10px] uppercase tracking-wider text-muted-foreground">
+
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-[var(--warn)]" />
                   Offen
@@ -1169,37 +1380,47 @@ export function BookingsManager({
                   <span className="h-2 w-2 rounded-full bg-[var(--bad)]" />
                   Abgelehnt
                 </span>
+
               </div>
+
             </div>
 
             {/* AUSGEWÄHLTER TAG */}
 
             <div className="border-t border-border p-5">
+
               <div className="flex items-center gap-2">
+
                 <Calendar className="h-4 w-4 text-muted-foreground" />
 
                 <div>
+
                   <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
                     Ausgewählter Tag
                   </p>
 
                   <h3 className="mt-1 font-display text-lg font-semibold capitalize">
-                    {formatSelectedDate(
-                      selectedDate,
-                    )}
+                    {
+                      formatSelectedDate(
+                        selectedDate,
+                      )
+                    }
                   </h3>
+
                 </div>
+
               </div>
 
+              {/* TAGESBUCHUNGEN */}
+
               <div className="mt-5 space-y-2">
+
                 {selectedDayBookings.length ===
                   0 && (
                   <div className="border border-border p-5 text-center">
                     <p className="text-sm text-muted-foreground">
-                      Keine
-                      Buchungen
-                      an diesem
-                      Tag.
+                      Keine Buchungen
+                      an diesem Tag.
                     </p>
                   </div>
                 )}
@@ -1220,8 +1441,11 @@ export function BookingsManager({
                       }
                       className="w-full border border-border p-3 text-left hover:bg-secondary"
                     >
+
                       <div className="flex items-center justify-between gap-3">
+
                         <div className="flex items-center gap-2">
+
                           <Clock className="h-4 w-4 text-muted-foreground" />
 
                           <span className="font-display text-sm font-semibold">
@@ -1229,6 +1453,7 @@ export function BookingsManager({
                               booking.booking_time
                             }
                           </span>
+
                         </div>
 
                         <span
@@ -1240,6 +1465,7 @@ export function BookingsManager({
                             ]
                           }
                         </span>
+
                       </div>
 
                       <p className="mt-2 truncate text-sm">
@@ -1253,99 +1479,156 @@ export function BookingsManager({
                           booking.car
                         }
                       </p>
+
                     </button>
                   ),
                 )}
+
               </div>
+
             </div>
+
           </div>
+
         </aside>
+
       </div>
+
     </div>
   )
 }
 
 // =====================================================
-// BUCHUNGSKARTE
+// BOOKING CARD
 // =====================================================
 
 function BookingCard({
   booking,
+  imagePaths,
   isPending,
   busyId,
+  deletingId,
   onUpdate,
+  onDelete,
 }: {
   booking: Booking
+  imagePaths: string[]
   isPending: boolean
   busyId: string | null
+  deletingId: string | null
   onUpdate: (
     id: string,
-    status: Exclude<
-      BookingStatus,
-      "pending"
-    >,
+    status: BookingStatus,
+  ) => void
+  onDelete: (
+    id: string,
   ) => void
 }) {
-  const imagePaths =
-    getImagePaths(
-      booking.image_urls,
-    )
+  const busy =
+    isPending &&
+    busyId ===
+      booking.id
+
+  const deleting =
+    deletingId ===
+    booking.id
 
   return (
     <article className="border border-border bg-card p-6">
 
-      {/* =================================================
-          NAME + STATUS
-      ================================================= */}
+      {/* =============================================
+          HEADER
+      ============================================= */}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <h3 className="font-display text-lg font-semibold uppercase tracking-wide">
-          {booking.name}
-        </h3>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 
-        <span
-          className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
-        >
-          {
-            statusLabels[
-              booking.status
-            ]
+        <div>
+
+          <div className="flex flex-wrap items-center gap-3">
+
+            <h3 className="font-display text-lg font-semibold uppercase tracking-wide">
+              {
+                booking.name
+              }
+            </h3>
+
+            <span
+              className={`border px-2 py-0.5 text-[10px] uppercase tracking-widest ${statusStyles[booking.status]}`}
+            >
+              {
+                statusLabels[
+                  booking.status
+                ]
+              }
+            </span>
+
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
+
+            <span className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+
+              {
+                formatDate(
+                  booking.booking_date,
+                )
+              }
+            </span>
+
+            <span className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+
+              {
+                booking.booking_time
+              }
+            </span>
+
+          </div>
+
+        </div>
+
+        {/* LÖSCHEN */}
+
+        <button
+          type="button"
+          disabled={
+            busy ||
+            deleting
           }
-        </span>
+          onClick={() =>
+            onDelete(
+              booking.id,
+            )
+          }
+          className="flex items-center gap-2 self-start border border-[var(--bad)] px-3 py-2 font-display text-[10px] uppercase tracking-widest text-[var(--bad)] hover:bg-[var(--bad)] hover:text-background disabled:opacity-40"
+        >
+
+          <Trash2 className="h-4 w-4" />
+
+          {deleting
+            ? "Löschen..."
+            : "Löschen"}
+
+        </button>
+
       </div>
 
-      {/* =================================================
-          DATUM / ZEIT
-      ================================================= */}
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Calendar className="h-4 w-4" />
-
-          {formatDate(
-            booking.booking_date,
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Clock className="h-4 w-4" />
-
-          {booking.booking_time}
-        </div>
-      </div>
-
-      {/* =================================================
+      {/* =============================================
           KONTAKT
-      ================================================= */}
+      ============================================= */}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-5 grid gap-3 border-t border-border pt-5 sm:grid-cols-2">
+
         <a
           href={`tel:${booking.phone}`}
           className="flex items-center gap-2 text-sm hover:underline"
         >
           <Phone className="h-4 w-4" />
 
-          {booking.phone}
+          {
+            booking.phone
+          }
         </a>
 
         <a
@@ -1354,77 +1637,98 @@ function BookingCard({
         >
           <Mail className="h-4 w-4" />
 
-          {booking.email}
+          {
+            booking.email
+          }
         </a>
+
       </div>
 
-      {/* =================================================
+      {/* =============================================
           FAHRZEUG
-      ================================================= */}
+      ============================================= */}
 
       <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+
         <Car className="h-4 w-4" />
 
-        {booking.car}
+        {
+          booking.car
+        }
+
       </div>
 
-      {/* =================================================
+      {/* =============================================
           PROBLEM
-      ================================================= */}
+      ============================================= */}
 
       <div className="mt-5 border-t border-border pt-5">
+
         <p className="text-xs uppercase tracking-widest text-muted-foreground">
           Problem / Anliegen
         </p>
 
         <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-          {booking.problem}
+          {
+            booking.problem
+          }
         </p>
+
       </div>
 
-      {/* =================================================
+      {/* =============================================
           KUNDENBILDER
-      ================================================= */}
+      ============================================= */}
 
       <div className="mt-6 border-t border-border pt-5">
 
-        <div className="flex items-center gap-2">
-          <ImageIcon className="h-5 w-5 text-muted-foreground" />
+        <div className="flex items-center gap-2 font-display text-xs uppercase tracking-widest text-muted-foreground">
 
-          <span className="font-display text-xs uppercase tracking-widest">
-            Kundenbilder
-          </span>
+          <ImageIcon className="h-4 w-4" />
+
+          Kundenbilder
 
           {imagePaths.length >
             0 && (
-            <span className="text-xs text-muted-foreground">
-              ({imagePaths.length})
+            <span>
+              (
+              {
+                imagePaths.length
+              }
+              )
             </span>
           )}
+
         </div>
 
         {/* KEINE BILDER */}
 
         {imagePaths.length ===
         0 ? (
-          <div className="mt-4 border border-dashed border-border p-8 text-center">
-            <ImageIcon className="mx-auto h-8 w-8 text-muted-foreground" />
+          <div className="mt-4 border border-dashed border-border p-6 text-center">
 
-            <p className="mt-3 text-sm text-muted-foreground">
+            <ImageIcon className="mx-auto h-7 w-7 text-muted-foreground" />
+
+            <p className="mt-2 text-xs text-muted-foreground">
               Keine Kundenbilder
               vorhanden.
             </p>
+
           </div>
         ) : (
-          /* BILDER */
 
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          /* ==========================================
+             BILDER
+          ========================================== */
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
 
             {imagePaths.map(
               (
                 path,
                 index,
               ) => {
+
                 const imageUrl =
                   getImageUrl(
                     path,
@@ -1437,122 +1741,63 @@ function BookingCard({
                 }
 
                 return (
-                  <div
+                  <a
                     key={`${path}-${index}`}
-                    className="overflow-hidden border border-border bg-background"
+                    href={
+                      imageUrl
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group relative block aspect-square overflow-hidden border border-border bg-background"
                   >
 
-                    {/* BILD */}
-
-                    <a
-                      href={
+                    <img
+                      src={
                         imageUrl
                       }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative block aspect-square overflow-hidden"
-                    >
+                      alt={`Kundenbild ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                      onLoad={() => {
+                        console.log(
+                          "SUPABASE BILD GELADEN:",
+                          imageUrl,
+                        )
+                      }}
+                      onError={(
+                        event,
+                      ) => {
+                        console.error(
+                          "SUPABASE BILD FEHLER:",
+                          imageUrl,
+                        )
 
-                      <img
-                        src={
-                          imageUrl
-                        }
-                        alt={`Kundenbild ${index + 1}`}
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        loading="eager"
-                        decoding="async"
-                        onLoad={() => {
-                          console.log(
-                            "KUNDENBILD GELADEN:",
-                            imageUrl,
-                          )
-                        }}
-                        onError={(
-                          event,
-                        ) => {
-                          console.error(
-                            "KUNDENBILD FEHLER:",
-                            imageUrl,
-                          )
+                        event.currentTarget.style.display =
+                          "none"
+                      }}
+                    />
 
-                          const img =
-                            event.currentTarget
+                    {/* HOVER */}
 
-                          img.style.display =
-                            "none"
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
 
-                          const parent =
-                            img.parentElement
+                      <ExternalLink className="h-6 w-6 text-white opacity-0 transition-opacity group-hover:opacity-100" />
 
-                          if (
-                            parent &&
-                            !parent.querySelector(
-                              "[data-image-error]",
-                            )
-                          ) {
-                            const error =
-                              document.createElement(
-                                "div",
-                              )
-
-                            error.dataset.imageError =
-                              "true"
-
-                            error.className =
-                              "absolute inset-0 flex flex-col items-center justify-center p-3 text-center"
-
-                            error.innerHTML =
-                              `
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="28"
-                                height="28"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                class="mb-2 opacity-50"
-                              >
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path d="m21 15-5-5L5 21" />
-                              </svg>
-
-                              <span class="text-xs text-muted-foreground">
-                                Bild konnte nicht geladen werden
-                              </span>
-                              `
-
-                            parent.appendChild(
-                              error,
-                            )
-                          }
-                        }}
-                      />
-
-                      {/* HOVER */}
-
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/40">
-                        <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
-                      </div>
-
-                    </a>
-
-                    {/* BILD INFO */}
-
-                    <div className="border-t border-border px-3 py-2">
-                      <p className="text-xs font-medium">
-                        Bild{" "}
-                        {index +
-                          1}
-                      </p>
-
-                      <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                        {path}
-                      </p>
                     </div>
 
-                  </div>
+                    {/* NUMMER */}
+
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-2 text-center text-[10px] uppercase tracking-wider text-white">
+
+                      Bild{" "}
+                      {
+                        index +
+                        1
+                      }
+
+                    </div>
+
+                  </a>
                 )
               },
             )}
@@ -1562,20 +1807,21 @@ function BookingCard({
 
       </div>
 
-      {/* =================================================
-          BUTTONS
-      ================================================= */}
+      {/* =============================================
+          AKTIONEN
+      ============================================= */}
 
-      {booking.status ===
-        "pending" && (
-        <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-5">
 
+        {/* BESTÄTIGEN */}
+
+        {booking.status !==
+          "confirmed" && (
           <button
             type="button"
             disabled={
-              isPending &&
-              busyId ===
-                booking.id
+              busy ||
+              deleting
             }
             onClick={() =>
               onUpdate(
@@ -1583,23 +1829,27 @@ function BookingCard({
                 "confirmed",
               )
             }
-            className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] hover:bg-[var(--ok)] hover:text-background disabled:opacity-50"
+            className="flex items-center gap-2 border border-[var(--ok)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--ok)] transition-colors hover:bg-[var(--ok)] hover:text-background disabled:opacity-40"
           >
+
             <Check className="h-4 w-4" />
 
-            {isPending &&
-            busyId ===
-              booking.id
-              ? "Wird gespeichert..."
+            {busy
+              ? "Speichern..."
               : "Bestätigen"}
-          </button>
 
+          </button>
+        )}
+
+        {/* ABLEHNEN */}
+
+        {booking.status !==
+          "rejected" && (
           <button
             type="button"
             disabled={
-              isPending &&
-              busyId ===
-                booking.id
+              busy ||
+              deleting
             }
             onClick={() =>
               onUpdate(
@@ -1607,19 +1857,45 @@ function BookingCard({
                 "rejected",
               )
             }
-            className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] hover:bg-[var(--bad)] hover:text-background disabled:opacity-50"
+            className="flex items-center gap-2 border border-[var(--bad)] px-4 py-2 font-display text-xs uppercase tracking-widest text-[var(--bad)] transition-colors hover:bg-[var(--bad)] hover:text-background disabled:opacity-40"
           >
+
             <X className="h-4 w-4" />
 
-            {isPending &&
-            busyId ===
-              booking.id
-              ? "Wird gespeichert..."
+            {busy
+              ? "Speichern..."
               : "Ablehnen"}
-          </button>
 
-        </div>
-      )}
+          </button>
+        )}
+
+        {/* WIEDER ÖFFNEN */}
+
+        {booking.status !==
+          "pending" && (
+          <button
+            type="button"
+            disabled={
+              busy ||
+              deleting
+            }
+            onClick={() =>
+              onUpdate(
+                booking.id,
+                "pending",
+              )
+            }
+            className="flex items-center gap-2 border border-border px-4 py-2 font-display text-xs uppercase tracking-widest text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          >
+
+            <Clock className="h-4 w-4" />
+
+            Wieder öffnen
+
+          </button>
+        )}
+
+      </div>
 
     </article>
   )
