@@ -27,6 +27,13 @@ export type Booking = {
   image_urls?: string[] | null
 }
 
+export type BookedSlot = {
+  id?: string
+  booking_date: string
+  booking_time: string
+  status: BookingStatus
+}
+
 export type PublicSlot = {
   time: string
   available: boolean
@@ -48,7 +55,7 @@ export type CreateBookingData = {
 // ============================================================
 
 export async function createBooking(
-  data: CreateBookingData
+  data: CreateBookingData,
 ) {
   try {
     const supabase = await createClient()
@@ -61,45 +68,39 @@ export async function createBooking(
     }
 
     const booking_date = String(
-      data.booking_date ?? ""
+      data.booking_date ?? "",
     ).trim()
 
     const booking_time = String(
-      data.booking_time ?? ""
+      data.booking_time ?? "",
     ).trim()
 
     const name = String(
-      data.name ?? ""
+      data.name ?? "",
     ).trim()
 
     const phone = String(
-      data.phone ?? ""
+      data.phone ?? "",
     ).trim()
 
     const email = String(
-      data.email ?? ""
+      data.email ?? "",
     )
       .trim()
       .toLowerCase()
 
     const car = String(
-      data.car ?? ""
+      data.car ?? "",
     ).trim()
 
     const problem = String(
-      data.problem ?? ""
+      data.problem ?? "",
     ).trim()
 
     const image_urls = Array.isArray(
-      data.image_urls
+      data.image_urls,
     )
       ? data.image_urls
-          .filter(
-            (url) =>
-              typeof url === "string" &&
-              url.trim().length > 0
-          )
-          .map((url) => url.trim())
       : []
 
     // ==========================================================
@@ -123,12 +124,12 @@ export async function createBooking(
     }
 
     // ==========================================================
-    // DATUM PRÜFEN
+    // DATUM
     // ==========================================================
 
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(
-        booking_date
+        booking_date,
       )
     ) {
       return {
@@ -138,12 +139,12 @@ export async function createBooking(
     }
 
     const selectedDate = new Date(
-      `${booking_date}T00:00:00`
+      `${booking_date}T00:00:00`,
     )
 
     if (
       Number.isNaN(
-        selectedDate.getTime()
+        selectedDate.getTime(),
       )
     ) {
       return {
@@ -158,7 +159,7 @@ export async function createBooking(
       0,
       0,
       0,
-      0
+      0,
     )
 
     if (selectedDate < today) {
@@ -170,12 +171,12 @@ export async function createBooking(
     }
 
     // ==========================================================
-    // UHRZEIT PRÜFEN
+    // UHRZEIT
     // ==========================================================
 
     if (
       !/^\d{2}:\d{2}$/.test(
-        booking_time
+        booking_time,
       )
     ) {
       return {
@@ -190,11 +191,11 @@ export async function createBooking(
     ] = booking_time.split(":")
 
     const hour = Number(
-      hourString
+      hourString,
     )
 
     const minute = Number(
-      minuteString
+      minuteString,
     )
 
     if (
@@ -212,7 +213,7 @@ export async function createBooking(
     }
 
     // ==========================================================
-    // E-MAIL PRÜFEN
+    // EMAIL
     // ==========================================================
 
     const emailRegex =
@@ -270,7 +271,7 @@ export async function createBooking(
     }
 
     // ==========================================================
-    // PRÜFEN, OB TERMIN SCHON VERGEBEN IST
+    // TERMIN PRÜFEN
     // ==========================================================
 
     const {
@@ -281,11 +282,11 @@ export async function createBooking(
       .select("id, status")
       .eq(
         "booking_date",
-        booking_date
+        booking_date,
       )
       .eq(
         "booking_time",
-        booking_time
+        booking_time,
       )
       .in("status", [
         "pending",
@@ -297,7 +298,7 @@ export async function createBooking(
     if (existingError) {
       console.error(
         "Fehler beim Prüfen des Termins:",
-        existingError
+        existingError,
       )
 
       return {
@@ -341,7 +342,7 @@ export async function createBooking(
     if (insertError) {
       console.error(
         "Fehler beim Erstellen der Buchung:",
-        insertError
+        insertError,
       )
 
       if (
@@ -374,7 +375,7 @@ export async function createBooking(
   } catch (error) {
     console.error(
       "createBooking Fehler:",
-      error
+      error,
     )
 
     return {
@@ -391,7 +392,7 @@ export async function createBooking(
 
 export async function saveBookingImages(
   bookingId: string,
-  imageUrls: string[]
+  imageUrls: string[],
 ) {
   try {
     const supabase =
@@ -417,11 +418,12 @@ export async function saveBookingImages(
       imageUrls
         .filter(
           (url) =>
-            typeof url === "string" &&
-            url.trim().length > 0
+            typeof url ===
+              "string" &&
+            url.trim().length > 0,
         )
         .map((url) =>
-          url.trim()
+          url.trim(),
         )
 
     const {
@@ -435,7 +437,7 @@ export async function saveBookingImages(
       })
       .eq(
         "id",
-        bookingId
+        bookingId,
       )
       .select("*")
       .single()
@@ -443,7 +445,7 @@ export async function saveBookingImages(
     if (error) {
       console.error(
         "Fehler beim Speichern der Bilder:",
-        error
+        error,
       )
 
       return {
@@ -455,7 +457,7 @@ export async function saveBookingImages(
     }
 
     revalidatePath(
-      "/besitzer"
+      "/besitzer",
     )
 
     revalidatePath("/")
@@ -468,7 +470,7 @@ export async function saveBookingImages(
   } catch (error) {
     console.error(
       "saveBookingImages Fehler:",
-      error
+      error,
     )
 
     return {
@@ -498,33 +500,31 @@ export async function listBookings() {
         "booking_date",
         {
           ascending: true,
-        }
+        },
       )
       .order(
         "booking_time",
         {
           ascending: true,
-        }
+        },
       )
 
     if (error) {
       console.error(
         "Fehler beim Laden der Buchungen:",
-        error
+        error,
       )
 
       return []
     }
 
-    if (!Array.isArray(data)) {
-      return []
-    }
-
-    return data as Booking[]
+    return (
+      data ?? []
+    ) as Booking[]
   } catch (error) {
     console.error(
       "listBookings Fehler:",
-      error
+      error,
     )
 
     return []
@@ -551,7 +551,7 @@ export async function getBookings() {
 
 export async function updateBookingStatus(
   bookingId: string,
-  status: BookingStatus
+  status: BookingStatus,
 ) {
   try {
     const supabase =
@@ -565,10 +565,6 @@ export async function updateBookingStatus(
       }
     }
 
-    // ========================================================
-    // ERLAUBTE STATUS
-    // ========================================================
-
     const allowedStatuses:
       BookingStatus[] = [
         "pending",
@@ -578,7 +574,7 @@ export async function updateBookingStatus(
 
     if (
       !allowedStatuses.includes(
-        status
+        status,
       )
     ) {
       return {
@@ -587,10 +583,6 @@ export async function updateBookingStatus(
           "Ungültiger Buchungsstatus.",
       }
     }
-
-    // ========================================================
-    // STATUS AKTUALISIEREN
-    // ========================================================
 
     const {
       data: booking,
@@ -602,7 +594,7 @@ export async function updateBookingStatus(
       })
       .eq(
         "id",
-        bookingId
+        bookingId,
       )
       .select("*")
       .single()
@@ -610,7 +602,7 @@ export async function updateBookingStatus(
     if (error) {
       console.error(
         "Fehler beim Aktualisieren:",
-        error
+        error,
       )
 
       return {
@@ -622,7 +614,7 @@ export async function updateBookingStatus(
     }
 
     revalidatePath(
-      "/besitzer"
+      "/besitzer",
     )
 
     revalidatePath("/")
@@ -635,7 +627,7 @@ export async function updateBookingStatus(
   } catch (error) {
     console.error(
       "updateBookingStatus Fehler:",
-      error
+      error,
     )
 
     return {
@@ -651,7 +643,7 @@ export async function updateBookingStatus(
 // ============================================================
 
 export async function deleteBooking(
-  bookingId: string
+  bookingId: string,
 ) {
   try {
     const supabase =
@@ -672,13 +664,13 @@ export async function deleteBooking(
       .delete()
       .eq(
         "id",
-        bookingId
+        bookingId,
       )
 
     if (error) {
       console.error(
         "Fehler beim Löschen:",
-        error
+        error,
       )
 
       return {
@@ -690,7 +682,7 @@ export async function deleteBooking(
     }
 
     revalidatePath(
-      "/besitzer"
+      "/besitzer",
     )
 
     revalidatePath("/")
@@ -701,7 +693,7 @@ export async function deleteBooking(
   } catch (error) {
     console.error(
       "deleteBooking Fehler:",
-      error
+      error,
     )
 
     return {
@@ -717,8 +709,8 @@ export async function deleteBooking(
 // ============================================================
 
 export async function getBookedSlots(
-  date?: string
-) {
+  date?: string,
+): Promise<BookedSlot[]> {
   try {
     const supabase =
       await createClient()
@@ -726,7 +718,7 @@ export async function getBookedSlots(
     let query = supabase
       .from("bookings")
       .select(
-        "id, booking_date, booking_time, status"
+        "id, booking_date, booking_time, status",
       )
       .in("status", [
         "pending",
@@ -736,7 +728,7 @@ export async function getBookedSlots(
     if (date) {
       query = query.eq(
         "booking_date",
-        date
+        date,
       )
     }
 
@@ -748,19 +740,19 @@ export async function getBookedSlots(
         "booking_date",
         {
           ascending: true,
-        }
+        },
       )
       .order(
         "booking_time",
         {
           ascending: true,
-        }
+        },
       )
 
     if (error) {
       console.error(
         "Fehler beim Laden der belegten Termine:",
-        error
+        error,
       )
 
       return []
@@ -770,11 +762,11 @@ export async function getBookedSlots(
       return []
     }
 
-    return data
+    return data as BookedSlot[]
   } catch (error) {
     console.error(
       "getBookedSlots Fehler:",
-      error
+      error,
     )
 
     return []
@@ -793,10 +785,10 @@ export async function signOut() {
 
   revalidatePath(
     "/",
-    "layout"
+    "layout",
   )
 
   redirect(
-    "/besitzer/login"
+    "/besitzer/login",
   )
 }
