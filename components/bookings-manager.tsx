@@ -69,7 +69,7 @@ const SUPABASE_URL =
 const STORAGE_BUCKET = "Kunden-Bilder"
 
 // ============================================================
-// BILD-URL
+// BILD URL
 // ============================================================
 
 function getSupabaseImageUrl(
@@ -86,7 +86,7 @@ function getSupabaseImageUrl(
     return ""
   }
 
-  // Falls bereits eine vollständige URL gespeichert wurde
+  // Falls bereits eine komplette URL gespeichert wurde
   if (
     cleanFileName.startsWith(
       "http://",
@@ -98,7 +98,18 @@ function getSupabaseImageUrl(
     return cleanFileName
   }
 
-  // Dateipfad sicher für URL encoden
+  /*
+   * WICHTIG:
+   *
+   * image_urls enthält nur:
+   *
+   * tim-123.jpg
+   *
+   * Daraus machen wir:
+   *
+   * https://PROJECT.supabase.co/storage/v1/object/public/Kunden-Bilder/tim-123.jpg
+   */
+
   const encodedPath =
     cleanFileName
       .split("/")
@@ -107,9 +118,14 @@ function getSupabaseImageUrl(
       )
       .join("/")
 
-  return `${SUPABASE_URL}/storage/v1/object/public/${encodeURIComponent(
-    STORAGE_BUCKET,
-  )}/${encodedPath}`
+  return (
+    `${SUPABASE_URL}` +
+    `/storage/v1/object/public/` +
+    `${encodeURIComponent(
+      STORAGE_BUCKET,
+    )}/` +
+    `${encodedPath}`
+  )
 }
 
 // ============================================================
@@ -120,7 +136,7 @@ export function BookingsManager({
   bookings,
 }: BookingsManagerProps) {
   // ==========================================================
-  // SICHERHEIT
+  // SAFE BOOKINGS
   // ==========================================================
 
   const safeBookings =
@@ -201,7 +217,7 @@ export function BookingsManager({
     ])
 
   // ==========================================================
-  // STATUS ÄNDERN
+  // STATUS
   // ==========================================================
 
   async function handleStatus(
@@ -239,7 +255,7 @@ export function BookingsManager({
   }
 
   // ==========================================================
-  // LÖSCHEN
+  // DELETE
   // ==========================================================
 
   async function handleDelete(
@@ -297,7 +313,6 @@ export function BookingsManager({
       case "rejected":
         return "Storniert"
 
-      case "pending":
       default:
         return "Offen"
     }
@@ -325,7 +340,6 @@ export function BookingsManager({
           "text-red-600",
         ].join(" ")
 
-      case "pending":
       default:
         return [
           "border-yellow-500/30",
@@ -407,11 +421,8 @@ export function BookingsManager({
 
       <div className="grid gap-4 sm:grid-cols-3">
 
-        {/* OFFEN */}
-
         <div className="border border-border bg-card p-5">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Offen
@@ -423,15 +434,11 @@ export function BookingsManager({
             </div>
 
             <Clock className="h-7 w-7 text-yellow-500" />
-
           </div>
         </div>
 
-        {/* BESTÄTIGT */}
-
         <div className="border border-border bg-card p-5">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Bestätigt
@@ -443,15 +450,11 @@ export function BookingsManager({
             </div>
 
             <Check className="h-7 w-7 text-green-500" />
-
           </div>
         </div>
 
-        {/* STORNIERT */}
-
         <div className="border border-border bg-card p-5">
           <div className="flex items-center justify-between">
-
             <div>
               <p className="text-xs uppercase tracking-widest text-muted-foreground">
                 Storniert
@@ -463,7 +466,6 @@ export function BookingsManager({
             </div>
 
             <X className="h-7 w-7 text-red-500" />
-
           </div>
         </div>
 
@@ -481,7 +483,6 @@ export function BookingsManager({
 
             {FILTERS.map(
               (item) => {
-
                 const active =
                   filter ===
                   item.key
@@ -529,7 +530,7 @@ export function BookingsManager({
       </div>
 
       {/* ====================================================
-          FEHLER
+          ERROR
       ==================================================== */}
 
       {error && (
@@ -544,8 +545,7 @@ export function BookingsManager({
           KEINE BUCHUNGEN
       ==================================================== */}
 
-      {filteredBookings.length ===
-        0 && (
+      {filteredBookings.length === 0 && (
         <div className="border border-border bg-card p-12 text-center">
 
           <CalendarDays className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -723,6 +723,7 @@ export function BookingsManager({
                     </p>
 
                     <p className="mt-1 flex items-center gap-2 text-sm font-medium">
+
                       <CalendarDays className="h-4 w-4" />
 
                       {formatDate(
@@ -732,6 +733,7 @@ export function BookingsManager({
                       {" "}um{" "}
 
                       {booking.booking_time}
+
                     </p>
                   </div>
 
@@ -767,8 +769,7 @@ export function BookingsManager({
                       Kunden-Bilder
                     </p>
 
-                    {images.length >
-                      0 && (
+                    {images.length > 0 && (
                       <span className="text-xs text-muted-foreground">
                         ({images.length})
                       </span>
@@ -776,10 +777,11 @@ export function BookingsManager({
 
                   </div>
 
-                  {/* KEINE BILDER */}
+                  {/* ==================================================
+                      KEINE BILDER
+                  ================================================== */}
 
-                  {images.length ===
-                    0 ? (
+                  {images.length === 0 ? (
 
                     <div className="mt-4 border border-dashed border-border p-6 text-center">
 
@@ -793,7 +795,9 @@ export function BookingsManager({
 
                   ) : (
 
-                    /* BILDER */
+                    /* ==================================================
+                       BILDER
+                    ================================================== */
 
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 
@@ -803,31 +807,33 @@ export function BookingsManager({
                           index,
                         ) => {
 
+                          const cleanFileName =
+                            image.trim()
+
                           const imageUrl =
                             getSupabaseImageUrl(
-                              image,
+                              cleanFileName,
                             )
 
                           return (
+
                             <div
-                              key={`${image}-${index}`}
+                              key={`${cleanFileName}-${index}`}
                               className="overflow-hidden border border-border bg-background"
                             >
 
-                              {/* ==================================================
-                                  BILD
-                              ================================================== */}
+                              {/* BILD */}
 
-                              <a
-                                href={
-                                  imageUrl
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="group block"
-                              >
+                              <div className="relative aspect-square overflow-hidden bg-secondary">
 
-                                <div className="relative aspect-square overflow-hidden bg-secondary">
+                                <a
+                                  href={
+                                    imageUrl
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group block h-full w-full"
+                                >
 
                                   <img
                                     src={
@@ -838,15 +844,16 @@ export function BookingsManager({
                                       1
                                     }`}
                                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                    loading="eager"
                                     onLoad={() => {
                                       console.log(
-                                        "Kundenbild geladen:",
+                                        "SUPABASE BILD GELADEN:",
                                         imageUrl,
                                       )
                                     }}
                                     onError={() => {
                                       console.error(
-                                        "Kundenbild konnte NICHT geladen werden:",
+                                        "SUPABASE BILD KONNTE NICHT GELADEN WERDEN:",
                                         imageUrl,
                                       )
                                     }}
@@ -854,30 +861,24 @@ export function BookingsManager({
 
                                   <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
 
-                                    <ExternalLink
-                                      className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100"
-                                    />
+                                    <ExternalLink className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" />
 
                                   </div>
 
-                                </div>
+                                </a>
 
-                              </a>
+                              </div>
 
-                              {/* ==================================================
-                                  DATEINAME
-                              ================================================== */}
+                              {/* DATEINAME */}
 
                               <div className="border-t border-border px-3 py-2">
 
                                 <p className="truncate text-xs font-medium">
-                                  Bild{" "}
-                                  {index +
-                                    1}
+                                  Bild {index + 1}
                                 </p>
 
                                 <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                                  {image}
+                                  {cleanFileName}
                                 </p>
 
                               </div>
