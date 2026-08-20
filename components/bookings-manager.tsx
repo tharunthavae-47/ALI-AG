@@ -43,7 +43,7 @@ const FILTERS: {
     label: "Bestätigt",
   },
   {
-    key: "cancelled",
+    key: "rejected",
     label: "Storniert",
   },
 ]
@@ -63,12 +63,8 @@ type BookingsManagerProps = {
 export function BookingsManager({
   bookings,
 }: BookingsManagerProps) {
-  // ==========================================================
-  // SICHERHEIT
-  // ==========================================================
-
   const safeBookings = Array.isArray(
-    bookings,
+    bookings
   )
     ? bookings
     : []
@@ -89,21 +85,21 @@ export function BookingsManager({
     processingId,
     setProcessingId,
   ] = useState<string | null>(
-    null,
+    null
   )
 
   const [
     deletingId,
     setDeletingId,
   ] = useState<string | null>(
-    null,
+    null
   )
 
   const [
     error,
     setError,
   ] = useState<string | null>(
-    null,
+    null
   )
 
   // ==========================================================
@@ -148,7 +144,7 @@ export function BookingsManager({
             .some((value) =>
               String(value)
                 .toLowerCase()
-                .includes(query),
+                .includes(query)
             )
         })
     }, [
@@ -163,35 +159,35 @@ export function BookingsManager({
 
   async function handleStatus(
     bookingId: string,
-    status: BookingStatus,
+    status: BookingStatus
   ) {
     setError(null)
 
     setProcessingId(
-      bookingId,
+      bookingId
     )
 
     try {
       const result =
         await updateBookingStatus(
           bookingId,
-          status,
+          status
         )
 
       if (!result.ok) {
         setError(
           result.error ??
-            "Die Buchung konnte nicht aktualisiert werden.",
+            "Die Buchung konnte nicht aktualisiert werden."
         )
       }
     } catch (error) {
       console.error(
         "Status Fehler:",
-        error,
+        error
       )
 
       setError(
-        "Beim Aktualisieren ist ein Fehler aufgetreten.",
+        "Beim Aktualisieren ist ein Fehler aufgetreten."
       )
     } finally {
       setProcessingId(null)
@@ -203,11 +199,11 @@ export function BookingsManager({
   // ==========================================================
 
   async function handleDelete(
-    bookingId: string,
+    bookingId: string
   ) {
     const confirmed =
       window.confirm(
-        "Möchtest du diese Buchung wirklich löschen?",
+        "Möchtest du diese Buchung wirklich löschen?"
       )
 
     if (!confirmed) {
@@ -217,29 +213,29 @@ export function BookingsManager({
     setError(null)
 
     setDeletingId(
-      bookingId,
+      bookingId
     )
 
     try {
       const result =
         await deleteBooking(
-          bookingId,
+          bookingId
         )
 
       if (!result.ok) {
         setError(
           result.error ??
-            "Die Buchung konnte nicht gelöscht werden.",
+            "Die Buchung konnte nicht gelöscht werden."
         )
       }
     } catch (error) {
       console.error(
         "Delete Fehler:",
-        error,
+        error
       )
 
       setError(
-        "Beim Löschen ist ein Fehler aufgetreten.",
+        "Beim Löschen ist ein Fehler aufgetreten."
       )
     } finally {
       setDeletingId(null)
@@ -251,13 +247,13 @@ export function BookingsManager({
   // ==========================================================
 
   function getStatusLabel(
-    status: BookingStatus,
+    status: BookingStatus
   ) {
     switch (status) {
       case "confirmed":
         return "Bestätigt"
 
-      case "cancelled":
+      case "rejected":
         return "Storniert"
 
       case "pending":
@@ -271,13 +267,13 @@ export function BookingsManager({
   // ==========================================================
 
   function getStatusClass(
-    status: BookingStatus,
+    status: BookingStatus
   ) {
     switch (status) {
       case "confirmed":
         return "border-green-500/30 bg-green-500/10 text-green-600"
 
-      case "cancelled":
+      case "rejected":
         return "border-red-500/30 bg-red-500/10 text-red-600"
 
       case "pending":
@@ -291,7 +287,7 @@ export function BookingsManager({
   // ==========================================================
 
   function formatDate(
-    value: string,
+    value: string
   ) {
     if (!value) {
       return "-"
@@ -299,12 +295,12 @@ export function BookingsManager({
 
     const date =
       new Date(
-        `${value}T00:00:00`,
+        `${value}T00:00:00`
       )
 
     if (
       Number.isNaN(
-        date.getTime(),
+        date.getTime()
       )
     ) {
       return value
@@ -316,7 +312,7 @@ export function BookingsManager({
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
-      },
+      }
     ).format(date)
   }
 
@@ -328,21 +324,21 @@ export function BookingsManager({
     safeBookings.filter(
       (booking) =>
         booking.status ===
-        "pending",
+        "pending"
     ).length
 
   const confirmedCount =
     safeBookings.filter(
       (booking) =>
         booking.status ===
-        "confirmed",
+        "confirmed"
     ).length
 
-  const cancelledCount =
+  const rejectedCount =
     safeBookings.filter(
       (booking) =>
         booking.status ===
-        "cancelled",
+        "rejected"
     ).length
 
   // ==========================================================
@@ -357,6 +353,8 @@ export function BookingsManager({
       ==================================================== */}
 
       <div className="grid gap-4 sm:grid-cols-3">
+
+        {/* OFFEN */}
 
         <div className="border border-border bg-card p-5">
 
@@ -378,6 +376,8 @@ export function BookingsManager({
 
         </div>
 
+        {/* BESTÄTIGT */}
+
         <div className="border border-border bg-card p-5">
 
           <div className="flex items-center justify-between">
@@ -398,6 +398,8 @@ export function BookingsManager({
 
         </div>
 
+        {/* STORNIERT */}
+
         <div className="border border-border bg-card p-5">
 
           <div className="flex items-center justify-between">
@@ -408,7 +410,7 @@ export function BookingsManager({
               </p>
 
               <p className="mt-2 text-3xl font-bold">
-                {cancelledCount}
+                {rejectedCount}
               </p>
             </div>
 
@@ -447,23 +449,22 @@ export function BookingsManager({
                     type="button"
                     onClick={() =>
                       setFilter(
-                        item.key,
+                        item.key
                       )
                     }
                     className={[
                       "border px-4 py-2 text-xs font-bold uppercase tracking-wider transition",
-
                       active
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border hover:bg-secondary",
                     ].join(
-                      " ",
+                      " "
                     )}
                   >
                     {item.label}
                   </button>
                 )
-              },
+              }
             )}
 
           </div>
@@ -475,7 +476,7 @@ export function BookingsManager({
             value={search}
             onChange={(e) =>
               setSearch(
-                e.target.value,
+                e.target.value
               )
             }
             placeholder="Buchung suchen..."
@@ -565,14 +566,14 @@ export function BookingsManager({
                         className={[
                           "border px-2.5 py-1 text-xs font-bold uppercase tracking-wider",
                           getStatusClass(
-                            booking.status,
+                            booking.status
                           ),
                         ].join(
-                          " ",
+                          " "
                         )}
                       >
                         {getStatusLabel(
-                          booking.status,
+                          booking.status
                         )}
                       </span>
 
@@ -582,7 +583,7 @@ export function BookingsManager({
 
                       <span>
                         {formatDate(
-                          booking.booking_date,
+                          booking.booking_date
                         )}
                       </span>
 
@@ -604,7 +605,7 @@ export function BookingsManager({
                     }
                     onClick={() =>
                       handleDelete(
-                        booking.id,
+                        booking.id
                       )
                     }
                     className="flex items-center gap-2 self-start border border-red-500/30 px-3 py-2 text-xs font-bold uppercase tracking-wider text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
@@ -687,7 +688,7 @@ export function BookingsManager({
                       <CalendarDays className="h-4 w-4" />
 
                       {formatDate(
-                        booking.booking_date,
+                        booking.booking_date
                       )}{" "}
                       um{" "}
                       {booking.booking_time}
@@ -719,7 +720,7 @@ export function BookingsManager({
                 ================================================== */}
 
                 {Array.isArray(
-                  booking.image_urls,
+                  booking.image_urls
                 ) &&
                   booking.image_urls
                     .length >
@@ -735,12 +736,12 @@ export function BookingsManager({
                         {booking.image_urls.map(
                           (
                             url,
-                            index,
+                            index
                           ) => {
 
                             const imageUrl =
                               url.startsWith(
-                                "http",
+                                "http"
                               )
                                 ? url
                                 : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/Kunden-Bilder/${url}`
@@ -769,7 +770,7 @@ export function BookingsManager({
 
                               </a>
                             )
-                          },
+                          }
                         )}
 
                       </div>
@@ -796,7 +797,7 @@ export function BookingsManager({
                     onClick={() =>
                       handleStatus(
                         booking.id,
-                        "confirmed",
+                        "confirmed"
                       )
                     }
                     className="flex flex-1 items-center justify-center gap-2 bg-green-600 px-4 py-3 text-xs font-bold uppercase tracking-widest text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -820,12 +821,12 @@ export function BookingsManager({
                       processing ||
                       deleting ||
                       booking.status ===
-                        "cancelled"
+                        "rejected"
                     }
                     onClick={() =>
                       handleStatus(
                         booking.id,
-                        "cancelled",
+                        "rejected"
                       )
                     }
                     className="flex flex-1 items-center justify-center gap-2 border border-red-500/40 px-4 py-3 text-xs font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
@@ -833,7 +834,11 @@ export function BookingsManager({
 
                     <X className="h-4 w-4" />
 
-                    Stornieren
+                    {processing &&
+                    processingId ===
+                      booking.id
+                      ? "Wird gespeichert..."
+                      : "Stornieren"}
 
                   </button>
 
@@ -850,7 +855,7 @@ export function BookingsManager({
                       onClick={() =>
                         handleStatus(
                           booking.id,
-                          "pending",
+                          "pending"
                         )
                       }
                       className="flex flex-1 items-center justify-center gap-2 border border-border px-4 py-3 text-xs font-bold uppercase tracking-widest transition hover:bg-secondary disabled:opacity-40"
@@ -867,7 +872,7 @@ export function BookingsManager({
 
               </div>
             )
-          },
+          }
         )}
 
       </div>
