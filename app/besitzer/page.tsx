@@ -146,38 +146,6 @@ export default async function OwnerPage() {
         </div>
 
         {/* ====================================================
-            SUPABASE STATUS
-        ==================================================== */}
-
-        <div className="mb-8 border border-border bg-card px-5 py-4">
-
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-
-            <div>
-
-              <p className="font-display text-xs font-bold uppercase tracking-widest">
-                Buchungen geladen
-              </p>
-
-              <p className="mt-1 text-xs text-muted-foreground">
-                Die Daten werden direkt aus Supabase geladen.
-              </p>
-
-            </div>
-
-            <p className="font-display text-sm font-bold">
-              {bookings.length}{" "}
-              {bookings.length === 1
-                ? "Termin"
-                : "Termine"}{" "}
-              insgesamt
-            </p>
-
-          </div>
-
-        </div>
-
-        {/* ====================================================
             BUCHUNGEN
         ==================================================== */}
 
