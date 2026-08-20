@@ -8,10 +8,14 @@ export const revalidate = 0
 
 export default async function OwnerPage() {
   // ============================================================
-  // SUPABASE AUTH
+  // SUPABASE
   // ============================================================
 
   const supabase = await createClient()
+
+  // ============================================================
+  // USER PRÜFEN
+  // ============================================================
 
   const {
     data: { user },
@@ -26,6 +30,7 @@ export default async function OwnerPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="w-full max-w-md border border-border bg-card p-8 text-center">
+
           <div className="mb-6">
             <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">
               MB-Performance
@@ -56,13 +61,14 @@ export default async function OwnerPage() {
           >
             Zur Startseite
           </Link>
+
         </div>
       </main>
     )
   }
 
   // ============================================================
-  // BUCHUNGEN LADEN
+  // BUCHUNGEN AUS SUPABASE LADEN
   // ============================================================
 
   const bookings = await listBookings()
@@ -72,15 +78,18 @@ export default async function OwnerPage() {
   // ============================================================
 
   const pendingCount = bookings.filter(
-    (booking) => booking.status === "pending",
+    (booking) =>
+      booking.status === "pending",
   ).length
 
   const confirmedCount = bookings.filter(
-    (booking) => booking.status === "confirmed",
+    (booking) =>
+      booking.status === "confirmed",
   ).length
 
-  const cancelledCount = bookings.filter(
-    (booking) => booking.status === "cancelled",
+  const rejectedCount = bookings.filter(
+    (booking) =>
+      booking.status === "rejected",
   ).length
 
   // ============================================================
@@ -89,15 +98,19 @@ export default async function OwnerPage() {
 
   return (
     <main className="min-h-screen bg-background">
+
       {/* ======================================================
           HEADER
       ====================================================== */}
 
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+
           {/* LOGO / TITEL */}
 
           <div className="min-w-0">
+
             <p className="font-display text-[10px] uppercase tracking-[0.35em] text-muted-foreground sm:text-xs">
               MB-Performance
             </p>
@@ -109,11 +122,13 @@ export default async function OwnerPage() {
             <p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block">
               {user.email}
             </p>
+
           </div>
 
           {/* NAVIGATION */}
 
           <div className="flex shrink-0 items-center gap-2">
+
             <Link
               href="/"
               className="hidden border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary sm:inline-flex"
@@ -129,8 +144,11 @@ export default async function OwnerPage() {
                 Abmelden
               </button>
             </form>
+
           </div>
+
         </div>
+
       </header>
 
       {/* ======================================================
@@ -138,9 +156,13 @@ export default async function OwnerPage() {
       ====================================================== */}
 
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {/* TITEL */}
+
+        {/* ====================================================
+            TITEL
+        ==================================================== */}
 
         <div className="mb-8">
+
           <p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">
             Verwaltung
           </p>
@@ -153,6 +175,7 @@ export default async function OwnerPage() {
             Hier sehen Sie alle eingegangenen Terminanfragen.
             Sie können Termine bestätigen, stornieren oder löschen.
           </p>
+
         </div>
 
         {/* ====================================================
@@ -160,9 +183,11 @@ export default async function OwnerPage() {
         ==================================================== */}
 
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+
           {/* OFFEN */}
 
           <div className="border border-border bg-card p-5">
+
             <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
               Offen
             </p>
@@ -174,11 +199,13 @@ export default async function OwnerPage() {
             <p className="mt-1 text-xs text-muted-foreground">
               Neue Terminanfragen
             </p>
+
           </div>
 
           {/* BESTÄTIGT */}
 
           <div className="border border-border bg-card p-5">
+
             <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
               Bestätigt
             </p>
@@ -190,32 +217,39 @@ export default async function OwnerPage() {
             <p className="mt-1 text-xs text-muted-foreground">
               Bestätigte Termine
             </p>
+
           </div>
 
           {/* STORNIERT */}
 
           <div className="border border-border bg-card p-5">
+
             <p className="font-display text-xs uppercase tracking-widest text-muted-foreground">
               Storniert
             </p>
 
             <p className="mt-2 font-display text-3xl font-bold">
-              {cancelledCount}
+              {rejectedCount}
             </p>
 
             <p className="mt-1 text-xs text-muted-foreground">
               Stornierte Termine
             </p>
+
           </div>
+
         </div>
 
         {/* ====================================================
-            DEBUG / STATUS
+            SUPABASE STATUS
         ==================================================== */}
 
         <div className="mb-6 border border-border bg-card px-5 py-4">
+
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+
             <div>
+
               <p className="font-display text-xs font-bold uppercase tracking-widest">
                 Buchungen geladen
               </p>
@@ -223,12 +257,15 @@ export default async function OwnerPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Die Daten werden direkt aus Supabase geladen.
               </p>
+
             </div>
 
             <p className="font-display text-sm font-bold">
               {bookings.length} insgesamt
             </p>
+
           </div>
+
         </div>
 
         {/* ====================================================
@@ -236,15 +273,17 @@ export default async function OwnerPage() {
         ==================================================== */}
 
         {bookings.length === 0 ? (
+
           <div className="border border-border bg-card px-6 py-16 text-center">
+
             <p className="font-display text-lg font-bold uppercase tracking-wide">
               Keine Buchungen
             </p>
 
             <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
               Aktuell sind keine Terminanfragen vorhanden.
-              Sobald ein Kunde einen Termin anfragt, erscheint
-              dieser hier.
+              Sobald ein Kunde einen Termin anfragt,
+              erscheint dieser hier.
             </p>
 
             <Link
@@ -253,11 +292,24 @@ export default async function OwnerPage() {
             >
               Zur Website
             </Link>
+
           </div>
+
         ) : (
-          <BookingsManager bookings={bookings} />
+
+          /*
+           * WICHTIG:
+           * bookings statt initialBookings
+           */
+
+          <BookingsManager
+            bookings={bookings}
+          />
+
         )}
+
       </section>
+
     </main>
   )
 }
