@@ -1,4 +1,3 @@
-````ts
 import { NextResponse } from "next/server"
 import { GoogleGenAI, Type } from "@google/genai"
 import {
@@ -2307,4 +2306,3 @@ Gib ausschließlich gültiges JSON zurück:
     })
   }
 }
-````
