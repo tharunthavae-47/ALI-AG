@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Search,
 } from "lucide-react"
 
 import {
@@ -23,7 +24,7 @@ import {
 } from "@/app/actions"
 
 // =====================================================
-// FILTER – NUR EINMAL
+// FILTER
 // =====================================================
 
 const FILTERS: {
@@ -381,12 +382,21 @@ export function BookingsManager({
         : [],
     )
 
-  // WICHTIG:
-  // Standardmäßig ALLE Termine anzeigen
+  // ===================================================
+  // STATUS FILTER
+  // ===================================================
+
   const [filter, setFilter] =
     useState<
       BookingStatus | "all"
     >("all")
+
+  // ===================================================
+  // NEU: SUCHFELD
+  // ===================================================
+
+  const [searchTerm, setSearchTerm] =
+    useState("")
 
   const [
     isPending,
@@ -434,13 +444,47 @@ export function BookingsManager({
   // ===================================================
 
   const visible = useMemo(() => {
+    const search =
+      searchTerm
+        .trim()
+        .toLowerCase()
+
     return [...bookings]
       .filter((booking) => {
-        if (filter === "all") {
+        // STATUS FILTER
+        if (
+          filter !== "all" &&
+          booking.status !== filter
+        ) {
+          return false
+        }
+
+        // KEINE SUCHE
+        if (!search) {
           return true
         }
 
-        return booking.status === filter
+        // =================================================
+        // SUCHFELDER
+        // =================================================
+
+        const searchableText = [
+          booking.name,
+          booking.email,
+          booking.phone,
+          booking.car,
+          booking.problem,
+          booking.booking_date,
+          booking.booking_time,
+          booking.status,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+
+        return searchableText.includes(
+          search,
+        )
       })
       .sort((a, b) => {
         const dateA =
@@ -451,7 +495,11 @@ export function BookingsManager({
 
         return dateA.localeCompare(dateB)
       })
-  }, [bookings, filter])
+  }, [
+    bookings,
+    filter,
+    searchTerm,
+  ])
 
   // ===================================================
   // BUCHUNGEN DES AUSGEWÄHLTEN TAGES
@@ -524,6 +572,14 @@ export function BookingsManager({
         setBusyId(null)
       }
     })
+  }
+
+  // ===================================================
+  // SUCHE LÖSCHEN
+  // ===================================================
+
+  function clearSearch() {
+    setSearchTerm("")
   }
 
   // ===================================================
@@ -628,32 +684,107 @@ export function BookingsManager({
     <div>
 
       {/* =================================================
-          EINZIGER FILTER
+          FILTER + SUCHFUNKTION
       ================================================= */}
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() =>
-              setFilter(item.key)
-            }
-            className={[
-              "border px-4 py-2",
-              "font-display text-xs",
-              "uppercase tracking-widest",
-              "transition-colors",
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 
-              filter === item.key
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
-            ].join(" ")}
-          >
-            {item.label}
-          </button>
-        ))}
+        {/* STATUS FILTER */}
+
+        <div className="flex flex-wrap gap-2">
+
+          {FILTERS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() =>
+                setFilter(item.key)
+              }
+              className={[
+                "border px-4 py-2",
+                "font-display text-xs",
+                "uppercase tracking-widest",
+                "transition-colors",
+
+                filter === item.key
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+              ].join(" ")}
+            >
+              {item.label}
+            </button>
+          ))}
+
+        </div>
+
+        {/* =================================================
+            SUCHFELD
+        ================================================= */}
+
+        <div className="relative w-full xl:w-[340px]">
+
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          />
+
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(event) =>
+              setSearchTerm(
+                event.target.value,
+              )
+            }
+            placeholder="Termin suchen..."
+            aria-label="Termine suchen"
+            className="h-10 w-full border border-border bg-card pl-10 pr-10 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+          />
+
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label="Suche löschen"
+              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+
+        </div>
+
       </div>
+
+      {/* =================================================
+          SUCHINFO
+      ================================================= */}
+
+      {searchTerm.trim() && (
+        <div className="mt-4 flex items-center justify-between border border-border bg-card px-4 py-3">
+
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+
+            <Search className="h-4 w-4" />
+
+            <span>
+              Suche nach:
+            </span>
+
+            <span className="font-semibold text-foreground">
+              "{searchTerm}"
+            </span>
+
+          </div>
+
+          <span className="text-xs text-muted-foreground">
+            {visible.length}{" "}
+            {visible.length === 1
+              ? "Treffer"
+              : "Treffer"}
+          </span>
+
+        </div>
+      )}
 
       {/* =================================================
           HAUPTBEREICH
@@ -670,15 +801,21 @@ export function BookingsManager({
           <div className="mb-5 flex items-center justify-between">
 
             <div>
+
               <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">
                 Terminanfragen
               </p>
 
               <h2 className="mt-1 font-display text-2xl font-bold uppercase">
-                {filter === "all"
-                  ? "Alle Termine"
-                  : statusLabels[filter]}
+
+                {searchTerm.trim()
+                  ? "Suchergebnisse"
+                  : filter === "all"
+                    ? "Alle Termine"
+                    : statusLabels[filter]}
+
               </h2>
+
             </div>
 
             <div className="text-sm text-muted-foreground">
@@ -690,19 +827,36 @@ export function BookingsManager({
 
           </div>
 
-          {/* TERMINLISTE */}
+          {/* =================================================
+              TERMINLISTE
+          ================================================= */}
 
           <div className="space-y-4">
 
             {visible.length === 0 && (
               <div className="border border-border bg-card p-8 text-center">
 
-                <Calendar className="mx-auto h-8 w-8 text-muted-foreground" />
+                <Search className="mx-auto h-8 w-8 text-muted-foreground" />
 
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Keine Termine in
-                  dieser Ansicht.
+
+                  {searchTerm.trim()
+                    ? `Kein Termin für "${searchTerm}" gefunden.`
+                    : "Keine Termine in dieser Ansicht."}
+
                 </p>
+
+                {searchTerm.trim() && (
+                  <button
+                    type="button"
+                    onClick={
+                      clearSearch
+                    }
+                    className="mt-4 border border-border px-4 py-2 font-display text-xs uppercase tracking-widest text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  >
+                    Suche löschen
+                  </button>
+                )}
 
               </div>
             )}
@@ -718,6 +872,7 @@ export function BookingsManager({
             ))}
 
           </div>
+
         </div>
 
         {/* =================================================
@@ -980,11 +1135,15 @@ export function BookingsManager({
                     <button
                       key={booking.id}
                       type="button"
-                      onClick={() =>
-                        setFilter(
-                          booking.status,
+                      onClick={() => {
+                        setSearchTerm(
+                          booking.name,
                         )
-                      }
+
+                        setFilter(
+                          "all",
+                        )
+                      }}
                       className="w-full border border-border p-3 text-left hover:bg-secondary"
                     >
 
