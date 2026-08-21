@@ -16,7 +16,7 @@ const apiKey = process.env.GEMINI_API_KEY
 
 const MODEL =
   process.env.GEMINI_MODEL ||
-  "gemma-4-26b-a4b-it"
+  "gemini-3.1-flash-live-preview"
 
 // =====================================================
 // TYPES
