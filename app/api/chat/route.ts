@@ -1,3 +1,4 @@
+````ts
 import { NextResponse } from "next/server"
 import { GoogleGenAI, Type } from "@google/genai"
 import {
@@ -14,14 +15,16 @@ export const dynamic = "force-dynamic"
 
 const apiKey = process.env.GEMINI_API_KEY
 
-// JARVIS versucht die Modelle in dieser Reihenfolge.
-// Wenn ein Modell wegen 429, 503, Quota usw. ausfällt,
-// wird automatisch das nächste Modell verwendet.
-
+/*
+ * Bewusst fest definiert.
+ *
+ * Dadurch können alte GEMINI_MODEL_1/2/3 Variablen
+ * in Vercel nicht versehentlich alte Modelle laden.
+ */
 const GEMINI_MODELS = [
-  process.env.GEMINI_MODEL_1 || "gemini-2.5-flash",
-  process.env.GEMINI_MODEL_2 || "gemini-2.5-flash-lite",
-  process.env.GEMINI_MODEL_3 || "gemini-2.0-flash",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
 ]
 
 // =====================================================
@@ -50,7 +53,7 @@ type GeminiResponse = {
 }
 
 // =====================================================
-// LEERER TERMIN
+// EMPTY BOOKING
 // =====================================================
 
 const EMPTY_BOOKING: BookingData = {
@@ -202,9 +205,7 @@ function mergeBookingData(
 // TEXT NORMALISIEREN
 // =====================================================
 
-function normalizeText(
-  text: string,
-): string {
+function normalizeText(text: string): string {
   return text
     .toLowerCase()
     .trim()
@@ -215,9 +216,7 @@ function normalizeText(
 // BUCHUNGSABSICHT
 // =====================================================
 
-function containsBookingIntent(
-  text: string,
-): boolean {
+function containsBookingIntent(text: string): boolean {
   const value = normalizeText(text)
 
   const patterns = [
@@ -244,9 +243,8 @@ function containsBookingIntent(
     "wagen bringen",
   ]
 
-  return patterns.some(
-    (pattern) =>
-      value.includes(pattern),
+  return patterns.some((pattern) =>
+    value.includes(pattern),
   )
 }
 
@@ -257,38 +255,27 @@ function containsBookingIntent(
 const MONTHS: Record<string, number> = {
   januar: 1,
   jan: 1,
-
   februar: 2,
   feb: 2,
-
   märz: 3,
   maerz: 3,
   mrz: 3,
-
   april: 4,
   apr: 4,
-
   mai: 5,
-
   juni: 6,
   jun: 6,
-
   juli: 7,
   jul: 7,
-
   august: 8,
   aug: 8,
-
   september: 9,
   sep: 9,
   sept: 9,
-
   oktober: 10,
   okt: 10,
-
   november: 11,
   nov: 11,
-
   dezember: 12,
   dez: 12,
 }
@@ -324,9 +311,7 @@ function normalizeDate(
       ),
     )
 
-    return date
-      .toISOString()
-      .slice(0, 10)
+    return date.toISOString().slice(0, 10)
   }
 
   if (
@@ -341,9 +326,7 @@ function normalizeDate(
       ),
     )
 
-    return date
-      .toISOString()
-      .slice(0, 10)
+    return date.toISOString().slice(0, 10)
   }
 
   const numericDate = value.match(
@@ -381,13 +364,9 @@ function normalizeDate(
         date.getUTCMonth() === month - 1 &&
         date.getUTCDate() === day
       ) {
-        return `${String(year).padStart(
-          4,
-          "0",
-        )}-${String(month).padStart(
-          2,
-          "0",
-        )}-${String(day).padStart(
+        return `${String(year).padStart(4, "0")}-${String(
+          month,
+        ).padStart(2, "0")}-${String(day).padStart(
           2,
           "0",
         )}`
@@ -409,9 +388,7 @@ function normalizeDate(
     const day = Number(namedDate[1])
 
     const month =
-      MONTHS[
-        namedDate[2].toLowerCase()
-      ]
+      MONTHS[namedDate[2].toLowerCase()]
 
     let year = namedDate[3]
       ? Number(namedDate[3])
@@ -439,13 +416,9 @@ function normalizeDate(
         date.getUTCMonth() === month - 1 &&
         date.getUTCDate() === day
       ) {
-        return `${String(year).padStart(
-          4,
-          "0",
-        )}-${String(month).padStart(
-          2,
-          "0",
-        )}-${String(day).padStart(
+        return `${String(year).padStart(4, "0")}-${String(
+          month,
+        ).padStart(2, "0")}-${String(day).padStart(
           2,
           "0",
         )}`
@@ -468,9 +441,7 @@ function normalizeTime(
   )
 
   const halbMatch =
-    value.match(
-      /\bhalb\s+(\d{1,2})\b/,
-    )
+    value.match(/\bhalb\s+(\d{1,2})\b/)
 
   if (halbMatch) {
     let hour = Number(halbMatch[1])
@@ -597,7 +568,7 @@ function normalizeTime(
 }
 
 // =====================================================
-// E-MAIL
+// EMAIL
 // =====================================================
 
 function extractEmail(
@@ -682,14 +653,8 @@ function extractFullName(
   )
 
   value = value
-    .replace(
-      /[,:;.!?]+/g,
-      " ",
-    )
-    .replace(
-      /\s+/g,
-      " ",
-    )
+    .replace(/[,:;.!?]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
 
   value = value
@@ -921,10 +886,7 @@ function extractProblem(
     const problem =
       explicit[1]
         .trim()
-        .replace(
-          /[.!?]+$/,
-          "",
-        )
+        .replace(/[.!?]+$/, "")
 
     if (
       problem.length >= 3
@@ -1108,8 +1070,7 @@ function isValidDate(
 
   return (
     date.getUTCFullYear() === year &&
-    date.getUTCMonth() ===
-      month - 1 &&
+    date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day
   )
 }
@@ -1275,6 +1236,11 @@ function parseGeminiResponse(
     parsed =
       JSON.parse(cleaned)
   } catch {
+    console.error(
+      "Gemini RAW Antwort:",
+      raw,
+    )
+
     throw new Error(
       "Gemini JSON konnte nicht gelesen werden.",
     )
@@ -1282,8 +1248,7 @@ function parseGeminiResponse(
 
   return {
     intent:
-      parsed?.intent ===
-      "booking"
+      parsed?.intent === "booking"
         ? "booking"
         : "chat",
 
@@ -1293,8 +1258,7 @@ function parseGeminiResponse(
       ),
 
     answer:
-      typeof parsed?.answer ===
-      "string"
+      typeof parsed?.answer === "string"
         ? parsed.answer.trim()
         : "",
   }
@@ -1302,15 +1266,18 @@ function parseGeminiResponse(
 
 // =====================================================
 // GEMINI
-// 3 MODELLE MIT AUTOMATISCHEM FALLBACK
 // =====================================================
 
 async function askGemini(
   prompt: string,
 ): Promise<string | null> {
   if (!apiKey) {
-    console.warn(
-      "GEMINI_API_KEY fehlt.",
+    console.error(
+      "❌ JARVIS → GEMINI_API_KEY fehlt.",
+    )
+
+    console.error(
+      "Bitte GEMINI_API_KEY in Vercel Environment Variables eintragen.",
     )
 
     return null
@@ -1321,6 +1288,27 @@ async function askGemini(
       apiKey,
     })
 
+  console.log(
+    "====================================",
+  )
+
+  console.log(
+    "JARVIS → GEMINI START",
+  )
+
+  console.log(
+    "Modelle:",
+    GEMINI_MODELS,
+  )
+
+  console.log(
+    "API Key vorhanden: JA",
+  )
+
+  console.log(
+    "====================================",
+  )
+
   for (
     let index = 0;
     index < GEMINI_MODELS.length;
@@ -1330,193 +1318,285 @@ async function askGemini(
       GEMINI_MODELS[index]
 
     console.log(
-      `JARVIS → Gemini ${index + 1}/${GEMINI_MODELS.length}: ${model}`,
+      `JARVIS → Gemini ${
+        index + 1
+      }/${GEMINI_MODELS.length}: ${model}`,
     )
 
-    try {
-      const response =
-        await ai.models.generateContent({
-          model,
+    /*
+     * Bei temporären Fehlern:
+     * maximal 2 Versuche pro Modell.
+     */
+    for (
+      let attempt = 1;
+      attempt <= 2;
+      attempt++
+    ) {
+      try {
+        console.log(
+          `JARVIS → ${model} Versuch ${attempt}/2`,
+        )
 
-          contents: prompt,
+        const response =
+          await ai.models.generateContent({
+            model,
 
-          config: {
-            temperature: 0.3,
+            contents: prompt,
 
-            maxOutputTokens: 1200,
+            config: {
+              temperature: 0.3,
 
-            responseMimeType:
-              "application/json",
+              maxOutputTokens: 1200,
 
-            responseSchema: {
-              type: Type.OBJECT,
+              responseMimeType:
+                "application/json",
 
-              properties: {
-                intent: {
-                  type: Type.STRING,
+              responseSchema: {
+                type: Type.OBJECT,
 
-                  enum: [
-                    "chat",
-                    "booking",
-                  ],
-                },
-
-                booking: {
-                  type: Type.OBJECT,
-
-                  properties: {
-                    booking_date: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    booking_time: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    name: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    phone: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    email: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    car: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
-
-                    problem: {
-                      type: Type.STRING,
-                      nullable: true,
-                    },
+                properties: {
+                  intent: {
+                    type: Type.STRING,
+                    enum: [
+                      "chat",
+                      "booking",
+                    ],
                   },
 
-                  required: [
-                    "booking_date",
-                    "booking_time",
-                    "name",
-                    "phone",
-                    "email",
-                    "car",
-                    "problem",
-                  ],
+                  booking: {
+                    type: Type.OBJECT,
+
+                    properties: {
+                      booking_date: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      booking_time: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      name: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      phone: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      email: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      car: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+
+                      problem: {
+                        type: Type.STRING,
+                        nullable: true,
+                      },
+                    },
+
+                    required: [
+                      "booking_date",
+                      "booking_time",
+                      "name",
+                      "phone",
+                      "email",
+                      "car",
+                      "problem",
+                    ],
+                  },
+
+                  answer: {
+                    type: Type.STRING,
+                  },
                 },
 
-                answer: {
-                  type: Type.STRING,
-                },
+                required: [
+                  "intent",
+                  "booking",
+                  "answer",
+                ],
               },
-
-              required: [
-                "intent",
-                "booking",
-                "answer",
-              ],
             },
-          },
-        })
+          })
 
-      const text =
-        response.text?.trim()
+        const text =
+          response.text?.trim()
 
-      if (!text) {
-        console.warn(
-          `JARVIS → ${model} hat keine Antwort geliefert.`,
+        if (!text) {
+          console.warn(
+            `⚠️ ${model} hat keine Antwort geliefert.`,
+          )
+
+          continue
+        }
+
+        console.log(
+          `✅ JARVIS → ${model} ERFOLGREICH`,
         )
 
-        continue
-      }
+        return text
+      } catch (error: any) {
+        const errorMessage =
+          error?.message ||
+          String(error)
 
-      console.log(
-        `JARVIS → ${model} ERFOLGREICH`,
+        const errorStatus =
+          error?.status ||
+          error?.code ||
+          ""
+
+        const errorName =
+          error?.name ||
+          ""
+
+        console.error(
+          "====================================",
+        )
+
+        console.error(
+          `❌ JARVIS → ${model} FEHLER`,
+        )
+
+        console.error(
+          "Versuch:",
+          `${attempt}/2`,
+        )
+
+        console.error(
+          "Name:",
+          errorName,
+        )
+
+        console.error(
+          "Status:",
+          errorStatus,
+        )
+
+        console.error(
+          "Message:",
+          errorMessage,
+        )
+
+        console.error(
+          "Kompletter Fehler:",
+          error,
+        )
+
+        console.error(
+          "====================================",
+        )
+
+        const lower =
+          errorMessage.toLowerCase()
+
+        const isQuota =
+          errorStatus === 429 ||
+          errorStatus === "429" ||
+          lower.includes("429") ||
+          lower.includes(
+            "resource_exhausted",
+          ) ||
+          lower.includes("quota") ||
+          lower.includes(
+            "rate limit",
+          ) ||
+          lower.includes(
+            "generate_content_free_tier_requests",
+          )
+
+        const isTemporary =
+          errorStatus === 500 ||
+          errorStatus === 502 ||
+          errorStatus === 503 ||
+          errorStatus === 504 ||
+          errorStatus === "500" ||
+          errorStatus === "502" ||
+          errorStatus === "503" ||
+          errorStatus === "504" ||
+          lower.includes(
+            "unavailable",
+          ) ||
+          lower.includes(
+            "high demand",
+          ) ||
+          lower.includes(
+            "temporarily",
+          )
+
+        const isModelError =
+          lower.includes(
+            "model not found",
+          ) ||
+          lower.includes(
+            "not found",
+          ) ||
+          lower.includes(
+            "unsupported",
+          ) ||
+          lower.includes(
+            "invalid model",
+          )
+
+        if (isQuota) {
+          console.warn(
+            `⚠️ ${model}: QUOTA / RATE LIMIT`,
+          )
+        } else if (isTemporary) {
+          console.warn(
+            `⚠️ ${model}: TEMPORÄR NICHT VERFÜGBAR`,
+          )
+        } else if (isModelError) {
+          console.warn(
+            `⚠️ ${model}: MODELL NICHT VERFÜGBAR`,
+          )
+        } else {
+          console.warn(
+            `⚠️ ${model}: UNBEKANNTER GEMINI-FEHLER`,
+          )
+        }
+
+        /*
+         * Bei Rate Limit oder temporären
+         * Serverfehlern noch einmal versuchen.
+         */
+        if (
+          isQuota ||
+          isTemporary
+        ) {
+          continue
+        }
+
+        /*
+         * Bei anderen Fehlern:
+         * direkt zum nächsten Modell.
+         */
+        break
+      }
+    }
+
+    if (
+      index <
+      GEMINI_MODELS.length - 1
+    ) {
+      console.warn(
+        `🔄 JARVIS → Wechsel von ${model} zu ${
+          GEMINI_MODELS[index + 1]
+        }`,
       )
-
-      return text
-    } catch (error) {
-      const errorText =
-        error instanceof Error
-          ? error.message
-          : JSON.stringify(error)
-
-      console.error(
-        `JARVIS → ${model} FEHLER:`,
-        errorText,
-      )
-
-      const lower =
-        errorText.toLowerCase()
-
-      const quotaError =
-        errorText.includes("429") ||
-        errorText.includes(
-          "RESOURCE_EXHAUSTED",
-        ) ||
-        lower.includes("quota") ||
-        lower.includes(
-          "rate limit",
-        ) ||
-        lower.includes(
-          "generate_content_free_tier_requests",
-        )
-
-      const temporaryError =
-        errorText.includes("500") ||
-        errorText.includes("502") ||
-        errorText.includes("503") ||
-        errorText.includes("504") ||
-        lower.includes(
-          "unavailable",
-        ) ||
-        lower.includes(
-          "high demand",
-        ) ||
-        lower.includes(
-          "temporarily",
-        )
-
-      if (quotaError) {
-        console.warn(
-          `JARVIS → ${model}: QUOTA/LIMIT ERREICHT`,
-        )
-      } else if (
-        temporaryError
-      ) {
-        console.warn(
-          `JARVIS → ${model}: TEMPORÄR NICHT VERFÜGBAR`,
-        )
-      } else {
-        console.warn(
-          `JARVIS → ${model}: ANDERER FEHLER`,
-        )
-      }
-
-      if (
-        index <
-        GEMINI_MODELS.length - 1
-      ) {
-        console.warn(
-          `JARVIS → WECHSEL ZU MODELL ${
-            index + 2
-          }`,
-        )
-
-        continue
-      }
     }
   }
 
   console.error(
-    "JARVIS → ALLE GEMINI-MODELLE NICHT VERFÜGBAR",
+    "❌ JARVIS → ALLE GEMINI-MODELLE FEHLGESCHLAGEN",
   )
 
   return null
@@ -1605,15 +1685,12 @@ export async function POST(
         (message: any) =>
           message &&
           (
-            message.role ===
-              "user" ||
-            message.role ===
-              "assistant"
+            message.role === "user" ||
+            message.role === "assistant"
           ) &&
           typeof message.content ===
             "string" &&
-          message.content.trim()
-            .length > 0,
+          message.content.trim().length > 0,
       ) as ChatMessage[]
 
     if (
@@ -1658,30 +1735,25 @@ export async function POST(
         .reverse()
         .find(
           (message) =>
-            message.role ===
-            "user",
+            message.role === "user",
         )
 
     const lastUserText =
-      lastUserMessage?.content ||
-      ""
+      lastUserMessage?.content || ""
 
     // =================================================
     // BOOKING STATUS
     // =================================================
 
     const clientBookingInProgress =
-      body?.bookingInProgress ===
-      true
+      body?.bookingInProgress === true
 
     const hasBookingData =
-      Object.values(booking)
-        .some(
-          (value) =>
-            typeof value ===
-              "string" &&
-            value.length > 0,
-        )
+      Object.values(booking).some(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 0,
+      )
 
     const explicitBookingIntent =
       containsBookingIntent(
@@ -1709,6 +1781,11 @@ export async function POST(
     console.log(
       "BOOKING MODE:",
       bookingMode,
+    )
+
+    console.log(
+      "GEMINI API KEY:",
+      apiKey ? "VORHANDEN" : "FEHLT",
     )
 
     console.log(
@@ -1760,8 +1837,7 @@ export async function POST(
           .map(
             (message) =>
               `${
-                message.role ===
-                "user"
+                message.role === "user"
                   ? "BENUTZER"
                   : "JARVIS"
               }: ${message.content}`,
@@ -1775,17 +1851,13 @@ export async function POST(
               lastUserText,
             ),
 
-          bookingCreated:
-            false,
+          bookingCreated: false,
 
-          bookingInProgress:
-            false,
+          bookingInProgress: false,
 
-          bookingData:
-            booking,
+          bookingData: booking,
 
-          fallbackMode:
-            true,
+          fallbackMode: true,
         })
       }
 
@@ -1862,17 +1934,13 @@ Gib ausschließlich gültiges JSON zurück.
               analysis.answer ||
               "Natürlich. Wie kann ich dir helfen?",
 
-            bookingCreated:
-              false,
+            bookingCreated: false,
 
-            bookingInProgress:
-              false,
+            bookingInProgress: false,
 
-            bookingData:
-              booking,
+            bookingData: booking,
 
-            fallbackMode:
-              false,
+            fallbackMode: false,
           })
         } catch (error) {
           console.warn(
@@ -1888,17 +1956,13 @@ Gib ausschließlich gültiges JSON zurück.
             lastUserText,
           ),
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          false,
+        bookingInProgress: false,
 
-        bookingData:
-          booking,
+        bookingData: booking,
 
-        fallbackMode:
-          true,
+        fallbackMode: true,
       })
     }
 
@@ -1918,8 +1982,7 @@ Gib ausschließlich gültiges JSON zurück.
         .map(
           (message) =>
             `${
-              message.role ===
-              "user"
+              message.role === "user"
                 ? "BENUTZER"
                 : "JARVIS"
             }: ${message.content}`,
@@ -1956,7 +2019,11 @@ Diese Daten haben höchste Priorität.
 
 Du darfst niemals bereits vorhandene Daten löschen.
 
-Insbesondere darfst du einen bereits erkannten Namen NICHT auf null setzen.
+Wenn ein Feld bereits einen Wert besitzt,
+muss dieser Wert erhalten bleiben.
+
+Insbesondere darfst du einen bereits erkannten Namen
+NICHT auf null setzen.
 
 Name:
 ${booking.name}
@@ -2081,8 +2148,7 @@ Gib ausschließlich gültiges JSON zurück:
         booking.booking_date,
       )
     ) {
-      booking.booking_date =
-        null
+      booking.booking_date = null
     }
 
     // =================================================
@@ -2095,8 +2161,7 @@ Gib ausschließlich gültiges JSON zurück:
         booking.booking_time,
       )
     ) {
-      booking.booking_time =
-        null
+      booking.booking_time = null
     }
 
     // =================================================
@@ -2105,29 +2170,24 @@ Gib ausschließlich gültiges JSON zurück:
 
     if (
       booking.booking_date &&
-      booking.booking_date <
-        currentDate
+      booking.booking_date < currentDate
     ) {
       return NextResponse.json({
         answer:
           "Dieser Termin liegt bereits in der Vergangenheit. Welchen zukünftigen Tag möchtest du?",
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          true,
+        bookingInProgress: true,
 
         bookingData: {
           ...booking,
           booking_date: null,
         },
 
-        missing:
-          "booking_date",
+        missing: "booking_date",
 
-        fallbackMode:
-          false,
+        fallbackMode: false,
       })
     }
 
@@ -2147,19 +2207,15 @@ Gib ausschließlich gültiges JSON zurück:
             missing,
           ),
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          true,
+        bookingInProgress: true,
 
-        bookingData:
-          booking,
+        bookingData: booking,
 
         missing,
 
-        fallbackMode:
-          false,
+        fallbackMode: false,
       })
     }
 
@@ -2176,22 +2232,18 @@ Gib ausschließlich gültiges JSON zurück:
         answer:
           "Diese Uhrzeit ist nicht möglich. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          true,
+        bookingInProgress: true,
 
         bookingData: {
           ...booking,
           booking_time: null,
         },
 
-        missing:
-          "booking_time",
+        missing: "booking_time",
 
-        fallbackMode:
-          false,
+        fallbackMode: false,
       })
     }
 
@@ -2215,11 +2267,9 @@ Gib ausschließlich gültiges JSON zurück:
           error:
             "Die verfügbaren Termine konnten nicht geprüft werden.",
 
-          bookingInProgress:
-            true,
+          bookingInProgress: true,
 
-          bookingData:
-            booking,
+          bookingData: booking,
         },
         {
           status: 500,
@@ -2249,22 +2299,18 @@ Gib ausschließlich gültiges JSON zurück:
             booking.booking_time
           } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          true,
+        bookingInProgress: true,
 
         bookingData: {
           ...booking,
           booking_time: null,
         },
 
-        missing:
-          "booking_time",
+        missing: "booking_time",
 
-        fallbackMode:
-          false,
+        fallbackMode: false,
       })
     }
 
@@ -2327,11 +2373,9 @@ Gib ausschließlich gültiges JSON zurück:
               ? error.message
               : "Der Termin konnte nicht erstellt werden.",
 
-          bookingInProgress:
-            true,
+          bookingInProgress: true,
 
-          bookingData:
-            booking,
+          bookingData: booking,
         },
         {
           status: 500,
@@ -2367,22 +2411,18 @@ Gib ausschließlich gültiges JSON zurück:
               booking.booking_time
             } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
 
-          bookingCreated:
-            false,
+          bookingCreated: false,
 
-          bookingInProgress:
-            true,
+          bookingInProgress: true,
 
           bookingData: {
             ...booking,
             booking_time: null,
           },
 
-          missing:
-            "booking_time",
+          missing: "booking_time",
 
-          fallbackMode:
-            false,
+          fallbackMode: false,
         })
       }
 
@@ -2393,17 +2433,13 @@ Gib ausschließlich gültiges JSON zurück:
             "Bitte versuche es erneut."
           }`,
 
-        bookingCreated:
-          false,
+        bookingCreated: false,
 
-        bookingInProgress:
-          true,
+        bookingInProgress: true,
 
-        bookingData:
-          booking,
+        bookingData: booking,
 
-        fallbackMode:
-          false,
+        fallbackMode: false,
       })
     }
 
@@ -2424,7 +2460,7 @@ Gib ausschließlich gültiges JSON zurück:
     )
 
     console.log(
-      "JARVIS BOOKING CREATED",
+      "✅ JARVIS BOOKING CREATED",
     )
 
     console.log(
@@ -2440,8 +2476,7 @@ Gib ausschließlich gültiges JSON zurück:
       answer:
         `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich erstellt. 📅 ${dateText} um ${timeText} Uhr für ${booking.car}. Dein Anliegen: ${booking.problem}. Der Termin wurde als Anfrage eingetragen.`,
 
-      bookingCreated:
-        true,
+      bookingCreated: true,
 
       bookingId:
         result.bookingId,
@@ -2449,11 +2484,9 @@ Gib ausschließlich gültiges JSON zurück:
       bookingData:
         emptyBooking(),
 
-      bookingInProgress:
-        false,
+      bookingInProgress: false,
 
-      fallbackMode:
-        false,
+      fallbackMode: false,
     })
   } catch (error) {
     console.error(
@@ -2461,7 +2494,7 @@ Gib ausschließlich gültiges JSON zurück:
     )
 
     console.error(
-      "JARVIS CHAT ERROR",
+      "❌ JARVIS CHAT ERROR",
     )
 
     console.error(
@@ -2476,17 +2509,14 @@ Gib ausschließlich gültiges JSON zurück:
       answer:
         "Ich konnte deine Anfrage gerade nicht vollständig verarbeiten. Bitte versuche es erneut.",
 
-      bookingCreated:
-        false,
+      bookingCreated: false,
 
-      bookingInProgress:
-        false,
+      bookingInProgress: false,
 
-      bookingData:
-        emptyBooking(),
+      bookingData: emptyBooking(),
 
-      fallbackMode:
-        true,
+      fallbackMode: true,
     })
   }
 }
+````
