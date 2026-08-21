@@ -1619,19 +1619,6 @@ export async function POST(
       normalizeBooking(
         body?.bookingData,
       )
-
-    // =================================================
-    // LETZTE USER-NACHRICHT
-    // =================================================
-
-    const lastUserMessage =
-      [...validMessages]
-        .reverse()
-        .find(
-          (message) =>
-            message.role === "user",
-        )
-
     const lastUserText =
       lastUserMessage?.content || ""
 
