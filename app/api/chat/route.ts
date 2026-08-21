@@ -819,7 +819,7 @@ function questionForField(
       return "Um welche Uhrzeit möchtest du den Termin? Termine sind zwischen 15:00 und 22:00 Uhr möglich."
 
     case "name":
-      return "Wie ist dein Vor und NachName?"
+      return "Wie ist dein Vor und Nachname?"
 
     case "phone":
       return "Wie lautet deine Telefonnummer?"
