@@ -2518,4 +2518,3 @@ Gib ausschließlich gültiges JSON zurück:
     })
   }
 }
-````
