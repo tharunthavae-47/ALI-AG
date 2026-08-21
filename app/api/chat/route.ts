@@ -1614,7 +1614,7 @@ export async function POST(
 
     const developerQuestion =
       question.includes(
-        "wer ist dein entwickler",
+        "wer hat dich entwickelt",
       ) ||
       question.includes(
         "wer hat dich gebaut",
@@ -1651,6 +1651,33 @@ export async function POST(
       return NextResponse.json({
         answer:
           "Der beste Entwickler unseres Landes Tharun, besser bekannt als Nuraht47.",
+
+        bookingCreated: false,
+
+        bookingInProgress:
+          body?.bookingInProgress === true,
+
+        bookingData:
+          normalizeBooking(
+            body?.bookingData,
+          ),
+
+        fallbackMode: false,
+      })
+    }
+    // =====================================================
+    // ENTWICKLER-FRAGE
+    // =====================================================
+
+    const developerQuestion =
+      question.includes(
+        "wer ist Nuraht47",
+      ) ||
+      
+    if (developerQuestion) {
+      return NextResponse.json({
+        answer:
+          "Nuraht47 ist ein Projektleiter und liebt Formel 1.",
 
         bookingCreated: false,
 
