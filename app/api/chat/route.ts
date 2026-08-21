@@ -1665,34 +1665,7 @@ export async function POST(
         fallbackMode: false,
       })
     }
-    // =====================================================
-    // ENTWICKLER-FRAGE
-    // =====================================================
-
-    const developerQuestion =
-      question.includes(
-        "wer ist Nuraht47",
-      ) ||
-      
-    if (developerQuestion) {
-      return NextResponse.json({
-        answer:
-          "Nuraht47 ist ein Projektleiter und liebt Formel 1.",
-
-        bookingCreated: false,
-
-        bookingInProgress:
-          body?.bookingInProgress === true,
-
-        bookingData:
-          normalizeBooking(
-            body?.bookingData,
-          ),
-
-        fallbackMode: false,
-      })
-    }
-
+  
     // =====================================================
     // ZEIT
     // =====================================================
@@ -1711,7 +1684,6 @@ export async function POST(
       normalizeBooking(
         body?.bookingData,
       )
-
     // =====================================================
     // BOOKING STATUS
     // =====================================================
