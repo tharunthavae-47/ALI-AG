@@ -14,7 +14,6 @@ export const dynamic = "force-dynamic"
 
 const apiKey = process.env.GEMINI_API_KEY
 
-// NUR EIN GEMINI-MODELL
 const GEMINI_MODEL =
   process.env.GEMINI_MODEL || "gemini-3.6-flash"
 
@@ -1290,7 +1289,6 @@ function isGeminiLimitError(
 
 // =====================================================
 // GEMINI
-// NUR EIN MODELL
 // =====================================================
 
 async function askGemini(
@@ -1508,7 +1506,7 @@ function getChatFallback(
 }
 
 // =====================================================
-// RATE-LIMIT ANTWORT
+// RATE LIMIT ANTWORT
 // =====================================================
 
 function getTiredMessage(): string {
@@ -1544,6 +1542,10 @@ export async function POST(
       )
     }
 
+    // =====================================================
+    // NACHRICHTEN VALIDIEREN
+    // =====================================================
+
     const validMessages =
       messages.filter(
         (message: any) =>
@@ -1570,46 +1572,103 @@ export async function POST(
         },
       )
     }
+
     // =====================================================
-// FESTE JARVIS-ANTWORTEN
-// =====================================================
+    // LETZTE USER-NACHRICHT
+    // WICHTIG:
+    // NUR EINMAL DEFINIEREN
+    // =====================================================
 
-const question =
-  lastUserText
-    .toLowerCase()
-    .trim()
-    .replace(/[?!.,;:]/g, "")
-    .replace(/\s+/g, " ")
+    const lastUserMessage =
+      [...validMessages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "user",
+        )
 
-const developerQuestion =
-  question.includes("wer ist dein entwickler") ||
-  question.includes("wer hat dich gebaut") ||
-  question.includes("wer hat dich programmiert") ||
-  question.includes("wer hat dich erstellt") ||
-  question.includes("wer hat dich gemacht") ||
-  question.includes("wer ist dein programmierer") ||
-  question.includes("wer ist dein entwickler") ||
-  question.includes("wer steckt hinter dir") ||
-  question.includes("wer steckt hinter jarvis") ||
-  question.includes("wer hat jarvis gebaut") ||
-  question.includes("wer hat jarvis programmiert") ||
-  question.includes("wer hat jarvis erstellt")
+    const lastUserText =
+      lastUserMessage?.content?.trim() ||
+      ""
 
-if (developerQuestion) {
-  return NextResponse.json({
-    answer:
-      "Der beste Entwickler unseres Landes Tharun, besser bekannt als Nuraht47.",
-    bookingCreated: false,
-    bookingInProgress: false,
-    bookingData: normalizeBooking(
-      body?.bookingData,
-    ),
-    fallbackMode: false,
-  })
-}
-    // =================================================
+    // =====================================================
+    // FESTE JARVIS-ANTWORTEN
+    // =====================================================
+
+    const question =
+      normalizeText(
+        lastUserText,
+      )
+        .replace(
+          /[?!.,;:]/g,
+          "",
+        )
+        .replace(
+          /\s+/g,
+          " ",
+        )
+
+    // =====================================================
+    // ENTWICKLER-FRAGE
+    // =====================================================
+
+    const developerQuestion =
+      question.includes(
+        "wer ist dein entwickler",
+      ) ||
+      question.includes(
+        "wer hat dich gebaut",
+      ) ||
+      question.includes(
+        "wer hat dich programmiert",
+      ) ||
+      question.includes(
+        "wer hat dich erstellt",
+      ) ||
+      question.includes(
+        "wer hat dich gemacht",
+      ) ||
+      question.includes(
+        "wer ist dein programmierer",
+      ) ||
+      question.includes(
+        "wer steckt hinter dir",
+      ) ||
+      question.includes(
+        "wer steckt hinter jarvis",
+      ) ||
+      question.includes(
+        "wer hat jarvis gebaut",
+      ) ||
+      question.includes(
+        "wer hat jarvis programmiert",
+      ) ||
+      question.includes(
+        "wer hat jarvis erstellt",
+      )
+
+    if (developerQuestion) {
+      return NextResponse.json({
+        answer:
+          "Der beste Entwickler unseres Landes Tharun, besser bekannt als Nuraht47.",
+
+        bookingCreated: false,
+
+        bookingInProgress:
+          body?.bookingInProgress === true,
+
+        bookingData:
+          normalizeBooking(
+            body?.bookingData,
+          ),
+
+        fallbackMode: false,
+      })
+    }
+
+    // =====================================================
     // ZEIT
-    // =================================================
+    // =====================================================
 
     const currentDate =
       getZurichDate()
@@ -1617,20 +1676,18 @@ if (developerQuestion) {
     const currentDateTime =
       getZurichDateTime()
 
-    // =================================================
+    // =====================================================
     // BOOKING
-    // =================================================
+    // =====================================================
 
     let booking =
       normalizeBooking(
         body?.bookingData,
       )
-    const lastUserText =
-      lastUserMessage?.content || ""
 
-    // =================================================
+    // =====================================================
     // BOOKING STATUS
-    // =================================================
+    // =====================================================
 
     const clientBookingInProgress =
       body?.bookingInProgress === true
@@ -1679,9 +1736,9 @@ if (developerQuestion) {
       "====================================",
     )
 
-    // =================================================
+    // =====================================================
     // DIREKTE DATENERKENNUNG
-    // =================================================
+    // =====================================================
 
     if (bookingMode) {
       const directData =
@@ -1698,9 +1755,9 @@ if (developerQuestion) {
         )
     }
 
-    // =================================================
+    // =====================================================
     // NORMALER CHAT
-    // =================================================
+    // =====================================================
 
     if (!bookingMode) {
       const conversation =
@@ -1754,6 +1811,9 @@ Antworte natürlich, freundlich und direkt.
 
 Du bist der digitale Assistent einer professionellen Autowerkstatt.
 
+Wenn der Benutzer fragt, wer dein Entwickler ist, darfst du NICHT selbst darüber spekulieren.
+Diese Frage wird außerhalb von Gemini verarbeitet.
+
 Bisheriger Chat:
 
 ${conversation}
@@ -1784,9 +1844,9 @@ Gib ausschließlich gültiges JSON zurück.
           chatPrompt,
         )
 
-      // =================================================
+      // =====================================================
       // RATE LIMIT
-      // =================================================
+      // =====================================================
 
       if (gemini.rateLimited) {
         return NextResponse.json({
@@ -1849,9 +1909,9 @@ Gib ausschließlich gültiges JSON zurück.
       })
     }
 
-    // =================================================
+    // =====================================================
     // BOOKING MODE
-    // =================================================
+    // =====================================================
 
     let analysis: GeminiResponse = {
       intent: "booking",
@@ -1936,9 +1996,9 @@ Gib ausschließlich gültiges JSON zurück:
           bookingPrompt,
         )
 
-      // =================================================
+      // =====================================================
       // RATE LIMIT
-      // =================================================
+      // =====================================================
 
       if (gemini.rateLimited) {
         return NextResponse.json({
@@ -1972,9 +2032,9 @@ Gib ausschließlich gültiges JSON zurück:
       }
     }
 
-    // =================================================
+    // =====================================================
     // GEMINI + DIREKTE DATEN
-    // =================================================
+    // =====================================================
 
     booking =
       mergeBookingData(
@@ -1995,9 +2055,9 @@ Gib ausschließlich gültiges JSON zurück:
         directData,
       )
 
-    // =================================================
+    // =====================================================
     // DATUM VALIDIEREN
-    // =================================================
+    // =====================================================
 
     if (
       booking.booking_date &&
@@ -2008,9 +2068,9 @@ Gib ausschließlich gültiges JSON zurück:
       booking.booking_date = null
     }
 
-    // =================================================
+    // =====================================================
     // UHRZEIT VALIDIEREN
-    // =================================================
+    // =====================================================
 
     if (
       booking.booking_time &&
@@ -2021,9 +2081,9 @@ Gib ausschließlich gültiges JSON zurück:
       booking.booking_time = null
     }
 
-    // =================================================
+    // =====================================================
     // VERGANGENES DATUM
-    // =================================================
+    // =====================================================
 
     if (
       booking.booking_date &&
@@ -2049,9 +2109,9 @@ Gib ausschließlich gültiges JSON zurück:
       })
     }
 
-    // =================================================
+    // =====================================================
     // FEHLENDES FELD
-    // =================================================
+    // =====================================================
 
     const missing =
       getMissingField(
@@ -2077,9 +2137,9 @@ Gib ausschließlich gültiges JSON zurück:
       })
     }
 
-    // =================================================
+    // =====================================================
     // UHRZEIT PRÜFEN
-    // =================================================
+    // =====================================================
 
     if (
       !isValidTime(
@@ -2105,9 +2165,9 @@ Gib ausschließlich gültiges JSON zurück:
       })
     }
 
-    // =================================================
+    // =====================================================
     // BELEGTE TERMINE
-    // =================================================
+    // =====================================================
 
     let bookedSlots
 
@@ -2135,9 +2195,9 @@ Gib ausschließlich gültiges JSON zurück:
       )
     }
 
-    // =================================================
+    // =====================================================
     // TERMIN BEREITS BELEGT?
-    // =================================================
+    // =====================================================
 
     const alreadyBooked =
       bookedSlots.some(
@@ -2172,9 +2232,9 @@ Gib ausschließlich gültiges JSON zurück:
       })
     }
 
-    // =================================================
+    // =====================================================
     // TERMIN ERSTELLEN
-    // =================================================
+    // =====================================================
 
     let result
 
@@ -2225,9 +2285,9 @@ Gib ausschließlich gültiges JSON zurück:
       )
     }
 
-    // =================================================
+    // =====================================================
     // CREATE BOOKING FEHLER
-    // =================================================
+    // =====================================================
 
     if (!result.ok) {
       const errorText =
@@ -2280,9 +2340,9 @@ Gib ausschließlich gültiges JSON zurück:
       })
     }
 
-    // =================================================
+    // =====================================================
     // ERFOLGREICH
-    // =================================================
+    // =====================================================
 
     const dateText =
       formatDate(
