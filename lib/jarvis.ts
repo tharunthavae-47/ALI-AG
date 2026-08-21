@@ -1,8 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
-const supabase = createAdminClient()
-
 export async function getBookingsForDate(date: string) {
+  const supabase = createAdminClient()
+
   const { data, error } = await supabase
     .from("bookings")
     .select(`
@@ -28,6 +28,8 @@ export async function getBookingsForDate(date: string) {
 }
 
 export async function getOpenBookings() {
+  const supabase = createAdminClient()
+
   const { data, error } = await supabase
     .from("bookings")
     .select(`
