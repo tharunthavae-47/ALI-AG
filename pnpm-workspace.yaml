@@ -1,4 +1,7 @@
 allowBuilds:
   '@google/genai': true
+  '@swc/core': true
+  cbor-extract: true
+  esbuild: true
   msw: true
   protobufjs: true
