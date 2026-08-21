@@ -9,22 +9,29 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 // =====================================================
-// GEMINI
+// GEMINI KONFIGURATION
 // =====================================================
 
 const apiKey = process.env.GEMINI_API_KEY
 
-/*
- * Bewusst fest definiert.
- *
- * Dadurch können alte GEMINI_MODEL_1/2/3 Variablen
- * in Vercel nicht versehentlich alte Modelle laden.
- */
 const GEMINI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-]
+  process.env.GEMINI_MODEL_1 || "gemini-2.5-flash",
+  process.env.GEMINI_MODEL_2 || "gemini-2.5-flash-lite",
+  process.env.GEMINI_MODEL_3 || "gemini-2.0-flash",
+].filter(Boolean)
+
+// Modelle, die wegen Rate Limit / RPD / Quota
+// momentan nicht benutzt werden sollen.
+//
+// Achtung:
+// Das ist nur ein Cache für die aktuelle Server-Instanz.
+// Nach einem neuen Deployment wird er zurückgesetzt.
+const temporarilyBlockedModels = new Map<
+  string,
+  number
+>()
+
+const MODEL_BLOCK_TIME = 60_000
 
 // =====================================================
 // TYPES
@@ -55,19 +62,15 @@ type GeminiResponse = {
 // EMPTY BOOKING
 // =====================================================
 
-const EMPTY_BOOKING: BookingData = {
-  booking_date: null,
-  booking_time: null,
-  name: null,
-  phone: null,
-  email: null,
-  car: null,
-  problem: null,
-}
-
 function emptyBooking(): BookingData {
   return {
-    ...EMPTY_BOOKING,
+    booking_date: null,
+    booking_time: null,
+    name: null,
+    phone: null,
+    email: null,
+    car: null,
+    problem: null,
   }
 }
 
@@ -97,7 +100,7 @@ function getZurichDateTime(): string {
 }
 
 // =====================================================
-// BOOKING NORMALISIEREN
+// NORMALIZE BOOKING
 // =====================================================
 
 function normalizeBooking(
@@ -107,7 +110,8 @@ function normalizeBooking(
     return emptyBooking()
   }
 
-  const data = input as Partial<BookingData>
+  const data =
+    input as Partial<BookingData>
 
   return {
     booking_date:
@@ -155,7 +159,7 @@ function normalizeBooking(
 }
 
 // =====================================================
-// BOOKING ZUSAMMENFÜHREN
+// MERGE BOOKING
 // =====================================================
 
 function mergeBookingData(
@@ -204,7 +208,9 @@ function mergeBookingData(
 // TEXT NORMALISIEREN
 // =====================================================
 
-function normalizeText(text: string): string {
+function normalizeText(
+  text: string,
+): string {
   return text
     .toLowerCase()
     .trim()
@@ -215,7 +221,9 @@ function normalizeText(text: string): string {
 // BUCHUNGSABSICHT
 // =====================================================
 
-function containsBookingIntent(text: string): boolean {
+function containsBookingIntent(
+  text: string,
+): boolean {
   const value = normalizeText(text)
 
   const patterns = [
@@ -310,7 +318,9 @@ function normalizeDate(
       ),
     )
 
-    return date.toISOString().slice(0, 10)
+    return date
+      .toISOString()
+      .slice(0, 10)
   }
 
   if (
@@ -325,7 +335,9 @@ function normalizeDate(
       ),
     )
 
-    return date.toISOString().slice(0, 10)
+    return date
+      .toISOString()
+      .slice(0, 10)
   }
 
   const numericDate = value.match(
@@ -387,7 +399,9 @@ function normalizeDate(
     const day = Number(namedDate[1])
 
     const month =
-      MONTHS[namedDate[2].toLowerCase()]
+      MONTHS[
+        namedDate[2].toLowerCase()
+      ]
 
     let year = namedDate[3]
       ? Number(namedDate[3])
@@ -440,10 +454,13 @@ function normalizeTime(
   )
 
   const halbMatch =
-    value.match(/\bhalb\s+(\d{1,2})\b/)
+    value.match(
+      /\bhalb\s+(\d{1,2})\b/,
+    )
 
   if (halbMatch) {
-    let hour = Number(halbMatch[1])
+    let hour =
+      Number(halbMatch[1])
 
     if (
       hour >= 1 &&
@@ -467,30 +484,21 @@ function normalizeTime(
     }
   }
 
-  const hourMatch = value.match(
-    /\b(?:um\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/,
-  )
+  const hourMatch =
+    value.match(
+      /\b(?:um\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/,
+    )
 
   if (hourMatch) {
-    let hour = Number(hourMatch[1])
+    let hour =
+      Number(hourMatch[1])
 
-    const minute = Number(
-      hourMatch[2] || "0",
-    )
+    const minute =
+      Number(hourMatch[2] || "0")
 
     if (
       value.includes("abends") ||
-      value.includes("abend")
-    ) {
-      if (
-        hour >= 1 &&
-        hour <= 12
-      ) {
-        hour += 12
-      }
-    }
-
-    if (
+      value.includes("abend") ||
       value.includes("nachmittags")
     ) {
       if (
@@ -525,13 +533,11 @@ function normalizeTime(
     )
 
   if (numericMatch) {
-    const hour = Number(
-      numericMatch[1],
-    )
+    const hour =
+      Number(numericMatch[1])
 
-    const minute = Number(
-      numericMatch[2],
-    )
+    const minute =
+      Number(numericMatch[2])
 
     if (
       hour >= 15 &&
@@ -652,8 +658,14 @@ function extractFullName(
   )
 
   value = value
-    .replace(/[,:;.!?]+/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[,:;.!?]+/g,
+      " ",
+    )
+    .replace(
+      /\s+/g,
+      " ",
+    )
     .trim()
 
   value = value
@@ -667,7 +679,8 @@ function extractFullName(
     return null
   }
 
-  const parts = value.split(/\s+/)
+  const parts =
+    value.split(/\s+/)
 
   if (
     parts.length < 2 ||
@@ -676,12 +689,13 @@ function extractFullName(
     return null
   }
 
-  const valid = parts.every(
-    (part) =>
-      /^[A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿ'’\-]+$/.test(
-        part,
-      ),
-  )
+  const valid =
+    parts.every(
+      (part) =>
+        /^[A-Za-zÄÖÜäöüÀ-ÖØ-öø-ÿ'’\-]+$/.test(
+          part,
+        ),
+    )
 
   if (!valid) {
     return null
@@ -819,11 +833,13 @@ function extractCar(
     )
 
   if (brandMatch) {
-    const brand = brandMatch[1]
+    const brand =
+      brandMatch[1]
 
-    const model = brandMatch[2]
-      ? brandMatch[2].trim()
-      : ""
+    const model =
+      brandMatch[2]
+        ? brandMatch[2].trim()
+        : ""
 
     const forbidden = [
       "hat",
@@ -868,7 +884,7 @@ function extractCar(
 }
 
 // =====================================================
-// ANLIEGEN
+// PROBLEM
 // =====================================================
 
 function extractProblem(
@@ -885,7 +901,10 @@ function extractProblem(
     const problem =
       explicit[1]
         .trim()
-        .replace(/[.!?]+$/, "")
+        .replace(
+          /[.!?]+$/,
+          "",
+        )
 
     if (
       problem.length >= 3
@@ -1032,7 +1051,7 @@ function extractDirectBookingData(
 }
 
 // =====================================================
-// DATUM VALIDIEREN
+// VALID DATE
 // =====================================================
 
 function isValidDate(
@@ -1054,9 +1073,7 @@ function isValidDate(
     year,
     month,
     day,
-  ] = value
-    .split("-")
-    .map(Number)
+  ] = value.split("-").map(Number)
 
   const date =
     new Date(
@@ -1069,13 +1086,14 @@ function isValidDate(
 
   return (
     date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
+    date.getUTCMonth() ===
+      month - 1 &&
     date.getUTCDate() === day
   )
 }
 
 // =====================================================
-// UHRZEIT VALIDIEREN
+// VALID TIME
 // =====================================================
 
 function isValidTime(
@@ -1096,9 +1114,7 @@ function isValidTime(
   const [
     hour,
     minute,
-  ] = value
-    .split(":")
-    .map(Number)
+  ] = value.split(":").map(Number)
 
   return (
     hour >= 15 &&
@@ -1109,7 +1125,7 @@ function isValidTime(
 }
 
 // =====================================================
-// DATUM FORMATIEREN
+// FORMAT DATE
 // =====================================================
 
 function formatDate(
@@ -1125,7 +1141,7 @@ function formatDate(
 }
 
 // =====================================================
-// FEHLENDES FELD
+// MISSING FIELD
 // =====================================================
 
 function getMissingField(
@@ -1197,7 +1213,7 @@ function questionForField(
 }
 
 // =====================================================
-// JSON BEREINIGEN
+// JSON CLEAN
 // =====================================================
 
 function cleanJson(
@@ -1220,7 +1236,7 @@ function cleanJson(
 }
 
 // =====================================================
-// GEMINI RESPONSE PARSEN
+// PARSE GEMINI
 // =====================================================
 
 function parseGeminiResponse(
@@ -1235,11 +1251,6 @@ function parseGeminiResponse(
     parsed =
       JSON.parse(cleaned)
   } catch {
-    console.error(
-      "Gemini RAW Antwort:",
-      raw,
-    )
-
     throw new Error(
       "Gemini JSON konnte nicht gelesen werden.",
     )
@@ -1247,7 +1258,8 @@ function parseGeminiResponse(
 
   return {
     intent:
-      parsed?.intent === "booking"
+      parsed?.intent ===
+      "booking"
         ? "booking"
         : "chat",
 
@@ -1257,14 +1269,303 @@ function parseGeminiResponse(
       ),
 
     answer:
-      typeof parsed?.answer === "string"
+      typeof parsed?.answer ===
+      "string"
         ? parsed.answer.trim()
         : "",
   }
 }
 
 // =====================================================
-// GEMINI
+// ERROR TEXT
+// =====================================================
+
+function getErrorText(
+  error: unknown,
+): string {
+  if (
+    error instanceof Error
+  ) {
+    return error.message
+  }
+
+  if (
+    typeof error === "string"
+  ) {
+    return error
+  }
+
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
+}
+
+// =====================================================
+// ERROR TYPE
+// =====================================================
+
+function isQuotaError(
+  errorText: string,
+): boolean {
+  const lower =
+    errorText.toLowerCase()
+
+  return (
+    lower.includes("429") ||
+    lower.includes(
+      "resource_exhausted",
+    ) ||
+    lower.includes("quota") ||
+    lower.includes(
+      "rate limit",
+    ) ||
+    lower.includes(
+      "rate_limit",
+    ) ||
+    lower.includes(
+      "requests per day",
+    ) ||
+    lower.includes("rpd") ||
+    lower.includes(
+      "generate_content_free_tier_requests",
+    ) ||
+    lower.includes(
+      "daily limit",
+    ) ||
+    lower.includes(
+      "per day",
+    ) ||
+    lower.includes(
+      "too many requests",
+    )
+  )
+}
+
+// =====================================================
+// TEMPORARY ERROR
+// =====================================================
+
+function isTemporaryError(
+  errorText: string,
+): boolean {
+  const lower =
+    errorText.toLowerCase()
+
+  return (
+    lower.includes("500") ||
+    lower.includes("502") ||
+    lower.includes("503") ||
+    lower.includes("504") ||
+    lower.includes(
+      "unavailable",
+    ) ||
+    lower.includes(
+      "high demand",
+    ) ||
+    lower.includes(
+      "temporarily",
+    ) ||
+    lower.includes(
+      "overloaded",
+    ) ||
+    lower.includes(
+      "internal server error",
+    ) ||
+    lower.includes(
+      "deadline exceeded",
+    )
+  )
+}
+
+// =====================================================
+// MODEL BLOCK
+// =====================================================
+
+function blockModel(
+  model: string,
+) {
+  temporarilyBlockedModels.set(
+    model,
+    Date.now() + MODEL_BLOCK_TIME,
+  )
+}
+
+// =====================================================
+// MODEL BLOCK CHECK
+// =====================================================
+
+function isModelBlocked(
+  model: string,
+): boolean {
+  const blockedUntil =
+    temporarilyBlockedModels.get(
+      model,
+    )
+
+  if (!blockedUntil) {
+    return false
+  }
+
+  if (
+    Date.now() >= blockedUntil
+  ) {
+    temporarilyBlockedModels.delete(
+      model,
+    )
+
+    return false
+  }
+
+  return true
+}
+
+// =====================================================
+// WAIT
+// =====================================================
+
+function sleep(
+  ms: number,
+): Promise<void> {
+  return new Promise(
+    (resolve) =>
+      setTimeout(
+        resolve,
+        ms,
+      ),
+  )
+}
+
+// =====================================================
+// GEMINI REQUEST
+// =====================================================
+
+async function generateWithGemini(
+  ai: GoogleGenAI,
+  model: string,
+  prompt: string,
+): Promise<string> {
+  const response =
+    await ai.models.generateContent({
+      model,
+      contents: prompt,
+
+      config: {
+        temperature: 0.3,
+
+        maxOutputTokens: 1200,
+
+        responseMimeType:
+          "application/json",
+
+        responseSchema: {
+          type: Type.OBJECT,
+
+          properties: {
+            intent: {
+              type: Type.STRING,
+              enum: [
+                "chat",
+                "booking",
+              ],
+            },
+
+            booking: {
+              type: Type.OBJECT,
+
+              properties: {
+                booking_date: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                booking_time: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                name: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                phone: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                email: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                car: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+
+                problem: {
+                  type: Type.STRING,
+                  nullable: true,
+                },
+              },
+
+              required: [
+                "booking_date",
+                "booking_time",
+                "name",
+                "phone",
+                "email",
+                "car",
+                "problem",
+              ],
+            },
+
+            answer: {
+              type: Type.STRING,
+            },
+          },
+
+          required: [
+            "intent",
+            "booking",
+            "answer",
+          ],
+        },
+      },
+    })
+
+  const text =
+    response.text?.trim()
+
+  if (!text) {
+    throw new Error(
+      "Gemini hat keine Antwort geliefert.",
+    )
+  }
+
+  return text
+}
+
+// =====================================================
+// GEMINI SMART ROUTER
+// =====================================================
+//
+// Reihenfolge:
+//
+// 1. gemini-2.5-flash
+// 2. gemini-2.5-flash-lite
+// 3. gemini-2.0-flash
+//
+// Bei 429 / RPD / Quota:
+// -> Modell wird temporär blockiert
+// -> nächstes Modell
+//
+// Bei 503 / 504:
+// -> kurzer Retry
+// -> danach nächstes Modell
+//
 // =====================================================
 
 async function askGemini(
@@ -1272,11 +1573,17 @@ async function askGemini(
 ): Promise<string | null> {
   if (!apiKey) {
     console.error(
-      "❌ JARVIS → GEMINI_API_KEY fehlt.",
+      "JARVIS → GEMINI_API_KEY FEHLT",
     )
 
+    return null
+  }
+
+  if (
+    GEMINI_MODELS.length === 0
+  ) {
     console.error(
-      "Bitte GEMINI_API_KEY in Vercel Environment Variables eintragen.",
+      "JARVIS → KEINE GEMINI-MODELLE KONFIGURIERT",
     )
 
     return null
@@ -1292,317 +1599,198 @@ async function askGemini(
   )
 
   console.log(
-    "JARVIS → GEMINI START",
+    "JARVIS GEMINI ROUTER",
   )
 
   console.log(
-    "Modelle:",
+    "MODELLE:",
     GEMINI_MODELS,
-  )
-
-  console.log(
-    "API Key vorhanden: JA",
   )
 
   console.log(
     "====================================",
   )
 
+  let availableModels =
+    GEMINI_MODELS.filter(
+      (model) =>
+        !isModelBlocked(model),
+    )
+
+  // Falls momentan alle Modelle geblockt sind,
+  // versuchen wir trotzdem wieder das erste Modell.
+  if (
+    availableModels.length === 0
+  ) {
+    console.warn(
+      "JARVIS → ALLE MODELLE TEMPORÄR GEBLOCKT",
+    )
+
+    availableModels = [
+      ...GEMINI_MODELS,
+    ]
+  }
+
   for (
     let index = 0;
-    index < GEMINI_MODELS.length;
+    index <
+    availableModels.length;
     index++
   ) {
     const model =
-      GEMINI_MODELS[index]
+      availableModels[index]
 
     console.log(
-      `JARVIS → Gemini ${
-        index + 1
-      }/${GEMINI_MODELS.length}: ${model}`,
+      `JARVIS → Gemini ${index + 1}/${availableModels.length}: ${model}`,
     )
 
-    /*
-     * Bei temporären Fehlern:
-     * maximal 2 Versuche pro Modell.
-     */
-    for (
-      let attempt = 1;
-      attempt <= 2;
-      attempt++
-    ) {
-      try {
-        console.log(
-          `JARVIS → ${model} Versuch ${attempt}/2`,
-        )
-
-        const response =
-          await ai.models.generateContent({
-            model,
-
-            contents: prompt,
-
-            config: {
-              temperature: 0.3,
-
-              maxOutputTokens: 1200,
-
-              responseMimeType:
-                "application/json",
-
-              responseSchema: {
-                type: Type.OBJECT,
-
-                properties: {
-                  intent: {
-                    type: Type.STRING,
-                    enum: [
-                      "chat",
-                      "booking",
-                    ],
-                  },
-
-                  booking: {
-                    type: Type.OBJECT,
-
-                    properties: {
-                      booking_date: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      booking_time: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      name: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      phone: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      email: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      car: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-
-                      problem: {
-                        type: Type.STRING,
-                        nullable: true,
-                      },
-                    },
-
-                    required: [
-                      "booking_date",
-                      "booking_time",
-                      "name",
-                      "phone",
-                      "email",
-                      "car",
-                      "problem",
-                    ],
-                  },
-
-                  answer: {
-                    type: Type.STRING,
-                  },
-                },
-
-                required: [
-                  "intent",
-                  "booking",
-                  "answer",
-                ],
-              },
-            },
-          })
-
-        const text =
-          response.text?.trim()
-
-        if (!text) {
-          console.warn(
-            `⚠️ ${model} hat keine Antwort geliefert.`,
-          )
-
-          continue
-        }
-
-        console.log(
-          `✅ JARVIS → ${model} ERFOLGREICH`,
-        )
-
-        return text
-      } catch (error: any) {
-        const errorMessage =
-          error?.message ||
-          String(error)
-
-        const errorStatus =
-          error?.status ||
-          error?.code ||
-          ""
-
-        const errorName =
-          error?.name ||
-          ""
-
-        console.error(
-          "====================================",
-        )
-
-        console.error(
-          `❌ JARVIS → ${model} FEHLER`,
-        )
-
-        console.error(
-          "Versuch:",
-          `${attempt}/2`,
-        )
-
-        console.error(
-          "Name:",
-          errorName,
-        )
-
-        console.error(
-          "Status:",
-          errorStatus,
-        )
-
-        console.error(
-          "Message:",
-          errorMessage,
-        )
-
-        console.error(
-          "Kompletter Fehler:",
-          error,
-        )
-
-        console.error(
-          "====================================",
-        )
-
-        const lower =
-          errorMessage.toLowerCase()
-
-        const isQuota =
-          errorStatus === 429 ||
-          errorStatus === "429" ||
-          lower.includes("429") ||
-          lower.includes(
-            "resource_exhausted",
-          ) ||
-          lower.includes("quota") ||
-          lower.includes(
-            "rate limit",
-          ) ||
-          lower.includes(
-            "generate_content_free_tier_requests",
-          )
-
-        const isTemporary =
-          errorStatus === 500 ||
-          errorStatus === 502 ||
-          errorStatus === 503 ||
-          errorStatus === 504 ||
-          errorStatus === "500" ||
-          errorStatus === "502" ||
-          errorStatus === "503" ||
-          errorStatus === "504" ||
-          lower.includes(
-            "unavailable",
-          ) ||
-          lower.includes(
-            "high demand",
-          ) ||
-          lower.includes(
-            "temporarily",
-          )
-
-        const isModelError =
-          lower.includes(
-            "model not found",
-          ) ||
-          lower.includes(
-            "not found",
-          ) ||
-          lower.includes(
-            "unsupported",
-          ) ||
-          lower.includes(
-            "invalid model",
-          )
-
-        if (isQuota) {
-          console.warn(
-            `⚠️ ${model}: QUOTA / RATE LIMIT`,
-          )
-        } else if (isTemporary) {
-          console.warn(
-            `⚠️ ${model}: TEMPORÄR NICHT VERFÜGBAR`,
-          )
-        } else if (isModelError) {
-          console.warn(
-            `⚠️ ${model}: MODELL NICHT VERFÜGBAR`,
-          )
-        } else {
-          console.warn(
-            `⚠️ ${model}: UNBEKANNTER GEMINI-FEHLER`,
-          )
-        }
-
-        /*
-         * Bei Rate Limit oder temporären
-         * Serverfehlern noch einmal versuchen.
-         */
-        if (
-          isQuota ||
-          isTemporary
-        ) {
-          continue
-        }
-
-        /*
-         * Bei anderen Fehlern:
-         * direkt zum nächsten Modell.
-         */
-        break
-      }
-    }
+    // -------------------------------------------------
+    // TEMPORÄR BLOCKIERT?
+    // -------------------------------------------------
 
     if (
-      index <
-      GEMINI_MODELS.length - 1
+      isModelBlocked(model)
     ) {
       console.warn(
-        `🔄 JARVIS → Wechsel von ${model} zu ${
-          GEMINI_MODELS[index + 1]
-        }`,
+        `JARVIS → ${model}: momentan übersprungen`,
       )
+
+      continue
+    }
+
+    // -------------------------------------------------
+    // VERSUCH 1
+    // -------------------------------------------------
+
+    try {
+      const text =
+        await generateWithGemini(
+          ai,
+          model,
+          prompt,
+        )
+
+      console.log(
+        `JARVIS → ${model}: ERFOLGREICH`,
+      )
+
+      return text
+    } catch (error) {
+      const errorText =
+        getErrorText(error)
+
+      console.error(
+        `JARVIS → ${model} FEHLER:`,
+        errorText,
+      )
+
+      // -----------------------------------------------
+      // QUOTA / RPD / 429
+      // -----------------------------------------------
+
+      if (
+        isQuotaError(
+          errorText,
+        )
+      ) {
+        console.warn(
+          `JARVIS → ${model}: QUOTA / RPD / 429`,
+        )
+
+        blockModel(model)
+
+        console.warn(
+          `JARVIS → ${model}: temporär blockiert`,
+        )
+
+        continue
+      }
+
+      // -----------------------------------------------
+      // TEMPORÄRER SERVERFEHLER
+      // -----------------------------------------------
+
+      if (
+        isTemporaryError(
+          errorText,
+        )
+      ) {
+        console.warn(
+          `JARVIS → ${model}: temporärer Fehler`,
+        )
+
+        // Noch einmal versuchen
+        await sleep(1200)
+
+        try {
+          console.log(
+            `JARVIS → ${model}: RETRY`,
+          )
+
+          const retryText =
+            await generateWithGemini(
+              ai,
+              model,
+              prompt,
+            )
+
+          console.log(
+            `JARVIS → ${model}: RETRY ERFOLGREICH`,
+          )
+
+          return retryText
+        } catch (retryError) {
+          const retryErrorText =
+            getErrorText(
+              retryError,
+            )
+
+          console.error(
+            `JARVIS → ${model}: RETRY FEHLER:`,
+            retryErrorText,
+          )
+
+          if (
+            isQuotaError(
+              retryErrorText,
+            )
+          ) {
+            blockModel(model)
+          }
+
+          continue
+        }
+      }
+
+      // -----------------------------------------------
+      // ANDERER FEHLER
+      // -----------------------------------------------
+
+      console.warn(
+        `JARVIS → ${model}: ANDERER FEHLER`,
+      )
+
+      continue
     }
   }
 
   console.error(
-    "❌ JARVIS → ALLE GEMINI-MODELLE FEHLGESCHLAGEN",
+    "====================================",
+  )
+
+  console.error(
+    "JARVIS → ALLE GEMINI-MODELLE FEHLGESCHLAGEN",
+  )
+
+  console.error(
+    "====================================",
   )
 
   return null
 }
 
 // =====================================================
-// FALLBACK CHAT
+// CHAT FALLBACK
 // =====================================================
 
 function getChatFallback(
@@ -1643,7 +1831,7 @@ function getChatFallback(
     return "Natürlich. Ich kann dir bei Fragen rund um Fahrzeuge, Reparaturen, Wartung und Werkstatttermine helfen."
   }
 
-  return "Ich bin gerade vorübergehend nicht erreichbar. Deine Terminverwaltung funktioniert trotzdem weiterhin."
+  return "Ich bin gerade vorübergehend nicht erreichbar. Du kannst es direkt noch einmal versuchen."
 }
 
 // =====================================================
@@ -1676,7 +1864,7 @@ export async function POST(
     }
 
     // =================================================
-    // GÜLTIGE NACHRICHTEN
+    // VALID MESSAGES
     // =================================================
 
     const validMessages =
@@ -1684,12 +1872,15 @@ export async function POST(
         (message: any) =>
           message &&
           (
-            message.role === "user" ||
-            message.role === "assistant"
+            message.role ===
+              "user" ||
+            message.role ===
+              "assistant"
           ) &&
           typeof message.content ===
             "string" &&
-          message.content.trim().length > 0,
+          message.content.trim()
+            .length > 0,
       ) as ChatMessage[]
 
     if (
@@ -1717,7 +1908,7 @@ export async function POST(
       getZurichDateTime()
 
     // =================================================
-    // BOOKING
+    // BOOKING DATA
     // =================================================
 
     let booking =
@@ -1734,25 +1925,30 @@ export async function POST(
         .reverse()
         .find(
           (message) =>
-            message.role === "user",
+            message.role ===
+            "user",
         )
 
     const lastUserText =
-      lastUserMessage?.content || ""
+      lastUserMessage?.content ||
+      ""
 
     // =================================================
     // BOOKING STATUS
     // =================================================
 
     const clientBookingInProgress =
-      body?.bookingInProgress === true
+      body?.bookingInProgress ===
+      true
 
     const hasBookingData =
-      Object.values(booking).some(
-        (value) =>
-          typeof value === "string" &&
-          value.length > 0,
-      )
+      Object.values(booking)
+        .some(
+          (value) =>
+            typeof value ===
+              "string" &&
+            value.length > 0,
+        )
 
     const explicitBookingIntent =
       containsBookingIntent(
@@ -1780,11 +1976,6 @@ export async function POST(
     console.log(
       "BOOKING MODE:",
       bookingMode,
-    )
-
-    console.log(
-      "GEMINI API KEY:",
-      apiKey ? "VORHANDEN" : "FEHLT",
     )
 
     console.log(
@@ -1836,7 +2027,8 @@ export async function POST(
           .map(
             (message) =>
               `${
-                message.role === "user"
+                message.role ===
+                "user"
                   ? "BENUTZER"
                   : "JARVIS"
               }: ${message.content}`,
@@ -1850,13 +2042,17 @@ export async function POST(
               lastUserText,
             ),
 
-          bookingCreated: false,
+          bookingCreated:
+            false,
 
-          bookingInProgress: false,
+          bookingInProgress:
+            false,
 
-          bookingData: booking,
+          bookingData:
+            booking,
 
-          fallbackMode: true,
+          fallbackMode:
+            true,
         })
       }
 
@@ -1890,6 +2086,11 @@ Frage nicht nach:
 Antworte natürlich, freundlich und direkt.
 
 Du bist der digitale Assistent einer professionellen Autowerkstatt.
+
+Wenn der Benutzer etwas über BMW, Mercedes, Audi,
+Fahrzeuge, Reparaturen, Wartung, Diagnose,
+MFK, Reifen, Motoren oder Werkstattarbeiten fragt,
+beantworte die Frage direkt und hilfreich.
 
 Bisheriger Chat:
 
@@ -1933,13 +2134,17 @@ Gib ausschließlich gültiges JSON zurück.
               analysis.answer ||
               "Natürlich. Wie kann ich dir helfen?",
 
-            bookingCreated: false,
+            bookingCreated:
+              false,
 
-            bookingInProgress: false,
+            bookingInProgress:
+              false,
 
-            bookingData: booking,
+            bookingData:
+              booking,
 
-            fallbackMode: false,
+            fallbackMode:
+              false,
           })
         } catch (error) {
           console.warn(
@@ -1955,13 +2160,17 @@ Gib ausschließlich gültiges JSON zurück.
             lastUserText,
           ),
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: false,
+        bookingInProgress:
+          false,
 
-        bookingData: booking,
+        bookingData:
+          booking,
 
-        fallbackMode: true,
+        fallbackMode:
+          true,
       })
     }
 
@@ -1981,7 +2190,8 @@ Gib ausschließlich gültiges JSON zurück.
         .map(
           (message) =>
             `${
-              message.role === "user"
+              message.role ===
+              "user"
                 ? "BENUTZER"
                 : "JARVIS"
             }: ${message.content}`,
@@ -2018,10 +2228,8 @@ Diese Daten haben höchste Priorität.
 
 Du darfst niemals bereits vorhandene Daten löschen.
 
-Wenn ein Feld bereits einen Wert besitzt,
-muss dieser Wert erhalten bleiben.
-
-Insbesondere darfst du einen bereits erkannten Namen
+Insbesondere darfst du einen bereits erkannten Namen,
+Telefonnummer, E-Mail, Fahrzeug oder Problem
 NICHT auf null setzen.
 
 Name:
@@ -2091,10 +2299,6 @@ Gib ausschließlich gültiges JSON zurück:
             error,
           )
         }
-      } else {
-        console.warn(
-          "JARVIS: Alle Gemini-Modelle fehlgeschlagen. Direkte Terminlogik wird weiterverwendet.",
-        )
       }
     }
 
@@ -2147,7 +2351,8 @@ Gib ausschließlich gültiges JSON zurück:
         booking.booking_date,
       )
     ) {
-      booking.booking_date = null
+      booking.booking_date =
+        null
     }
 
     // =================================================
@@ -2160,7 +2365,8 @@ Gib ausschließlich gültiges JSON zurück:
         booking.booking_time,
       )
     ) {
-      booking.booking_time = null
+      booking.booking_time =
+        null
     }
 
     // =================================================
@@ -2169,24 +2375,29 @@ Gib ausschließlich gültiges JSON zurück:
 
     if (
       booking.booking_date &&
-      booking.booking_date < currentDate
+      booking.booking_date <
+        currentDate
     ) {
       return NextResponse.json({
         answer:
           "Dieser Termin liegt bereits in der Vergangenheit. Welchen zukünftigen Tag möchtest du?",
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: true,
+        bookingInProgress:
+          true,
 
         bookingData: {
           ...booking,
           booking_date: null,
         },
 
-        missing: "booking_date",
+        missing:
+          "booking_date",
 
-        fallbackMode: false,
+        fallbackMode:
+          false,
       })
     }
 
@@ -2206,15 +2417,19 @@ Gib ausschließlich gültiges JSON zurück:
             missing,
           ),
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: true,
+        bookingInProgress:
+          true,
 
-        bookingData: booking,
+        bookingData:
+          booking,
 
         missing,
 
-        fallbackMode: false,
+        fallbackMode:
+          false,
       })
     }
 
@@ -2231,18 +2446,22 @@ Gib ausschließlich gültiges JSON zurück:
         answer:
           "Diese Uhrzeit ist nicht möglich. Termine sind zwischen 15:00 und 22:00 Uhr möglich. Welche Uhrzeit möchtest du?",
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: true,
+        bookingInProgress:
+          true,
 
         bookingData: {
           ...booking,
           booking_time: null,
         },
 
-        missing: "booking_time",
+        missing:
+          "booking_time",
 
-        fallbackMode: false,
+        fallbackMode:
+          false,
       })
     }
 
@@ -2266,9 +2485,11 @@ Gib ausschließlich gültiges JSON zurück:
           error:
             "Die verfügbaren Termine konnten nicht geprüft werden.",
 
-          bookingInProgress: true,
+          bookingInProgress:
+            true,
 
-          bookingData: booking,
+          bookingData:
+            booking,
         },
         {
           status: 500,
@@ -2298,18 +2519,22 @@ Gib ausschließlich gültiges JSON zurück:
             booking.booking_time
           } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: true,
+        bookingInProgress:
+          true,
 
         bookingData: {
           ...booking,
           booking_time: null,
         },
 
-        missing: "booking_time",
+        missing:
+          "booking_time",
 
-        fallbackMode: false,
+        fallbackMode:
+          false,
       })
     }
 
@@ -2372,9 +2597,11 @@ Gib ausschließlich gültiges JSON zurück:
               ? error.message
               : "Der Termin konnte nicht erstellt werden.",
 
-          bookingInProgress: true,
+          bookingInProgress:
+            true,
 
-          bookingData: booking,
+          bookingData:
+            booking,
         },
         {
           status: 500,
@@ -2410,18 +2637,22 @@ Gib ausschließlich gültiges JSON zurück:
               booking.booking_time
             } Uhr ist leider bereits vergeben. Welche andere Uhrzeit möchtest du?`,
 
-          bookingCreated: false,
+          bookingCreated:
+            false,
 
-          bookingInProgress: true,
+          bookingInProgress:
+            true,
 
           bookingData: {
             ...booking,
             booking_time: null,
           },
 
-          missing: "booking_time",
+          missing:
+            "booking_time",
 
-          fallbackMode: false,
+          fallbackMode:
+            false,
         })
       }
 
@@ -2432,13 +2663,17 @@ Gib ausschließlich gültiges JSON zurück:
             "Bitte versuche es erneut."
           }`,
 
-        bookingCreated: false,
+        bookingCreated:
+          false,
 
-        bookingInProgress: true,
+        bookingInProgress:
+          true,
 
-        bookingData: booking,
+        bookingData:
+          booking,
 
-        fallbackMode: false,
+        fallbackMode:
+          false,
       })
     }
 
@@ -2459,7 +2694,7 @@ Gib ausschließlich gültiges JSON zurück:
     )
 
     console.log(
-      "✅ JARVIS BOOKING CREATED",
+      "JARVIS BOOKING CREATED",
     )
 
     console.log(
@@ -2475,7 +2710,8 @@ Gib ausschließlich gültiges JSON zurück:
       answer:
         `Erledigt. Dein Termin bei MB-Performance wurde erfolgreich erstellt. 📅 ${dateText} um ${timeText} Uhr für ${booking.car}. Dein Anliegen: ${booking.problem}. Der Termin wurde als Anfrage eingetragen.`,
 
-      bookingCreated: true,
+      bookingCreated:
+        true,
 
       bookingId:
         result.bookingId,
@@ -2483,9 +2719,11 @@ Gib ausschließlich gültiges JSON zurück:
       bookingData:
         emptyBooking(),
 
-      bookingInProgress: false,
+      bookingInProgress:
+        false,
 
-      fallbackMode: false,
+      fallbackMode:
+        false,
     })
   } catch (error) {
     console.error(
@@ -2493,7 +2731,7 @@ Gib ausschließlich gültiges JSON zurück:
     )
 
     console.error(
-      "❌ JARVIS CHAT ERROR",
+      "JARVIS CHAT ERROR",
     )
 
     console.error(
@@ -2508,13 +2746,17 @@ Gib ausschließlich gültiges JSON zurück:
       answer:
         "Ich konnte deine Anfrage gerade nicht vollständig verarbeiten. Bitte versuche es erneut.",
 
-      bookingCreated: false,
+      bookingCreated:
+        false,
 
-      bookingInProgress: false,
+      bookingInProgress:
+        false,
 
-      bookingData: emptyBooking(),
+      bookingData:
+        emptyBooking(),
 
-      fallbackMode: true,
+      fallbackMode:
+        true,
     })
   }
 }
