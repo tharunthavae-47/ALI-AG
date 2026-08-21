@@ -1571,36 +1571,42 @@ export async function POST(
       )
     }
     // =====================================================
-    // FESTE JARVIS-ANTWORTEN
-    // =====================================================
+// FESTE JARVIS-ANTWORTEN
+// =====================================================
 
-    const lastUserMessage =
-      [...validMessages]
-        .reverse()
-        .find(
-          (message) =>
-            message.role === "user",
-        )
+const question =
+  lastUserText
+    .toLowerCase()
+    .trim()
+    .replace(/[?!.,;:]/g, "")
+    .replace(/\s+/g, " ")
 
-    if (lastUserMessage) {
-      const question =
-        lastUserMessage.content
-          .toLowerCase()
-          .trim()
+const developerQuestion =
+  question.includes("wer ist dein entwickler") ||
+  question.includes("wer hat dich gebaut") ||
+  question.includes("wer hat dich programmiert") ||
+  question.includes("wer hat dich erstellt") ||
+  question.includes("wer hat dich gemacht") ||
+  question.includes("wer ist dein programmierer") ||
+  question.includes("wer ist dein entwickler") ||
+  question.includes("wer steckt hinter dir") ||
+  question.includes("wer steckt hinter jarvis") ||
+  question.includes("wer hat jarvis gebaut") ||
+  question.includes("wer hat jarvis programmiert") ||
+  question.includes("wer hat jarvis erstellt")
 
-      if (
-        question.includes("wer hat dich gebaut") ||
-        question.includes("wer hat dich programmiert") ||
-        question.includes("wer hat dich erstellt") ||
-        question.includes("wer ist dein entwickler") ||
-        question.includes("wer hat dich gemacht")
-      ) {
-        return NextResponse.json({
-          reply:
-            "Der beste Entwickler unseres Landes: Tharun, besser bekannt als Nuraht47.",
-        })
-      }
-    }
+if (developerQuestion) {
+  return NextResponse.json({
+    answer:
+      "Der beste Entwickler unseres Landes Tharun, besser bekannt als Nuraht47.",
+    bookingCreated: false,
+    bookingInProgress: false,
+    bookingData: normalizeBooking(
+      body?.bookingData,
+    ),
+    fallbackMode: false,
+  })
+}
     // =================================================
     // ZEIT
     // =================================================
