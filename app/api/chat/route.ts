@@ -1756,7 +1756,7 @@ export async function POST(
     if (!bookingMode) {
       const conversation =
         validMessages
-          .slice(-20)
+          .slice(-8)
           .map(
             (message) =>
               `${
