@@ -1570,6 +1570,47 @@ export async function POST(
         },
       )
     }
+    // =====================================================
+    // FESTE JARVIS-ANTWORTEN
+    // =====================================================
+
+    const lastUserMessage =
+      [...validMessages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "user",
+        )
+
+    if (lastUserMessage) {
+      const question =
+        lastUserMessage.content
+          .toLowerCase()
+          .trim()
+
+      if (
+        question.includes("wer hat dich gebaut") ||
+        question.includes("wer hat dich programmiert") ||
+        question.includes("wer hat dich erstellt") ||
+        question.includes("wer ist dein entwickler") ||
+        question.includes("wer hat dich gemacht")
+      ) {
+        return NextResponse.json({
+          reply:
+            "Der beste Entwickler unseres Landes: Tharun, besser bekannt als Nuraht47.",
+        })
+      }
+    }
+
+    // =====================================================
+    // AB HIER DEIN BISHERIGER GEMINI/JARVIS-CODE
+    // =====================================================
+
+    // ...
+  } catch (error) {
+    // ...
+  }
+}
 
     // =================================================
     // ZEIT
