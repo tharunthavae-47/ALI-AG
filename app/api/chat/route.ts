@@ -1665,6 +1665,35 @@ export async function POST(
         fallbackMode: false,
       })
     }
+    
+    // =====================================================
+// NURAHT47
+// =====================================================
+
+const nurahtQuestion =
+  question.includes("wer ist Nuraht47") ||
+  question.includes("wer ist nuraht47") ||
+  question.includes("wer ist Tharun") ||
+  question.includes("wer ist tharun")
+
+if (nurahtQuestion) {
+  return NextResponse.json({
+    answer:
+      "Nuraht47 ist ein Projektleiter und liebt Formel 1.",
+
+    bookingCreated: false,
+
+    bookingInProgress:
+      body?.bookingInProgress === true,
+
+    bookingData:
+      normalizeBooking(
+        body?.bookingData,
+      ),
+
+    fallbackMode: false,
+  })
+}
   
     // =====================================================
     // ZEIT
