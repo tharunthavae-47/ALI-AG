@@ -150,36 +150,46 @@ export default async function OwnerPage() {
             BUCHUNGEN
         ==================================================== */}
 
-        {bookings.length === 0 ? (
+{bookings.length === 0 ? (
 
-          <div className="border border-border bg-card px-6 py-16 text-center">
+  <div className="border border-border bg-card px-6 py-16 text-center">
 
-            <p className="font-display text-lg font-bold uppercase tracking-wide">
-              Keine Buchungen
-            </p>
+    <p className="font-display text-lg font-bold uppercase tracking-wide">
+      Keine Buchungen
+    </p>
 
-            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-              Aktuell sind keine Terminanfragen vorhanden.
-              Sobald ein Kunde einen Termin anfragt,
-              erscheint dieser hier.
-            </p>
+    <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+      Aktuell sind keine Terminanfragen vorhanden.
+      Sobald ein Kunde einen Termin anfragt,
+      erscheint dieser hier.
+    </p>
 
-            <Link
-              href="/"
-              className="mt-6 inline-flex border border-border px-5 py-3 text-xs font-medium uppercase tracking-widest transition-colors hover:bg-secondary"
-            >
-              Zur Website
-            </Link>
+    <Link
+      href="/"
+      className="mt-6 inline-flex border border-border px-5 py-3 text-xs font-medium uppercase tracking-widest transition-colors hover:bg-secondary"
+    >
+      Zur Website
+    </Link>
 
-          </div>
+  </div>
 
-        ) : (
+) : (
 
-          <BookingsManager
-            initialBookings={bookings}
-          />
+  <BookingsManager
+    initialBookings={bookings}
+  />
 
-        )}
+)}
+
+{/* ====================================================
+    OCCASION FAHRZEUGE
+==================================================== */}
+
+<div className="mt-16 border-t border-border pt-12">
+
+  <OccasionManager />
+
+</div>
 
       </section>
 
