@@ -1,35 +1,86 @@
 "use client"
 
 import Link from "next/link"
-import { ChangeEvent, FormEvent, useState } from "react"
+import { ChangeEvent, FormEvent, useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+
+type FormData = {
+  vorname: string
+  nachname: string
+  email: string
+  telefon: string
+  marke: string
+  modell: string
+  jahrgang: string
+  kilometer: string
+  treibstoff: string
+  getriebe: string
+  leistung: string
+  antrieb: string
+  tueren: string
+  fahrzeugfarbe: string
+  preisvorstellung: string
+  letzterService: string
+  mfk: string
+  unfallschaden: string
+  beschreibung: string
+  zustand: string
+  privatOderFirma: string
+}
+
+const initialFormData: FormData = {
+  vorname: "",
+  nachname: "",
+  email: "",
+  telefon: "",
+  marke: "",
+  modell: "",
+  jahrgang: "",
+  kilometer: "",
+  treibstoff: "",
+  getriebe: "",
+  leistung: "",
+  antrieb: "",
+  tueren: "",
+  fahrzeugfarbe: "",
+  preisvorstellung: "",
+  letzterService: "",
+  mfk: "",
+  unfallschaden: "",
+  beschreibung: "",
+  zustand: "",
+  privatOderFirma: "",
+}
 
 export default function VerkaufenPage() {
+  const supabase = createClient()
+
+  const [formData, setFormData] = useState<FormData>(initialFormData)
+
   const [photos, setPhotos] = useState<File[]>([])
+
+  const [submitting, setSubmitting] = useState(false)
+
   const [submitted, setSubmitted] = useState(false)
 
-  const [formData, setFormData] = useState({
-    vorname: "",
-    nachname: "",
-    email: "",
-    telefon: "",
-    marke: "",
-    modell: "",
-    jahrgang: "",
-    kilometer: "",
-    treibstoff: "",
-    getriebe: "",
-    leistung: "",
-    antrieb: "",
-    tueren: "",
-    fahrzeugfarbe: "",
-    preisvorstellung: "",
-    letzterService: "",
-    mfk: "",
-    unfallschaden: "",
-    beschreibung: "",
-    zustand: "",
-    privatOderFirma: "",
-  })
+  const [error, setError] = useState("")
+
+  const [uploadProgress, setUploadProgress] = useState(0)
+
+  /*
+   * Objekt-URLs für die Bildvorschau
+   */
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+
+  useEffect(() => {
+    const urls = photos.map((photo) => URL.createObjectURL(photo))
+
+    setPreviewUrls(urls)
+
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [photos])
 
   function handleChange(
     e: ChangeEvent<
@@ -47,10 +98,63 @@ export default function VerkaufenPage() {
   function handlePhotos(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || [])
 
-    if (files.length === 0) return
+    if (!files.length) return
 
+    setError("")
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]
+
+    const invalidFiles = files.filter(
+      (file) => !allowedTypes.includes(file.type)
+    )
+
+    if (invalidFiles.length > 0) {
+      setError(
+        "Bitte nur JPG-, PNG- oder WEBP-Bilder hochladen."
+      )
+
+      e.target.value = ""
+      return
+    }
+
+    /*
+     * Maximal 10 Bilder insgesamt
+     */
     const remainingSlots = 10 - photos.length
+
+    if (remainingSlots <= 0) {
+      setError("Du kannst maximal 10 Fotos hochladen.")
+      e.target.value = ""
+      return
+    }
+
+    /*
+     * Maximal 10 MB pro Bild
+     */
+    const tooLarge = files.find(
+      (file) => file.size > 10 * 1024 * 1024
+    )
+
+    if (tooLarge) {
+      setError(
+        `Das Bild "${tooLarge.name}" ist größer als 10 MB.`
+      )
+
+      e.target.value = ""
+      return
+    }
+
     const selectedFiles = files.slice(0, remainingSlots)
+
+    if (files.length > remainingSlots) {
+      setError(
+        `Es wurden nur ${remainingSlots} weitere Fotos hinzugefügt. Maximal 10 Fotos.`
+      )
+    }
 
     setPhotos((prev) => [...prev, ...selectedFiles])
 
@@ -58,22 +162,247 @@ export default function VerkaufenPage() {
   }
 
   function removePhoto(index: number) {
-    setPhotos((prev) => prev.filter((_, i) => i !== index))
+    setPhotos((prev) =>
+      prev.filter((_, i) => i !== index)
+    )
+
+    setError("")
   }
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault()
 
+    setError("")
+    setUploadProgress(0)
+
+    /*
+     * Mindestens ein Bild
+     */
     if (photos.length < 1) {
-      alert("Bitte lade mindestens ein Foto deines Fahrzeugs hoch.")
+      setError(
+        "Bitte lade mindestens ein Foto deines Fahrzeugs hoch."
+      )
       return
     }
 
-    setSubmitted(true)
+    /*
+     * Maximal 10 Bilder
+     */
+    if (photos.length > 10) {
+      setError(
+        "Du kannst maximal 10 Fotos hochladen."
+      )
+      return
+    }
 
-    // Später:
-    // Hier wird das Formular an deine Supabase-/API-Route gesendet.
+    setSubmitting(true)
+
+    let occasionRequestId: string | null = null
+
+    try {
+      /*
+       * ============================================
+       * 1. FAHRZEUGANFRAGE ERSTELLEN
+       * ============================================
+       */
+
+      const { data: request, error: requestError } =
+        await supabase
+          .from("occasion_requests")
+          .insert({
+            vorname: formData.vorname,
+            nachname: formData.nachname,
+            email: formData.email,
+            telefon: formData.telefon,
+
+            privat_oder_firma:
+              formData.privatOderFirma,
+
+            marke: formData.marke,
+            modell: formData.modell,
+
+            jahrgang: Number(formData.jahrgang),
+
+            kilometer: Number(formData.kilometer),
+
+            treibstoff: formData.treibstoff,
+            getriebe: formData.getriebe,
+            leistung: formData.leistung,
+            antrieb: formData.antrieb,
+            tueren: formData.tueren,
+            fahrzeugfarbe:
+              formData.fahrzeugfarbe,
+
+            zustand: formData.zustand,
+            unfallschaden:
+              formData.unfallschaden,
+
+            letzter_service:
+              formData.letzterService || null,
+
+            mfk: formData.mfk || null,
+
+            beschreibung:
+              formData.beschreibung,
+
+            preisvorstellung: Number(
+              formData.preisvorstellung
+            ),
+
+            status: "offen",
+          })
+          .select("id")
+          .single()
+
+      if (requestError) {
+        throw new Error(
+          `Fahrzeugdaten konnten nicht gespeichert werden: ${requestError.message}`
+        )
+      }
+
+      if (!request) {
+        throw new Error(
+          "Die Fahrzeuganfrage konnte nicht erstellt werden."
+        )
+      }
+
+      occasionRequestId = request.id
+
+      /*
+       * ============================================
+       * 2. FOTOS IN SUPABASE STORAGE HOCHLADEN
+       * ============================================
+       */
+
+      const uploadedImages: {
+        image_url: string
+        image_name: string
+        image_position: number
+      }[] = []
+
+      for (let i = 0; i < photos.length; i++) {
+        const file = photos[i]
+
+        /*
+         * Dateiendung bestimmen
+         */
+        const extension =
+          file.name.split(".").pop()?.toLowerCase() ||
+          "jpg"
+
+        /*
+         * Eindeutiger Dateiname
+         *
+         * Beispiel:
+         *
+         * occasion-id/
+         * 1-abc123.jpg
+         */
+        const randomId = crypto.randomUUID()
+
+        const filePath =
+          `${occasionRequestId}/${i + 1}-${randomId}.${extension}`
+
+        /*
+         * Upload in:
+         *
+         * occasion-images
+         */
+        const { error: uploadError } =
+          await supabase.storage
+            .from("occasion-images")
+            .upload(filePath, file, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: file.type,
+            })
+
+        if (uploadError) {
+          throw new Error(
+            `Foto ${i + 1} konnte nicht hochgeladen werden: ${uploadError.message}`
+          )
+        }
+
+        /*
+         * Da der Bucket privat sein kann,
+         * speichern wir zunächst den Pfad.
+         *
+         * Für die Besitzer-Seite können wir später
+         * eine Signed URL erzeugen.
+         */
+        uploadedImages.push({
+          image_url: filePath,
+          image_name: file.name,
+          image_position: i,
+        })
+
+        setUploadProgress(
+          Math.round(
+            ((i + 1) / photos.length) * 100
+          )
+        )
+      }
+
+      /*
+       * ============================================
+       * 3. FOTODATEN IN occasion_images SPEICHERN
+       * ============================================
+       */
+
+      if (uploadedImages.length > 0) {
+        const imageRows =
+          uploadedImages.map((image) => ({
+            occasion_request_id:
+              occasionRequestId,
+            image_url: image.image_url,
+            image_name: image.image_name,
+            image_position:
+              image.image_position,
+          }))
+
+        const { error: imagesError } =
+          await supabase
+            .from("occasion_images")
+            .insert(imageRows)
+
+        if (imagesError) {
+          throw new Error(
+            `Die Fotodaten konnten nicht gespeichert werden: ${imagesError.message}`
+          )
+        }
+      }
+
+      /*
+       * ============================================
+       * 4. ERFOLG
+       * ============================================
+       */
+
+      setSubmitted(true)
+    } catch (err) {
+      console.error(
+        "Occasion Verkaufsanfrage Fehler:",
+        err
+      )
+
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Die Anfrage konnte nicht gesendet werden."
+
+      setError(message)
+    } finally {
+      setSubmitting(false)
+    }
   }
+
+  /*
+   * ============================================
+   * ERFOLGSSEITE
+   * ============================================
+   */
 
   if (submitted) {
     return (
@@ -93,8 +422,14 @@ export default function VerkaufenPage() {
             </h1>
 
             <p className="mx-auto mt-6 max-w-xl leading-7 text-zinc-400">
-              Vielen Dank für deine Fahrzeuganfrage. Wir prüfen die Angaben
-              und melden uns so schnell wie möglich bei dir.
+              Vielen Dank für deine Fahrzeuganfrage.
+              Deine Fahrzeugdaten und Fotos wurden
+              erfolgreich übermittelt.
+            </p>
+
+            <p className="mt-4 text-sm text-zinc-600">
+              Wir prüfen deine Angaben und melden uns
+              so schnell wie möglich bei dir.
             </p>
 
             <Link
@@ -108,6 +443,12 @@ export default function VerkaufenPage() {
       </main>
     )
   }
+
+  /*
+   * ============================================
+   * FORMULAR
+   * ============================================
+   */
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -139,37 +480,42 @@ export default function VerkaufenPage() {
         <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
           Dein Fahrzeug
           <br />
-          <span className="text-zinc-500">bei MB Performance</span>
+          <span className="text-zinc-500">
+            bei MB Performance
+          </span>
         </h1>
 
         <p className="mx-auto mt-7 max-w-2xl leading-7 text-zinc-400">
-          Fülle das Formular vollständig aus und lade bis zu 10 aussagekräftige
-          Fotos deines Fahrzeugs hoch. Je genauer deine Angaben sind, desto
-          besser können wir dein Fahrzeug beurteilen.
+          Fülle das Formular vollständig aus und
+          lade bis zu 10 aussagekräftige Fotos
+          deines Fahrzeugs hoch.
         </p>
       </section>
 
-      {/* Formular */}
+      {/* Fehler */}
+      {error && (
+        <div className="mx-auto mb-8 max-w-5xl px-6">
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-4 text-sm text-red-300">
+            {error}
+          </div>
+        </div>
+      )}
+
       <section className="mx-auto max-w-5xl px-6 pb-24">
         <form
           onSubmit={handleSubmit}
           className="space-y-8"
         >
-          {/* Persönliche Daten */}
+          {/* ========================================
+              01 KONTAKTDATEN
+          ======================================== */}
+
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                01
-              </p>
-
-              <h2 className="mt-2 text-2xl font-bold">
-                Deine Kontaktdaten
-              </h2>
-
-              <p className="mt-2 text-sm text-zinc-500">
-                Damit wir dich bezüglich deines Fahrzeugs kontaktieren können.
-              </p>
-            </div>
+            <SectionTitle
+              number="01"
+              title="Deine Kontaktdaten"
+              description="Damit wir dich bezüglich deines Fahrzeugs kontaktieren können."
+            />
 
             <div className="grid gap-5 md:grid-cols-2">
               <Input
@@ -210,7 +556,9 @@ export default function VerkaufenPage() {
                 <Select
                   label="Verkauf als"
                   name="privatOderFirma"
-                  value={formData.privatOderFirma}
+                  value={
+                    formData.privatOderFirma
+                  }
                   onChange={handleChange}
                   required
                   options={[
@@ -222,22 +570,16 @@ export default function VerkaufenPage() {
             </div>
           </div>
 
-          {/* Fahrzeug */}
+          {/* ========================================
+              02 FAHRZEUG
+          ======================================== */}
+
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                02
-              </p>
-
-              <h2 className="mt-2 text-2xl font-bold">
-                Fahrzeugdaten
-              </h2>
-
-              <p className="mt-2 text-sm text-zinc-500">
-                Bitte gib die wichtigsten technischen Daten deines Fahrzeugs
-                an.
-              </p>
-            </div>
+            <SectionTitle
+              number="02"
+              title="Fahrzeugdaten"
+              description="Bitte gib die wichtigsten technischen Daten deines Fahrzeugs an."
+            />
 
             <div className="grid gap-5 md:grid-cols-2">
               <Input
@@ -354,21 +696,16 @@ export default function VerkaufenPage() {
             </div>
           </div>
 
-          {/* Zustand */}
+          {/* ========================================
+              03 ZUSTAND
+          ======================================== */}
+
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                03
-              </p>
-
-              <h2 className="mt-2 text-2xl font-bold">
-                Zustand & Historie
-              </h2>
-
-              <p className="mt-2 text-sm text-zinc-500">
-                Ehrliche Angaben helfen uns bei einer schnellen Einschätzung.
-              </p>
-            </div>
+            <SectionTitle
+              number="03"
+              title="Zustand & Historie"
+              description="Ehrliche Angaben helfen uns bei einer schnellen Einschätzung."
+            />
 
             <div className="grid gap-5 md:grid-cols-2">
               <Select
@@ -388,7 +725,9 @@ export default function VerkaufenPage() {
               <Select
                 label="Unfall-/Schadenshistorie"
                 name="unfallschaden"
-                value={formData.unfallschaden}
+                value={
+                  formData.unfallschaden
+                }
                 onChange={handleChange}
                 required
                 options={[
@@ -403,7 +742,9 @@ export default function VerkaufenPage() {
                 label="Letzter Service"
                 name="letzterService"
                 placeholder="z. B. 05/2026 bei 42'000 km"
-                value={formData.letzterService}
+                value={
+                  formData.letzterService
+                }
                 onChange={handleChange}
               />
 
@@ -418,12 +759,14 @@ export default function VerkaufenPage() {
 
             <div className="mt-5">
               <label className="mb-2 block text-sm font-medium text-zinc-300">
-                Beschreibung / weitere Informationen
+                Beschreibung / weitere Informationen *
               </label>
 
               <textarea
                 name="beschreibung"
-                value={formData.beschreibung}
+                value={
+                  formData.beschreibung
+                }
                 onChange={handleChange}
                 required
                 rows={7}
@@ -433,51 +776,46 @@ export default function VerkaufenPage() {
             </div>
           </div>
 
-          {/* Preis */}
-          <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                04
-              </p>
+          {/* ========================================
+              04 PREIS
+          ======================================== */}
 
-              <h2 className="mt-2 text-2xl font-bold">
-                Preisvorstellung
-              </h2>
-            </div>
+          <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
+            <SectionTitle
+              number="04"
+              title="Preisvorstellung"
+              description="Welche Preisvorstellung hast du für dein Fahrzeug?"
+            />
 
             <Input
-              label="Deine Preisvorstellung in CHF"
+              label="Preisvorstellung in CHF"
               name="preisvorstellung"
               type="number"
               placeholder="z. B. 45000"
-              value={formData.preisvorstellung}
+              value={
+                formData.preisvorstellung
+              }
               onChange={handleChange}
               required
             />
           </div>
 
-          {/* Fotos */}
+          {/* ========================================
+              05 FOTOS
+          ======================================== */}
+
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
-                05
-              </p>
+            <SectionTitle
+              number="05"
+              title="Fahrzeugfotos"
+              description="Lade mindestens 1 und maximal 10 aussagekräftige Fotos hoch."
+            />
 
-              <h2 className="mt-2 text-2xl font-bold">
-                Fahrzeugfotos
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-zinc-500">
-                Lade mindestens 1 und maximal 10 Fotos hoch. Gute Fotos von
-                vorne, hinten, beiden Seiten, Innenraum und Motorraum sind
-                besonders hilfreich.
-              </p>
-            </div>
-
-            {/* Upload */}
             {photos.length < 10 && (
               <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-black/40 px-6 py-12 text-center transition hover:border-white/40 hover:bg-white/[0.03]">
-                <span className="text-4xl">+</span>
+                <span className="text-4xl">
+                  +
+                </span>
 
                 <span className="mt-4 text-sm font-semibold uppercase tracking-[0.15em]">
                   Fotos hinzufügen
@@ -497,43 +835,56 @@ export default function VerkaufenPage() {
               </label>
             )}
 
-            {/* Foto Vorschau */}
             {photos.length > 0 && (
               <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-                {photos.map((photo, index) => (
-                  <div
-                    key={`${photo.name}-${index}`}
-                    className="group relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-black"
-                  >
-                    <img
-                      src={URL.createObjectURL(photo)}
-                      alt={`Fahrzeugfoto ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(index)}
-                      className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/80 text-sm text-white opacity-100 transition hover:bg-white hover:text-black"
-                      aria-label={`Foto ${index + 1} entfernen`}
+                {photos.map(
+                  (photo, index) => (
+                    <div
+                      key={`${photo.name}-${index}`}
+                      className="group relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-black"
                     >
-                      ×
-                    </button>
+                      {previewUrls[index] && (
+                        <img
+                          src={previewUrls[index]}
+                          alt={`Fahrzeugfoto ${
+                            index + 1
+                          }`}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
 
-                    <div className="absolute bottom-2 left-2 rounded-full bg-black/80 px-2 py-1 text-[10px] text-white">
-                      {index + 1}/10
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removePhoto(index)
+                        }
+                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/80 text-sm text-white transition hover:bg-white hover:text-black"
+                        aria-label={`Foto ${
+                          index + 1
+                        } entfernen`}
+                      >
+                        ×
+                      </button>
+
+                      <div className="absolute bottom-2 left-2 rounded-full bg-black/80 px-2 py-1 text-[10px] text-white">
+                        {index + 1}/10
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             )}
 
             <p className="mt-5 text-xs text-zinc-600">
-              Erlaubte Formate: JPG, PNG und WEBP · Maximal 10 Fotos
+              JPG, PNG oder WEBP · maximal 10
+              Fotos · maximal 10 MB pro Foto
             </p>
           </div>
 
-          {/* Datenschutz / Absenden */}
+          {/* ========================================
+              06 ABSENDEN
+          ======================================== */}
+
           <div className="rounded-3xl border border-white/10 bg-zinc-950 p-6 md:p-10">
             <label className="flex cursor-pointer gap-4">
               <input
@@ -543,22 +894,49 @@ export default function VerkaufenPage() {
               />
 
               <span className="text-sm leading-6 text-zinc-400">
-                Ich bestätige, dass die Angaben korrekt sind und MB
-                Performance mich bezüglich meines Fahrzeuges kontaktieren
-                darf.
+                Ich bestätige, dass die Angaben
+                korrekt sind und MB Performance
+                mich bezüglich meines Fahrzeuges
+                kontaktieren darf.
               </span>
             </label>
 
+            {submitting && (
+              <div className="mt-8">
+                <div className="mb-2 flex justify-between text-xs text-zinc-500">
+                  <span>
+                    Fotos werden hochgeladen...
+                  </span>
+
+                  <span>
+                    {uploadProgress}%
+                  </span>
+                </div>
+
+                <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full bg-white transition-all duration-300"
+                    style={{
+                      width: `${uploadProgress}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
-              className="mt-8 w-full rounded-2xl bg-white px-6 py-5 text-sm font-bold uppercase tracking-[0.2em] text-black transition hover:bg-zinc-200 active:scale-[0.99]"
+              disabled={submitting}
+              className="mt-8 w-full rounded-2xl bg-white px-6 py-5 text-sm font-bold uppercase tracking-[0.2em] text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Fahrzeug anbieten
+              {submitting
+                ? "Wird gesendet..."
+                : "Fahrzeug anbieten"}
             </button>
 
             <p className="mt-5 text-center text-xs leading-5 text-zinc-600">
-              Deine Anfrage wird nach dem Absenden von MB Performance
-              geprüft.
+              Deine Fahrzeugdaten und Fotos werden
+              sicher an MB Performance übermittelt.
             </p>
           </div>
         </form>
@@ -567,9 +945,43 @@ export default function VerkaufenPage() {
   )
 }
 
-/* -------------------------------------------------------
-   INPUT
-------------------------------------------------------- */
+/*
+ * ============================================
+ * SECTION TITLE
+ * ============================================
+ */
+
+function SectionTitle({
+  number,
+  title,
+  description,
+}: {
+  number: string
+  title: string
+  description: string
+}) {
+  return (
+    <div className="mb-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500">
+        {number}
+      </p>
+
+      <h2 className="mt-2 text-2xl font-bold">
+        {title}
+      </h2>
+
+      <p className="mt-2 text-sm text-zinc-500">
+        {description}
+      </p>
+    </div>
+  )
+}
+
+/*
+ * ============================================
+ * INPUT
+ * ============================================
+ */
 
 type InputProps = {
   label: string
@@ -579,7 +991,11 @@ type InputProps = {
   value: string
   required?: boolean
   onChange: (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<
+      HTMLInputElement |
+      HTMLTextAreaElement |
+      HTMLSelectElement
+    >
   ) => void
 }
 
@@ -596,7 +1012,12 @@ function Input({
     <div>
       <label className="mb-2 block text-sm font-medium text-zinc-300">
         {label}
-        {required && <span className="ml-1 text-zinc-500">*</span>}
+
+        {required && (
+          <span className="ml-1 text-zinc-500">
+            *
+          </span>
+        )}
       </label>
 
       <input
@@ -612,9 +1033,11 @@ function Input({
   )
 }
 
-/* -------------------------------------------------------
-   SELECT
-------------------------------------------------------- */
+/*
+ * ============================================
+ * SELECT
+ * ============================================
+ */
 
 type SelectProps = {
   label: string
@@ -623,7 +1046,11 @@ type SelectProps = {
   options: string[]
   required?: boolean
   onChange: (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: ChangeEvent<
+      HTMLInputElement |
+      HTMLTextAreaElement |
+      HTMLSelectElement
+    >
   ) => void
 }
 
@@ -639,7 +1066,12 @@ function Select({
     <div>
       <label className="mb-2 block text-sm font-medium text-zinc-300">
         {label}
-        {required && <span className="ml-1 text-zinc-500">*</span>}
+
+        {required && (
+          <span className="ml-1 text-zinc-500">
+            *
+          </span>
+        )}
       </label>
 
       <select
@@ -654,7 +1086,10 @@ function Select({
         </option>
 
         {options.map((option) => (
-          <option key={option} value={option}>
+          <option
+            key={option}
+            value={option}
+          >
             {option}
           </option>
         ))}
@@ -662,4 +1097,3 @@ function Select({
     </div>
   )
 }
-
