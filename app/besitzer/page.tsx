@@ -2,6 +2,7 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 import { listBookings, signOut } from "@/app/actions"
 import { BookingsManager } from "@/components/bookings-manager"
+import { OccasionManager } from "@/components/occasion-manager"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
