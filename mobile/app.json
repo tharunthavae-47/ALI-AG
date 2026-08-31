@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "ALI AG",
+    "slug": "ali-ag",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "aliag",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ch.aliag.app"
+    },
+    "android": {
+      "package": "ch.aliag.app"
+    },
+    "plugins": ["expo-router"]
+  }
+}
