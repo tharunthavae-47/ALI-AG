@@ -4,6 +4,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter, Oswald } from "next/font/google"
 import "./globals.css"
 import { Jarvis } from "@/components/jarvis"
+import { PushNotifications } from "@/components/push-notifications"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,20 +37,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="de"
-      className={`${inter.variable} ${oswald.variable} bg-background`}
-    >
+    <html lang="de" className={`${inter.variable} ${oswald.variable} bg-background`}>
       <body className="font-sans antialiased">
         {children}
-
-        {/* JARVIS KI-Assistent */}
         <Jarvis />
-
-        {/* Vercel Analytics */}
+        <PushNotifications />
         {process.env.NODE_ENV === "production" && <Analytics />}
-
-        {/* Vercel Speed Insights */}
         <SpeedInsights />
       </body>
     </html>
