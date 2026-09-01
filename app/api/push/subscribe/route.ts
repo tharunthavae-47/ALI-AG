@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@supabase/ssr"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
 export async function POST(request: Request) {
-  const response = NextResponse.json({ ok: true })
-  const supabase = createClient(
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.headers.get("cookie")?.split("; ").map((part) => { const i = part.indexOf("="); return { name: i >= 0 ? part.slice(0, i) : part, value: i >= 0 ? part.slice(i + 1) : "" } }) ?? [] },
-        setAll() {},
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+          } catch {
+            // Route handlers can write cookies; ignore only if the runtime disallows it.
+          }
+        },
       },
     }
   )
@@ -32,5 +41,5 @@ export async function POST(request: Request) {
   }, { onConflict: "user_id,endpoint" })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return response
+  return NextResponse.json({ ok: true })
 }
