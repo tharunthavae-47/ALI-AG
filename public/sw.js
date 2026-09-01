@@ -2,17 +2,12 @@ self.addEventListener("push", (event) => {
   let data = {}
   try { data = event.data ? event.data.json() : {} } catch { data = { body: event.data?.text() || "Neue Benachrichtigung" } }
 
-  const title = data.title || "ALI AG"
-  const options = {
+  event.waitUntil(self.registration.showNotification(data.title || "ALI AG", {
     body: data.body || "Sie haben eine neue Benachrichtigung.",
-    icon: data.icon || "/icon-192.png",
-    badge: data.badge || "/icon-192.png",
     data: { url: data.url || "/" },
     tag: data.tag || "ali-ag-notification",
     renotify: Boolean(data.renotify),
-  }
-
-  event.waitUntil(self.registration.showNotification(title, options))
+  }))
 })
 
 self.addEventListener("notificationclick", (event) => {
