@@ -25,6 +25,26 @@ export default async function OwnerPage() {
     )
   }
 
+  const { data: ownerAccess } = await supabase
+    .from("owner_access")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle()
+
+  if (!ownerAccess) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="w-full max-w-md border border-border bg-card p-8 text-center">
+          <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">MB-Performance</p>
+          <h1 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide">Kein Besitzerzugang</h1>
+          <p className="mt-4 text-sm leading-relaxed text-muted-foreground">Dieses Konto ist kein Besitzerkonto und hat keinen Zugriff auf die Verwaltung.</p>
+          <Link href="/auth/lieferant-login" className="mt-7 flex w-full items-center justify-center bg-primary px-6 py-4 font-display text-sm font-bold uppercase tracking-widest text-primary-foreground">Zum Lieferanten-Login</Link>
+          <Link href="/" className="mt-3 flex w-full items-center justify-center border border-border px-6 py-4 text-sm">Zur Startseite</Link>
+        </div>
+      </main>
+    )
+  }
+
   const bookings = await listBookings()
 
   return (
@@ -32,7 +52,7 @@ export default async function OwnerPage() {
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="min-w-0"><p className="font-display text-[10px] uppercase tracking-[0.35em] text-muted-foreground sm:text-xs">MB-Performance</p><h1 className="mt-1 truncate font-display text-xl font-bold uppercase tracking-wide sm:text-2xl">Besitzerbereich</h1><p className="mt-1 hidden truncate text-xs text-muted-foreground sm:block">{user.email}</p></div>
-          <div className="flex shrink-0 items-center gap-2"><Link href="/lieferant" className="hidden border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary sm:inline-flex">Lieferant</Link><Link href="/" className="hidden border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary sm:inline-flex">Website</Link><form action={signOut}><button type="submit" className="border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary">Abmelden</button></form></div>
+          <div className="flex shrink-0 items-center gap-2"><Link href="/" className="hidden border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary sm:inline-flex">Website</Link><form action={signOut}><button type="submit" className="border border-border px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-secondary">Abmelden</button></form></div>
         </div>
       </header>
 
