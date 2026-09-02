@@ -8,79 +8,33 @@ import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
   const router = useRouter()
-
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  async function handleLogin(
-    event: React.FormEvent<HTMLFormElement>,
-  ) {
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
     if (loading) return
-
     setError("")
     setLoading(true)
 
     try {
       const supabase = createClient()
-
-      const {
-        data,
-        error: loginError,
-      } = await supabase.auth.signInWithPassword({
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       })
 
-      if (loginError) {
-        console.error(
-          "SUPABASE LOGIN ERROR:",
-          loginError,
-        )
-
-        if (
-          loginError.message
-            .toLowerCase()
-            .includes("email not confirmed")
-        ) {
-          setError(
-            "Bitte bestätige zuerst deine E-Mail-Adresse.",
-          )
-        } else {
-          setError(
-            "E-Mail oder Passwort ist ungültig.",
-          )
-        }
-
+      if (loginError || !data.session) {
+        setError("E-Mail oder Passwort ist ungültig.")
         return
       }
-
-      if (!data.session) {
-        setError(
-          "Login fehlgeschlagen: Es wurde keine Sitzung erstellt.",
-        )
-        return
-      }
-
-      console.log(
-        "LOGIN ERFOLGREICH:",
-        data.user?.email,
-      )
 
       router.replace("/besitzer")
       router.refresh()
-    } catch (error) {
-      console.error(
-        "LOGIN ERROR:",
-        error,
-      )
-
-      setError(
-        "Beim Anmelden ist ein Fehler aufgetreten.",
-      )
+    } catch {
+      setError("Beim Anmelden ist ein Fehler aufgetreten.")
     } finally {
       setLoading(false)
     }
@@ -89,102 +43,17 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="w-full max-w-sm">
-
-        <Link
-          href="/"
-          className="font-display text-2xl font-bold tracking-[0.2em] text-foreground"
-        >
-          MB Performance
-        </Link>
-
-        <h1 className="mt-8 font-display text-2xl font-bold uppercase tracking-wide text-foreground">
-          Besitzer-Login
-        </h1>
-
-        <p className="mt-2 text-sm text-muted-foreground">
-          Melde dich an, um die Terminanfragen zu verwalten.
-        </p>
-
-        <form
-          onSubmit={handleLogin}
-          className="mt-8 space-y-5"
-        >
-
-          <label className="block">
-            <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-              E-Mail
-            </span>
-
-            <input
-              type="email"
-              value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
-              required
-              autoComplete="email"
-              disabled={loading}
-              className="mt-2 w-full border border-input bg-card px-4 py-3 text-foreground outline-none focus:border-ring disabled:opacity-50"
-            />
-          </label>
-
-          <label className="block">
-            <span className="font-display text-xs uppercase tracking-widest text-muted-foreground">
-              Passwort
-            </span>
-
-            <input
-              type="password"
-              value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
-              required
-              autoComplete="current-password"
-              disabled={loading}
-              className="mt-2 w-full border border-input bg-card px-4 py-3 text-foreground outline-none focus:border-ring disabled:opacity-50"
-            />
-          </label>
-
-          {error && (
-            <div className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              !email.trim() ||
-              !password
-            }
-            className="w-full bg-primary px-6 py-3 font-display text-sm font-semibold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading
-              ? "Anmelden..."
-              : "Anmelden"}
-          </button>
-
+        <Link href="/" className="font-display text-2xl font-bold tracking-[0.2em] text-foreground">MB Performance</Link>
+        <h1 className="mt-8 font-display text-2xl font-bold uppercase tracking-wide text-foreground">Besitzer-Login</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Anmelden für den Besitzerbereich.</p>
+        <form onSubmit={handleLogin} className="mt-8 space-y-5">
+          <label className="block"><span className="font-display text-xs uppercase tracking-widest text-muted-foreground">E-Mail</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" disabled={loading} className="mt-2 w-full border border-input bg-card px-4 py-3 text-foreground outline-none focus:border-ring disabled:opacity-50" /></label>
+          <label className="block"><span className="font-display text-xs uppercase tracking-widest text-muted-foreground">Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" disabled={loading} className="mt-2 w-full border border-input bg-card px-4 py-3 text-foreground outline-none focus:border-ring disabled:opacity-50" /></label>
+          {error && <div className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>}
+          <button type="submit" disabled={loading || !email.trim() || !password} className="w-full bg-primary px-6 py-3 font-display text-sm font-semibold uppercase tracking-widest text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">{loading ? "Anmelden..." : "Anmelden"}</button>
         </form>
-
-        <p className="mt-6 text-sm text-muted-foreground">
-          Noch kein Konto?{" "}
-          <Link
-            href="/auth/sign-up"
-            className="text-foreground underline underline-offset-4"
-          >
-            Registrieren
-          </Link>
-        </p>
-
-        <Link
-          href="/"
-          className="mt-4 block text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Zurück zur Website
-        </Link>
-
+        <Link href="/auth/lieferant-login" className="mt-6 block text-sm text-muted-foreground hover:text-foreground">→ Zum Lieferanten-Login</Link>
+        <Link href="/" className="mt-4 block text-sm text-muted-foreground hover:text-foreground">← Zurück zur Website</Link>
       </div>
     </main>
   )
