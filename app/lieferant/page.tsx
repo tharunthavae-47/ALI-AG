@@ -28,6 +28,8 @@ export default function LieferantPage() {
   const [items, setItems] = useState<Item[]>([{ item_name: "", quantity: "1", unit_price: "" }])
   const [images, setImages] = useState<File[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({})
+  const [savingPayment, setSavingPayment] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
@@ -53,7 +55,9 @@ export default function LieferantPage() {
       .eq("supplier_id", user.id)
       .order("delivery_date", { ascending: false })
 
-    setOrders((data as Order[]) ?? [])
+    const nextOrders = (data as Order[]) ?? []
+    setOrders(nextOrders)
+    setPaymentInputs(Object.fromEntries(nextOrders.map((order) => [order.id, String(Number(order.paid_amount) || 0)])))
     setLoading(false)
   }
 
@@ -64,6 +68,19 @@ export default function LieferantPage() {
 
   const paidNumber = Number(paid) || 0
   const openAmount = Math.max(0, total - paidNumber)
+
+  const supplierOrderTotal = useMemo(
+    () => orders.reduce((sum, order) => sum + Number(order.total_amount), 0),
+    [orders]
+  )
+  const supplierPaidTotal = useMemo(
+    () => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0),
+    [orders]
+  )
+  const supplierOpenTotal = useMemo(
+    () => orders.reduce((sum, order) => sum + Math.max(0, Number(order.total_amount) - Number(order.paid_amount)), 0),
+    [orders]
+  )
 
   function updateItem(index: number, field: keyof Item, value: string) {
     setItems((current) => current.map((item, i) => i === index ? { ...item, [field]: value } : item))
@@ -147,6 +164,36 @@ export default function LieferantPage() {
     setSaving(false)
   }
 
+  async function savePayment(order: Order) {
+    setMessage("")
+    const value = Number(paymentInputs[order.id])
+    if (!Number.isFinite(value) || value < 0) {
+      setMessage("Bitte einen gültigen Zahlungsbetrag eingeben.")
+      return
+    }
+    if (value > Number(order.total_amount)) {
+      setMessage("Die Zahlung darf nicht höher als der Gesamtbetrag des Auftrags sein.")
+      return
+    }
+
+    setSavingPayment(order.id)
+    const { error } = await supabase
+      .from("supplier_orders")
+      .update({ paid_amount: value })
+      .eq("id", order.id)
+      .eq("supplier_id", userId)
+
+    if (error) {
+      setMessage(error.message)
+      setSavingPayment(null)
+      return
+    }
+
+    await load()
+    setMessage("Zahlung wurde aktualisiert.")
+    setSavingPayment(null)
+  }
+
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-background">Laden...</main>
 
   if (!userId) {
@@ -228,11 +275,73 @@ export default function LieferantPage() {
         </div>
 
         <div className="mt-14 border-t border-border pt-10">
-          <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">Meine Lieferungen</p>
-          <div className="mt-5 space-y-3">
+          <div className="mb-6">
+            <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">Meine Abrechnung</p>
+            <h2 className="mt-2 font-display text-2xl font-bold uppercase tracking-wide">Gesamtübersicht</h2>
+          </div>
+
+          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            <div className="border border-border bg-card p-5">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt Aufträge</p>
+              <p className="mt-2 text-2xl font-bold">CHF {supplierOrderTotal.toFixed(2)}</p>
+            </div>
+            <div className="border border-border bg-card p-5">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">Bar erhalten</p>
+              <p className="mt-2 text-2xl font-bold">CHF {supplierPaidTotal.toFixed(2)}</p>
+            </div>
+            <div className="border border-border bg-card p-5">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground">Noch offen</p>
+              <p className="mt-2 text-2xl font-bold">CHF {supplierOpenTotal.toFixed(2)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
             {orders.length === 0 ? <div className="border border-border p-6 text-sm text-muted-foreground">Noch keine Aufträge erfasst.</div> : orders.map((order) => {
-              const open = Number(order.total_amount) - Number(order.paid_amount)
-              return <div key={order.id} className="border border-border bg-card p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-medium">{order.supplier_name}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(order.delivery_date).toLocaleDateString("de-CH")}</p></div><div className="text-right"><p className="font-bold">CHF {Number(order.total_amount).toFixed(2)}</p><p className="text-xs text-muted-foreground">Offen: CHF {open.toFixed(2)}</p></div></div></div>
+              const open = Math.max(0, Number(order.total_amount) - Number(order.paid_amount))
+              const paymentValue = paymentInputs[order.id] ?? String(Number(order.paid_amount) || 0)
+              return (
+                <div key={order.id} className="border border-border bg-card p-5">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="font-medium">{order.supplier_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{new Date(order.delivery_date).toLocaleDateString("de-CH")}</p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-3 lg:min-w-[520px]">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gesamtauftrag</p>
+                        <p className="mt-1 font-bold">CHF {Number(order.total_amount).toFixed(2)}</p>
+                      </div>
+                      <label className="text-xs text-muted-foreground">
+                        Bar erhalten
+                        <div className="mt-1 flex gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max={Number(order.total_amount)}
+                            step="0.01"
+                            value={paymentValue}
+                            onChange={(e) => setPaymentInputs((current) => ({ ...current, [order.id]: e.target.value }))}
+                            className="w-full min-w-0 border border-border bg-background px-3 py-2 text-sm text-foreground"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingPayment === order.id}
+                            onClick={() => savePayment(order)}
+                            className="shrink-0 bg-primary px-3 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-50"
+                          >
+                            {savingPayment === order.id ? "..." : "Speichern"}
+                          </button>
+                        </div>
+                      </label>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Noch offen</p>
+                        <p className="mt-1 font-bold">CHF {open.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
             })}
           </div>
         </div>
