@@ -23,7 +23,8 @@ export function SupplierOrdersManager() {
   const [images, setImages] = useState<Image[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Order | null>(null)
-  const [imageUrls, setImageUrls] = useState<string[]>([])
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [imageUrls, setImageUrls] = useState<Record<string, string[]>>({})
 
   useEffect(() => { load() }, [])
 
@@ -34,9 +35,33 @@ export function SupplierOrdersManager() {
       supabase.from("supplier_order_items").select("order_id,item_name,quantity,unit_price"),
       supabase.from("supplier_order_images").select("order_id,image_path,image_position").order("image_position"),
     ])
-    setOrders((ordersResult.data as Order[]) ?? [])
-    setItems((itemsResult.data as Item[]) ?? [])
-    setImages((imagesResult.data as Image[]) ?? [])
+
+    const nextOrders = (ordersResult.data as Order[]) ?? []
+    const nextItems = (itemsResult.data as Item[]) ?? []
+    const nextImages = (imagesResult.data as Image[]) ?? []
+
+    setOrders(nextOrders)
+    setItems(nextItems)
+    setImages(nextImages)
+
+    const urlMap: Record<string, string[]> = {}
+    const paths = nextImages.map((image) => image.image_path).filter(Boolean)
+
+    if (paths.length > 0) {
+      const { data: signedData } = await supabase.storage
+        .from("supplier-order-images")
+        .createSignedUrls(paths, 3600)
+
+      ;(signedData ?? []).forEach((signed, index) => {
+        const image = nextImages[index]
+        const url = signed.signedUrl
+        if (!image || !url) return
+        if (!urlMap[image.order_id]) urlMap[image.order_id] = []
+        urlMap[image.order_id].push(url)
+      })
+    }
+
+    setImageUrls(urlMap)
     setLoading(false)
   }
 
@@ -44,14 +69,14 @@ export function SupplierOrdersManager() {
   const paidTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0), [orders])
   const orderTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.total_amount), 0), [orders])
 
-  async function openOrder(order: Order) {
+  function openOrder(order: Order) {
     setSelected(order)
-    const orderImages = images.filter((image) => image.order_id === order.id)
-    const urls = await Promise.all(orderImages.map(async (image) => {
-      const { data } = await supabase.storage.from("supplier-order-images").createSignedUrl(image.image_path, 3600)
-      return data?.signedUrl ?? ""
-    }))
-    setImageUrls(urls.filter(Boolean))
+    setSelectedImage(null)
+  }
+
+  function closeOrder() {
+    setSelected(null)
+    setSelectedImage(null)
   }
 
   if (loading) return <div className="border border-border p-6 text-sm text-muted-foreground">Lieferanten-Aufträge werden geladen...</div>
@@ -64,29 +89,96 @@ export function SupplierOrdersManager() {
         <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Noch offen gesamt</p><p className="mt-2 text-2xl font-bold">CHF {openTotal.toFixed(2)}</p></div>
       </div>
 
-      {orders.length === 0 ? <div className="border border-border bg-card p-8 text-sm text-muted-foreground">Noch keine Lieferanten-Aufträge vorhanden.</div> : <div className="space-y-3">
-        {orders.map((order) => {
-          const open = Math.max(0, Number(order.total_amount) - Number(order.paid_amount))
-          const orderItems = items.filter((item) => item.order_id === order.id)
-          const orderImages = images.filter((image) => image.order_id === order.id)
-          return <button key={order.id} type="button" onClick={() => openOrder(order)} className="w-full border border-border bg-card p-5 text-left transition-colors hover:bg-secondary/40">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div><p className="font-display text-lg font-bold uppercase tracking-wide">{order.supplier_name}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(order.delivery_date).toLocaleDateString("de-CH")} · {orderItems.length} Position(en) · {orderImages.length} Bild(er)</p></div>
-              <div className="text-right"><p className="font-bold">CHF {Number(order.total_amount).toFixed(2)}</p><p className="text-xs text-muted-foreground">Bezahlt: CHF {Number(order.paid_amount).toFixed(2)}</p><p className="mt-1 font-semibold">Offen: CHF {open.toFixed(2)}</p></div>
-            </div>
-          </button>
-        })}
-      </div>}
+      {orders.length === 0 ? (
+        <div className="border border-border bg-card p-8 text-sm text-muted-foreground">Noch keine Lieferanten-Aufträge vorhanden.</div>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((order) => {
+            const open = Math.max(0, Number(order.total_amount) - Number(order.paid_amount))
+            const orderItems = items.filter((item) => item.order_id === order.id)
+            const orderImages = images.filter((image) => image.order_id === order.id)
+            const thumbnails = imageUrls[order.id] ?? []
 
-      {selected && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={() => setSelected(null)}>
-        <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-border bg-background p-6 sm:p-8" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-start justify-between gap-4"><div><p className="text-xs uppercase tracking-widest text-muted-foreground">Lieferauftrag</p><h3 className="mt-1 font-display text-2xl font-bold uppercase">{selected.supplier_name}</h3><p className="mt-1 text-sm text-muted-foreground">{new Date(selected.delivery_date).toLocaleDateString("de-CH")}</p></div><button type="button" onClick={() => setSelected(null)} className="border border-border px-3 py-2">×</button></div>
-          <div className="mt-7 space-y-3">{items.filter((item) => item.order_id === selected.id).map((item) => <div key={item.item_name + item.quantity} className="flex justify-between gap-4 border-b border-border pb-3 text-sm"><span>{item.item_name} × {item.quantity}</span><span>CHF {(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}</span></div>)}</div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Gesamt</p><p className="font-bold">CHF {Number(selected.total_amount).toFixed(2)}</p></div><div><p className="text-xs text-muted-foreground">Bar bezahlt</p><p className="font-bold">CHF {Number(selected.paid_amount).toFixed(2)}</p></div><div><p className="text-xs text-muted-foreground">Offen</p><p className="font-bold">CHF {Math.max(0, Number(selected.total_amount) - Number(selected.paid_amount)).toFixed(2)}</p></div></div>
-          {selected.notes && <p className="mt-6 border border-border p-4 text-sm">{selected.notes}</p>}
-          {imageUrls.length > 0 && <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3">{imageUrls.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={url}><img src={url} alt={`Lieferauftrag Bild ${index + 1}`} className="aspect-square w-full object-cover" /></a>)}</div>}
+            return (
+              <button key={order.id} type="button" onClick={() => openOrder(order)} className="w-full border border-border bg-card p-5 text-left transition-colors hover:bg-secondary/40">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-display text-lg font-bold uppercase tracking-wide">{order.supplier_name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{new Date(order.delivery_date).toLocaleDateString("de-CH")} · {orderItems.length} Position(en) · {orderImages.length} Bild(er)</p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {thumbnails.length > 0 && (
+                      <div className="flex shrink-0 gap-2">
+                        {thumbnails.slice(0, 3).map((url, index) => (
+                          <img key={url} src={url} alt={`Lieferauftrag Bild ${index + 1}`} className="h-16 w-16 rounded-sm border border-border object-cover" />
+                        ))}
+                      </div>
+                    )}
+                    <div className="shrink-0 text-right">
+                      <p className="font-bold">CHF {Number(order.total_amount).toFixed(2)}</p>
+                      <p className="text-xs text-muted-foreground">Bezahlt: CHF {Number(order.paid_amount).toFixed(2)}</p>
+                      <p className="mt-1 font-semibold">Offen: CHF {open.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
         </div>
-      </div>}
+      )}
+
+      {selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" onClick={closeOrder}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-border bg-background p-6 sm:p-8" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">Lieferauftrag</p>
+                <h3 className="mt-1 font-display text-2xl font-bold uppercase">{selected.supplier_name}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{new Date(selected.delivery_date).toLocaleDateString("de-CH")}</p>
+              </div>
+              <button type="button" onClick={closeOrder} className="border border-border px-3 py-2">×</button>
+            </div>
+
+            <div className="mt-7 space-y-3">
+              {items.filter((item) => item.order_id === selected.id).map((item) => (
+                <div key={item.item_name + item.quantity} className="flex justify-between gap-4 border-b border-border pb-3 text-sm">
+                  <span>{item.item_name} × {item.quantity}</span>
+                  <span>CHF {(Number(item.quantity) * Number(item.unit_price)).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div><p className="text-xs text-muted-foreground">Gesamt</p><p className="font-bold">CHF {Number(selected.total_amount).toFixed(2)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Bar bezahlt</p><p className="font-bold">CHF {Number(selected.paid_amount).toFixed(2)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Offen</p><p className="font-bold">CHF {Math.max(0, Number(selected.total_amount) - Number(selected.paid_amount)).toFixed(2)}</p></div>
+            </div>
+
+            {selected.notes && <p className="mt-6 border border-border p-4 text-sm">{selected.notes}</p>}
+
+            {(imageUrls[selected.id] ?? []).length > 0 && (
+              <div className="mt-7">
+                <p className="mb-3 text-xs uppercase tracking-widest text-muted-foreground">Bilder</p>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                  {(imageUrls[selected.id] ?? []).map((url, index) => (
+                    <button key={url} type="button" onClick={() => setSelectedImage(url)} className="group overflow-hidden border border-border bg-card text-left">
+                      <img src={url} alt={`Lieferauftrag Bild ${index + 1}`} className="aspect-square w-full object-cover transition-transform group-hover:scale-105" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {selectedImage && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4" onClick={() => setSelectedImage(null)}>
+          <button type="button" onClick={() => setSelectedImage(null)} className="absolute right-5 top-5 border border-white/30 bg-black/40 px-4 py-2 text-2xl text-white">×</button>
+          <img src={selectedImage} alt="Lieferauftrag Bild gross" className="max-h-[90vh] max-w-[95vw] object-contain" onClick={(event) => event.stopPropagation()} />
+        </div>
+      )}
     </div>
   )
 }
