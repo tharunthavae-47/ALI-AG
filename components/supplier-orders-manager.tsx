@@ -17,6 +17,13 @@ type Order = {
 type Item = { order_id: string; item_name: string; quantity: number; unit_price: number }
 type Image = { order_id: string; image_path: string; image_position: number }
 
+type SupplierSummary = {
+  supplierName: string
+  totalAmount: number
+  paidAmount: number
+  openAmount: number
+}
+
 export function SupplierOrdersManager() {
   const [orders, setOrders] = useState<Order[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -65,9 +72,32 @@ export function SupplierOrdersManager() {
     setLoading(false)
   }
 
-  const openTotal = useMemo(() => orders.reduce((sum, order) => sum + Math.max(0, Number(order.total_amount) - Number(order.paid_amount)), 0), [orders])
-  const paidTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0), [orders])
   const orderTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.total_amount), 0), [orders])
+  const paidTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0), [orders])
+  const openTotal = useMemo(() => orders.reduce((sum, order) => sum + Math.max(0, Number(order.total_amount) - Number(order.paid_amount)), 0), [orders])
+
+  const supplierSummaries = useMemo<SupplierSummary[]>(() => {
+    const grouped = new Map<string, SupplierSummary>()
+
+    for (const order of orders) {
+      const supplierName = order.supplier_name?.trim() || "Unbekannter Lieferant"
+      const totalAmount = Number(order.total_amount) || 0
+      const paidAmount = Number(order.paid_amount) || 0
+      const current = grouped.get(supplierName) ?? {
+        supplierName,
+        totalAmount: 0,
+        paidAmount: 0,
+        openAmount: 0,
+      }
+
+      current.totalAmount += totalAmount
+      current.paidAmount += paidAmount
+      current.openAmount += Math.max(0, totalAmount - paidAmount)
+      grouped.set(supplierName, current)
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => b.openAmount - a.openAmount)
+  }, [orders])
 
   function openOrder(order: Order) {
     setSelected(order)
@@ -84,10 +114,68 @@ export function SupplierOrdersManager() {
   return (
     <div>
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt Aufträge</p><p className="mt-2 text-2xl font-bold">CHF {orderTotal.toFixed(2)}</p></div>
-        <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Bereits bar bezahlt</p><p className="mt-2 text-2xl font-bold">CHF {paidTotal.toFixed(2)}</p></div>
-        <div className="border border-border bg-card p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Noch offen gesamt</p><p className="mt-2 text-2xl font-bold">CHF {openTotal.toFixed(2)}</p></div>
+        <div className="border border-border bg-card p-5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt Aufträge</p>
+          <p className="mt-2 text-2xl font-bold">CHF {orderTotal.toFixed(2)}</p>
+        </div>
+        <div className="border border-border bg-card p-5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Bereits bar bezahlt</p>
+          <p className="mt-2 text-2xl font-bold">CHF {paidTotal.toFixed(2)}</p>
+        </div>
+        <div className="border border-border bg-card p-5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Noch offen gesamt</p>
+          <p className="mt-2 text-2xl font-bold">CHF {openTotal.toFixed(2)}</p>
+        </div>
       </div>
+
+      {supplierSummaries.length > 0 && (
+        <section className="mb-10 border border-border bg-card">
+          <div className="border-b border-border p-5 sm:p-6">
+            <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Zahlungsübersicht</p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="font-display text-2xl font-bold uppercase tracking-wide">Offene Lieferantenschulden</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Alle Besitzer-Logins sehen dieselbe Unternehmensübersicht.</p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt offen</p>
+                <p className="text-2xl font-bold">CHF {openTotal.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[650px] text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-widest text-muted-foreground">
+                  <th className="px-5 py-4 font-medium sm:px-6">Lieferant</th>
+                  <th className="px-5 py-4 text-right font-medium sm:px-6">Gesamt</th>
+                  <th className="px-5 py-4 text-right font-medium sm:px-6">Bezahlt</th>
+                  <th className="px-5 py-4 text-right font-medium sm:px-6">Noch offen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplierSummaries.map((supplier) => (
+                  <tr key={supplier.supplierName} className="border-b border-border last:border-b-0">
+                    <td className="px-5 py-4 font-semibold sm:px-6">{supplier.supplierName}</td>
+                    <td className="px-5 py-4 text-right sm:px-6">CHF {supplier.totalAmount.toFixed(2)}</td>
+                    <td className="px-5 py-4 text-right sm:px-6">CHF {supplier.paidAmount.toFixed(2)}</td>
+                    <td className="px-5 py-4 text-right font-bold sm:px-6">CHF {supplier.openAmount.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-secondary/40 font-bold">
+                  <td className="px-5 py-4 sm:px-6">Total</td>
+                  <td className="px-5 py-4 text-right sm:px-6">CHF {orderTotal.toFixed(2)}</td>
+                  <td className="px-5 py-4 text-right sm:px-6">CHF {paidTotal.toFixed(2)}</td>
+                  <td className="px-5 py-4 text-right sm:px-6">CHF {openTotal.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+      )}
 
       {orders.length === 0 ? (
         <div className="border border-border bg-card p-8 text-sm text-muted-foreground">Noch keine Lieferanten-Aufträge vorhanden.</div>
