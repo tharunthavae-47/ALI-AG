@@ -4,6 +4,7 @@ import { listBookings, signOut } from "@/app/actions"
 import { BookingsManager } from "@/components/bookings-manager"
 import { OccasionManager } from "@/components/occasion-manager"
 import { SupplierOrdersManager } from "@/components/supplier-orders-manager"
+import { OwnerTodo } from "@/components/owner-todo"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -38,7 +39,10 @@ export default async function OwnerPage() {
       </header>
 
       <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        <div className="mb-8"><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Verwaltung</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Terminanfragen</h2><p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">Hier sehen Sie alle eingegangenen Terminanfragen. Sie können Termine bestätigen oder ablehnen.</p></div>
+        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Verwaltung</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Terminanfragen</h2><p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">Hier sehen Sie alle eingegangenen Terminanfragen. Sie können Termine bestätigen oder ablehnen.</p></div>
+          <div className="w-full shrink-0 lg:w-[360px]"><OwnerTodo /></div>
+        </div>
         {bookings.length === 0 ? <div className="border border-border bg-card px-6 py-16 text-center"><p className="font-display text-lg font-bold uppercase tracking-wide">Keine Buchungen</p><p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">Aktuell sind keine Terminanfragen vorhanden.</p><Link href="/" className="mt-6 inline-flex border border-border px-5 py-3 text-xs font-medium uppercase tracking-widest transition-colors hover:bg-secondary">Zur Website</Link></div> : <BookingsManager initialBookings={bookings} />}
         <div className="mt-16 border-t border-border pt-12"><OccasionManager /></div>
         <div className="mt-16 border-t border-border pt-12"><div className="mb-7"><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Lieferanten</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Lieferaufträge</h2><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Hier sehen Sie alle Lieferaufträge, Zahlungen und den gesamten offenen Betrag.</p></div><SupplierOrdersManager /></div>
