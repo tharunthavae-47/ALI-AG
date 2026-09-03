@@ -9,16 +9,30 @@ type Todo = { id: string; title: string; completed: boolean }
 
 export function OwnerTodo() {
   const [todos, setTodos] = useState<Todo[]>([])
+  const [openCount, setOpenCount] = useState(0)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase
-      .from("owner_todos")
-      .select("id,title,completed")
-      .eq("completed", false)
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(5)
-      .then(({ data }) => setTodos((data ?? []) as Todo[]))
+
+    async function loadTodos() {
+      const [{ count }, { data }] = await Promise.all([
+        supabase
+          .from("owner_todos")
+          .select("id", { count: "exact", head: true })
+          .eq("completed", false),
+        supabase
+          .from("owner_todos")
+          .select("id,title,completed")
+          .eq("completed", false)
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .limit(3),
+      ])
+
+      setOpenCount(count ?? 0)
+      setTodos((data ?? []) as Todo[])
+    }
+
+    loadTodos()
   }, [])
 
   return (
@@ -35,7 +49,7 @@ export function OwnerTodo() {
             <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">Gemeinsam</p>
             <h3 className="mt-1 font-display text-xl font-bold uppercase tracking-wide">To-do</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              {todos.length > 0 ? `${todos.length} offene Aufgaben` : "Aufgaben verwalten"}
+              {openCount > 0 ? `${openCount} offene Aufgaben` : "Aufgaben verwalten"}
             </p>
           </div>
         </div>
@@ -43,7 +57,7 @@ export function OwnerTodo() {
       </div>
       {todos.length > 0 && (
         <div className="mt-5 space-y-2 border-t border-border pt-4">
-          {todos.slice(0, 3).map((todo) => (
+          {todos.map((todo) => (
             <div key={todo.id} className="flex items-center gap-3 text-sm">
               <ClipboardList className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{todo.title}</span>
