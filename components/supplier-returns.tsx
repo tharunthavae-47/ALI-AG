@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
-type Order = { id: string; supplier_name: string; delivery_date: string }
+type Order = { id: string; supplier_name: string; delivery_date: string; supplier_id?: string }
 type Item = { id: string; order_id: string; item_name: string; quantity: number; unit_price: number }
 type ReturnItem = { item_id: string; item_name: string; quantity: number }
-type ReturnRequest = { id: string; order_id: string; supplier_name: string; selected_items: ReturnItem[]; reason: string | null; status: string; owner_note: string | null; created_at: string }
+type ReturnRequest = { id: string; order_id: string; supplier_id?: string; supplier_name: string; selected_items: ReturnItem[]; reason: string | null; status: string; owner_note: string | null; created_at: string }
 
 const supabase = createClient()
 
@@ -32,21 +32,27 @@ export function SupplierReturns() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    if (mode === "supplier") {
-      const { data: orderData } = await supabase.from("supplier_orders").select("id,supplier_name,delivery_date").eq("supplier_id", user.id).order("delivery_date", { ascending: false })
-      setOrders((orderData as Order[]) ?? [])
+    let orderQuery = supabase.from("supplier_orders").select("id,supplier_name,delivery_date,supplier_id").order("delivery_date", { ascending: false })
+    if (mode === "supplier") orderQuery = orderQuery.eq("supplier_id", user.id)
+
+    const { data: orderData } = await orderQuery
+    const nextOrders = (orderData as Order[]) ?? []
+    setOrders(nextOrders)
+
+    const orderIds = nextOrders.map((order) => order.id)
+    if (orderIds.length > 0) {
+      const { data: itemData } = await supabase
+        .from("supplier_order_items")
+        .select("id,order_id,item_name,quantity,unit_price")
+        .in("order_id", orderIds)
+      setItems((itemData as Item[]) ?? [])
     } else {
-      const { data: orderData } = await supabase.from("supplier_orders").select("id,supplier_name,delivery_date").order("delivery_date", { ascending: false })
-      setOrders((orderData as Order[]) ?? [])
+      setItems([])
     }
 
-    const orderIds = ((mode === "supplier" ? (await supabase.from("supplier_orders").select("id").eq("supplier_id", user.id)).data ?? [])) as { id: string }[]
-    const { data: itemData } = mode === "supplier" && orderIds.length > 0
-      ? await supabase.from("supplier_order_items").select("id,order_id,item_name,quantity,unit_price").in("order_id", orderIds.map((o) => o.id))
-      : await supabase.from("supplier_order_items").select("id,order_id,item_name,quantity,unit_price")
-    setItems((itemData as Item[]) ?? [])
-
-    const { data: returnData } = await supabase.from("supplier_returns").select("id,order_id,supplier_name,selected_items,reason,status,owner_note,created_at").order("created_at", { ascending: false })
+    let returnQuery = supabase.from("supplier_returns").select("id,order_id,supplier_id,supplier_name,selected_items,reason,status,owner_note,created_at").order("created_at", { ascending: false })
+    if (mode === "supplier") returnQuery = returnQuery.eq("supplier_id", user.id)
+    const { data: returnData } = await returnQuery
     setReturns((returnData ?? []) as ReturnRequest[])
     setLoading(false)
   }
@@ -105,7 +111,6 @@ export function SupplierReturns() {
   if (loading) return <div className="mx-auto mt-10 max-w-6xl px-4 sm:px-6"><div className="border border-border bg-card p-6 text-sm text-muted-foreground">Retouren werden geladen...</div></div>
 
   if (mode === "supplier") {
-    const ownReturns = returns
     return (
       <section className="mx-auto mt-14 max-w-6xl border-t border-border px-4 pt-10 sm:px-6">
         <div className="border border-border bg-card p-5 sm:p-7">
@@ -120,7 +125,7 @@ export function SupplierReturns() {
           {message && <p className="mt-5 border border-border p-4 text-sm">{message}</p>}
           <button type="button" disabled={saving || !selectedOrder} onClick={submitReturn} className="mt-6 w-full bg-primary px-5 py-4 text-sm font-bold uppercase tracking-widest text-primary-foreground disabled:opacity-50">{saving ? "Wird gesendet..." : "Retoure einreichen"}</button>
         </div>
-        <div className="mt-8 space-y-3 pb-12"><h3 className="font-display text-xl font-bold uppercase tracking-wide">Meine Retouren</h3>{ownReturns.length === 0 ? <p className="border border-border p-5 text-sm text-muted-foreground">Noch keine Retouren.</p> : ownReturns.map((entry) => <div key={entry.id} className="border border-border bg-card p-5"><div className="flex flex-col gap-2 sm:flex-row sm:justify-between"><strong>{entry.supplier_name}</strong><span className="text-xs uppercase tracking-widest text-muted-foreground">{entry.status}</span></div><p className="mt-3 text-sm">{entry.selected_items.map((item) => `${item.item_name} × ${item.quantity}`).join(", ")}</p>{entry.reason && <p className="mt-2 text-xs text-muted-foreground">Grund: {entry.reason}</p>}</div>)}</div>
+        <div className="mt-8 space-y-3 pb-12"><h3 className="font-display text-xl font-bold uppercase tracking-wide">Meine Retouren</h3>{returns.length === 0 ? <p className="border border-border p-5 text-sm text-muted-foreground">Noch keine Retouren.</p> : returns.map((entry) => <div key={entry.id} className="border border-border bg-card p-5"><div className="flex flex-col gap-2 sm:flex-row sm:justify-between"><strong>{entry.supplier_name}</strong><span className="text-xs uppercase tracking-widest text-muted-foreground">{entry.status}</span></div><p className="mt-3 text-sm">{entry.selected_items.map((item) => `${item.item_name} × ${item.quantity}`).join(", ")}</p>{entry.reason && <p className="mt-2 text-xs text-muted-foreground">Grund: {entry.reason}</p>}{entry.owner_note && <p className="mt-2 text-sm">Besitzer: {entry.owner_note}</p>}</div>)}</div>
       </section>
     )
   }
