@@ -2,12 +2,10 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -31,8 +29,9 @@ export default function LoginPage() {
         return
       }
 
-      router.replace("/besitzer")
-      router.refresh()
+      // Vollständige Navigation erzwingt einen neuen Server-Request.
+      // Dadurch kann der Supabase-Session-Cookie sicher vom Proxy erkannt werden.
+      window.location.replace("/besitzer")
     } catch {
       setError("Beim Anmelden ist ein Fehler aufgetreten.")
     } finally {
