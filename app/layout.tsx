@@ -5,7 +5,7 @@ import { Inter, Oswald } from "next/font/google"
 import "./globals.css"
 import { Jarvis } from "@/components/jarvis"
 import { PushNotifications } from "@/components/push-notifications"
-import { SupplierReturns } from "@/components/supplier-returns"
+import { SupplierReturnsV2 } from "@/components/supplier-returns-v2"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,7 +41,7 @@ export default function RootLayout({
     <html lang="de" className={`${inter.variable} ${oswald.variable} bg-background`}>
       <body className="font-sans antialiased">
         {children}
-        <SupplierReturns />
+        <SupplierReturnsV2 />
         <Jarvis />
         <PushNotifications />
         {process.env.NODE_ENV === "production" && <Analytics />}
