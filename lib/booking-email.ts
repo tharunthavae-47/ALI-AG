@@ -79,7 +79,7 @@ export async function sendBookingEmail(type: BookingEmailType, data: BookingEmai
     html = layout("Neue Terminanfrage", `Neue Buchungsanfrage von ${escapeHtml(data.name)}`, ownerBody(data))
   } else {
     to = data.email
-    subject = type === "confirmed" ? "Ihr Termin bei MB-Performance wurde bestätigt" : type === "rejected" ? "Ihre Terminanfrage bei ALI-AG wurde abgelehnt" : "Ihre Terminanfrage bei MB-Performance ist eingegangen"
+    subject = type === "confirmed" ? "Ihr Termin bei MB-Performance wurde bestätigt" : type === "rejected" ? "Ihre Terminanfrage bei MB-Performance wurde abgelehnt" : "Ihre Terminanfrage bei MB-Performance ist eingegangen"
     html = layout(subject, subject, customerBody(data, type))
   }
 
