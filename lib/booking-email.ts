@@ -23,11 +23,15 @@ function escapeHtml(value: string) {
 }
 
 function config() {
-  const apiKey = process.env.RESEND_API_KEY
-  const from = process.env.RESEND_FROM_EMAIL
+  const apiKey = process.env.RESEND_API_KEY?.trim()
+  const from = process.env.RESEND_FROM_EMAIL?.trim()
 
   if (!apiKey || !from) return null
   return { resend: new Resend(apiKey), from }
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
 function layout(title: string, preheader: string, body: string) {
@@ -46,49 +50,77 @@ function customerBody(data: BookingEmailData, type: BookingEmailType) {
   }
 
   if (type === "confirmed") {
-    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei MB-Performance begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.</p>`
+    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei ALI-AG begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.</p>`
   }
 
   return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;color:#9f1239;font-size:15px"><strong>Ihre Terminanfrage konnte leider nicht bestätigt werden.</strong></div>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Bei Fragen können Sie sich gerne direkt bei uns melden.</p>`
 }
 
 function ownerBody(data: BookingEmailData) {
-  return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Eine neue Terminanfrage ist eingegangen.</p>${details(data)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.7"><tr><td style="padding:6px 0"><strong>Name:</strong> ${escapeHtml(data.name)}</td></tr><tr><td style="padding:6px 0"><strong>E-Mail:</strong> ${escapeHtml(data.email)}</td></tr><tr><td style="padding:6px 0"><strong>Telefon:</strong> ${escapeHtml(data.phone)}</td></tr><tr><td style="padding:6px 0"><strong>Anliegen:</strong><br>${escapeHtml(data.problem).replaceAll("\n", "<br>")}</td></tr></table>`
+  return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Eine neue Terminanfrage ist bei ALI-AG eingegangen.</p>${details(data)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.7"><tr><td style="padding:6px 0"><strong>Name:</strong> ${escapeHtml(data.name)}</td></tr><tr><td style="padding:6px 0"><strong>E-Mail:</strong> ${escapeHtml(data.email)}</td></tr><tr><td style="padding:6px 0"><strong>Telefon:</strong> ${escapeHtml(data.phone)}</td></tr><tr><td style="padding:6px 0"><strong>Anliegen:</strong><br>${escapeHtml(data.problem).replaceAll("\n", "<br>")}</td></tr></table>`
 }
 
 export async function sendBookingEmail(type: BookingEmailType, data: BookingEmailData) {
   const cfg = config()
 
   if (!cfg) {
-    console.error("Resend ist nicht konfiguriert: RESEND_API_KEY oder RESEND_FROM_EMAIL fehlt.")
+    console.error("[ALI-AG] Resend ist nicht konfiguriert: RESEND_API_KEY oder RESEND_FROM_EMAIL fehlt.")
     return { ok: false, error: "Resend ist nicht konfiguriert." }
   }
 
-  const owner = process.env.BOOKING_OWNER_EMAIL
   let to: string
   let subject: string
   let html: string
 
   if (type === "new-owner") {
+    const owner = process.env.BOOKING_OWNER_EMAIL?.trim()
+
     if (!owner) {
-      console.error("BOOKING_OWNER_EMAIL fehlt.")
-      return { ok: false, error: "BOOKING_OWNER_EMAIL fehlt." }
+      console.error("[ALI-AG] BOOKING_OWNER_EMAIL fehlt oder ist leer.")
+      return { ok: false, error: "BOOKING_OWNER_EMAIL fehlt oder ist leer." }
     }
+
+    if (!isValidEmail(owner)) {
+      console.error("[ALI-AG] BOOKING_OWNER_EMAIL ist ungültig.")
+      return { ok: false, error: "BOOKING_OWNER_EMAIL ist ungültig." }
+    }
+
     to = owner
-    subject = "Neue Terminanfrage bei MB-Performance"
+    subject = "Neue Terminanfrage bei ALI-AG"
     html = layout("Neue Terminanfrage", `Neue Buchungsanfrage von ${escapeHtml(data.name)}`, ownerBody(data))
   } else {
-    to = data.email
-    subject = type === "confirmed" ? "Ihr Termin bei MB-Performance wurde bestätigt" : type === "rejected" ? "Ihre Terminanfrage bei MB-Performance wurde abgelehnt" : "Ihre Terminanfrage bei MB-Performance ist eingegangen"
+    const customerEmail = data.email?.trim()
+
+    if (!customerEmail || !isValidEmail(customerEmail)) {
+      console.error("[ALI-AG] Kunden-E-Mail ist ungültig.")
+      return { ok: false, error: "Kunden-E-Mail ist ungültig." }
+    }
+
+    to = customerEmail
+    subject =
+      type === "confirmed"
+        ? "Ihr Termin bei ALI-AG wurde bestätigt"
+        : type === "rejected"
+          ? "Ihre Terminanfrage bei ALI-AG wurde abgelehnt"
+          : "Ihre Terminanfrage bei ALI-AG ist eingegangen"
     html = layout(subject, subject, customerBody(data, type))
   }
 
-  const result = await cfg.resend.emails.send({ from: cfg.from, to, subject, html })
+  console.log(`[ALI-AG] Sende ${type} E-Mail an ${to}`)
+
+  const result = await cfg.resend.emails.send({
+    from: cfg.from,
+    to,
+    subject,
+    html,
+  })
 
   if (result.error) {
-    console.error("Resend Fehler:", result.error)
+    console.error(`[ALI-AG] Resend Fehler bei ${type}:`, result.error)
     return { ok: false, error: result.error.message }
   }
+
+  console.log(`[ALI-AG] ${type} E-Mail erfolgreich an Resend übergeben. ID: ${result.data?.id ?? "unbekannt"}`)
 
   return { ok: true, id: result.data?.id }
 }
