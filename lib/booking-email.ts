@@ -46,7 +46,7 @@ function customerBody(data: BookingEmailData, type: BookingEmailType) {
   }
 
   if (type === "confirmed") {
-    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei ALI-AG begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.</p>`
+    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei MB-Performance begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.</p>`
   }
 
   return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;color:#9f1239;font-size:15px"><strong>Ihre Terminanfrage konnte leider nicht bestätigt werden.</strong></div>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Bei Fragen können Sie sich gerne direkt bei uns melden.</p>`
@@ -75,11 +75,11 @@ export async function sendBookingEmail(type: BookingEmailType, data: BookingEmai
       return { ok: false, error: "BOOKING_OWNER_EMAIL fehlt." }
     }
     to = owner
-    subject = "Neue Terminanfrage bei ALI-AG"
+    subject = "Neue Terminanfrage bei MB-Performance"
     html = layout("Neue Terminanfrage", `Neue Buchungsanfrage von ${escapeHtml(data.name)}`, ownerBody(data))
   } else {
     to = data.email
-    subject = type === "confirmed" ? "Ihr Termin bei ALI-AG wurde bestätigt" : type === "rejected" ? "Ihre Terminanfrage bei ALI-AG wurde abgelehnt" : "Ihre Terminanfrage bei ALI-AG ist eingegangen"
+    subject = type === "confirmed" ? "Ihr Termin bei MB-Performance wurde bestätigt" : type === "rejected" ? "Ihre Terminanfrage bei ALI-AG wurde abgelehnt" : "Ihre Terminanfrage bei MB-Performance ist eingegangen"
     html = layout(subject, subject, customerBody(data, type))
   }
 
