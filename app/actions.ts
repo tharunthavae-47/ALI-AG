@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { sendBookingEmail } from "@/lib/booking-email"
 
 // ============================================================
 // TYPES
@@ -61,269 +62,79 @@ export async function createBooking(
     const supabase = await createClient()
 
     if (!data) {
-      return {
-        ok: false,
-        error: "Keine Buchungsdaten erhalten.",
-      }
+      return { ok: false, error: "Keine Buchungsdaten erhalten." }
     }
 
-    const booking_date = String(
-      data.booking_date ?? "",
-    ).trim()
+    const booking_date = String(data.booking_date ?? "").trim()
+    const booking_time = String(data.booking_time ?? "").trim()
+    const name = String(data.name ?? "").trim()
+    const phone = String(data.phone ?? "").trim()
+    const email = String(data.email ?? "").trim().toLowerCase()
+    const car = String(data.car ?? "").trim()
+    const problem = String(data.problem ?? "").trim()
+    const image_urls = Array.isArray(data.image_urls) ? data.image_urls : []
 
-    const booking_time = String(
-      data.booking_time ?? "",
-    ).trim()
-
-    const name = String(
-      data.name ?? "",
-    ).trim()
-
-    const phone = String(
-      data.phone ?? "",
-    ).trim()
-
-    const email = String(
-      data.email ?? "",
-    )
-      .trim()
-      .toLowerCase()
-
-    const car = String(
-      data.car ?? "",
-    ).trim()
-
-    const problem = String(
-      data.problem ?? "",
-    ).trim()
-
-    const image_urls = Array.isArray(
-      data.image_urls,
-    )
-      ? data.image_urls
-      : []
-
-    // ==========================================================
-    // PFLICHTFELDER
-    // ==========================================================
-
-    if (
-      !booking_date ||
-      !booking_time ||
-      !name ||
-      !phone ||
-      !email ||
-      !car ||
-      !problem
-    ) {
-      return {
-        ok: false,
-        error:
-          "Bitte fülle alle Pflichtfelder aus.",
-      }
+    if (!booking_date || !booking_time || !name || !phone || !email || !car || !problem) {
+      return { ok: false, error: "Bitte fülle alle Pflichtfelder aus." }
     }
 
-    // ==========================================================
-    // DATUM
-    // ==========================================================
-
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(
-        booking_date,
-      )
-    ) {
-      return {
-        ok: false,
-        error: "Das Datum ist ungültig.",
-      }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(booking_date)) {
+      return { ok: false, error: "Das Datum ist ungültig." }
     }
 
-    const selectedDate = new Date(
-      `${booking_date}T00:00:00`,
-    )
-
-    if (
-      Number.isNaN(
-        selectedDate.getTime(),
-      )
-    ) {
-      return {
-        ok: false,
-        error: "Das Datum ist ungültig.",
-      }
+    const selectedDate = new Date(`${booking_date}T00:00:00`)
+    if (Number.isNaN(selectedDate.getTime())) {
+      return { ok: false, error: "Das Datum ist ungültig." }
     }
 
     const today = new Date()
-
-    today.setHours(
-      0,
-      0,
-      0,
-      0,
-    )
-
+    today.setHours(0, 0, 0, 0)
     if (selectedDate < today) {
-      return {
-        ok: false,
-        error:
-          "Ein Termin in der Vergangenheit ist nicht möglich.",
-      }
+      return { ok: false, error: "Ein Termin in der Vergangenheit ist nicht möglich." }
     }
 
-    // ==========================================================
-    // UHRZEIT
-    // ==========================================================
-
-    if (
-      !/^\d{2}:\d{2}$/.test(
-        booking_time,
-      )
-    ) {
-      return {
-        ok: false,
-        error: "Die Uhrzeit ist ungültig.",
-      }
+    if (!/^\d{2}:\d{2}$/.test(booking_time)) {
+      return { ok: false, error: "Die Uhrzeit ist ungültig." }
     }
 
-    const [
-      hourString,
-      minuteString,
-    ] = booking_time.split(":")
+    const [hourString, minuteString] = booking_time.split(":")
+    const hour = Number(hourString)
+    const minute = Number(minuteString)
 
-    const hour = Number(
-      hourString,
-    )
-
-    const minute = Number(
-      minuteString,
-    )
-
-    if (
-      Number.isNaN(hour) ||
-      Number.isNaN(minute) ||
-      minute !== 0 ||
-      hour < 15 ||
-      hour > 22
-    ) {
-      return {
-        ok: false,
-        error:
-          "Bitte wähle eine gültige Terminzeit zwischen 15:00 und 22:00 Uhr.",
-      }
+    if (Number.isNaN(hour) || Number.isNaN(minute) || minute !== 0 || hour < 15 || hour > 22) {
+      return { ok: false, error: "Bitte wähle eine gültige Terminzeit zwischen 15:00 und 22:00 Uhr." }
     }
 
-    // ==========================================================
-    // EMAIL
-    // ==========================================================
-
-    const emailRegex =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
-      return {
-        ok: false,
-        error:
-          "Bitte gib eine gültige E-Mail-Adresse ein.",
-      }
+      return { ok: false, error: "Bitte gib eine gültige E-Mail-Adresse ein." }
     }
 
-    // ==========================================================
-    // TEXTLÄNGEN
-    // ==========================================================
+    if (name.length > 200) return { ok: false, error: "Der Name ist zu lang." }
+    if (phone.length > 50) return { ok: false, error: "Die Telefonnummer ist zu lang." }
+    if (email.length > 320) return { ok: false, error: "Die E-Mail-Adresse ist zu lang." }
+    if (car.length > 300) return { ok: false, error: "Die Fahrzeugangabe ist zu lang." }
+    if (problem.length > 2000) return { ok: false, error: "Die Problembeschreibung ist zu lang." }
 
-    if (name.length > 200) {
-      return {
-        ok: false,
-        error: "Der Name ist zu lang.",
-      }
-    }
-
-    if (phone.length > 50) {
-      return {
-        ok: false,
-        error:
-          "Die Telefonnummer ist zu lang.",
-      }
-    }
-
-    if (email.length > 320) {
-      return {
-        ok: false,
-        error:
-          "Die E-Mail-Adresse ist zu lang.",
-      }
-    }
-
-    if (car.length > 300) {
-      return {
-        ok: false,
-        error:
-          "Die Fahrzeugangabe ist zu lang.",
-      }
-    }
-
-    if (problem.length > 2000) {
-      return {
-        ok: false,
-        error:
-          "Die Problembeschreibung ist zu lang.",
-      }
-    }
-
-    // ==========================================================
-    // TERMIN PRÜFEN
-    // ==========================================================
-
-    const {
-      data: existingBooking,
-      error: existingError,
-    } = await supabase
+    const { data: existingBooking, error: existingError } = await supabase
       .from("bookings")
       .select("id, status")
-      .eq(
-        "booking_date",
-        booking_date,
-      )
-      .eq(
-        "booking_time",
-        booking_time,
-      )
-      .in("status", [
-        "pending",
-        "confirmed",
-      ])
+      .eq("booking_date", booking_date)
+      .eq("booking_time", booking_time)
+      .in("status", ["pending", "confirmed"])
       .limit(1)
       .maybeSingle()
 
     if (existingError) {
-      console.error(
-        "Fehler beim Prüfen des Termins:",
-        existingError,
-      )
-
-      return {
-        ok: false,
-        error:
-          "Der Termin konnte nicht geprüft werden.",
-      }
+      console.error("Fehler beim Prüfen des Termins:", existingError)
+      return { ok: false, error: "Der Termin konnte nicht geprüft werden." }
     }
 
     if (existingBooking) {
-      return {
-        ok: false,
-        error:
-          "Dieser Termin ist bereits vergeben.",
-      }
+      return { ok: false, error: "Dieser Termin ist bereits vergeben." }
     }
 
-    // ==========================================================
-    // BUCHUNG ERSTELLEN
-    // ==========================================================
-
-    const {
-      data: booking,
-      error: insertError,
-    } = await supabase
+    const { data: booking, error: insertError } = await supabase
       .from("bookings")
       .insert({
         booking_date,
@@ -340,49 +151,44 @@ export async function createBooking(
       .single()
 
     if (insertError) {
-      console.error(
-        "Fehler beim Erstellen der Buchung:",
-        insertError,
-      )
+      console.error("Fehler beim Erstellen der Buchung:", insertError)
 
-      if (
-        insertError.code === "23505"
-      ) {
-        return {
-          ok: false,
-          error:
-            "Dieser Termin wurde gerade von jemand anderem gebucht.",
-        }
+      if (insertError.code === "23505") {
+        return { ok: false, error: "Dieser Termin wurde gerade von jemand anderem gebucht." }
       }
 
       return {
         ok: false,
-        error:
-          insertError.message ||
-          "Die Buchung konnte nicht erstellt werden.",
+        error: insertError.message || "Die Buchung konnte nicht erstellt werden.",
       }
     }
 
     revalidatePath("/")
     revalidatePath("/besitzer")
 
+    // E-Mails dürfen eine erfolgreiche Buchung niemals verhindern.
+    const emailData = booking as Booking
+    const emailResults = await Promise.allSettled([
+      sendBookingEmail("new-customer", emailData),
+      sendBookingEmail("new-owner", emailData),
+    ])
+
+    for (const result of emailResults) {
+      if (result.status === "rejected") {
+        console.error("Booking-E-Mail konnte nicht gesendet werden:", result.reason)
+      } else if (!result.value.ok) {
+        console.error("Booking-E-Mail konnte nicht gesendet werden:", result.value.error)
+      }
+    }
+
     return {
       ok: true,
       bookingId: booking.id,
-      booking:
-        booking as Booking,
+      booking: booking as Booking,
     }
   } catch (error) {
-    console.error(
-      "createBooking Fehler:",
-      error,
-    )
-
-    return {
-      ok: false,
-      error:
-        "Ein unerwarteter Fehler ist aufgetreten.",
-    }
+    console.error("createBooking Fehler:", error)
+    return { ok: false, error: "Ein unerwarteter Fehler ist aufgetreten." }
   }
 }
 
@@ -395,89 +201,37 @@ export async function saveBookingImages(
   imageUrls: string[],
 ) {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
 
-    if (!bookingId) {
-      return {
-        ok: false,
-        error:
-          "Keine Buchungs-ID angegeben.",
-      }
-    }
+    if (!bookingId) return { ok: false, error: "Keine Buchungs-ID angegeben." }
+    if (!Array.isArray(imageUrls)) return { ok: false, error: "Ungültige Bilddaten." }
 
-    if (!Array.isArray(imageUrls)) {
-      return {
-        ok: false,
-        error:
-          "Ungültige Bilddaten.",
-      }
-    }
+    const cleanImageUrls = imageUrls
+      .filter((url) => typeof url === "string" && url.trim().length > 0)
+      .map((url) => url.trim())
 
-    const cleanImageUrls =
-      imageUrls
-        .filter(
-          (url) =>
-            typeof url ===
-              "string" &&
-            url.trim().length > 0,
-        )
-        .map((url) =>
-          url.trim(),
-        )
-
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
-      .update({
-        image_urls:
-          cleanImageUrls,
-      })
-      .eq(
-        "id",
-        bookingId,
-      )
+      .update({ image_urls: cleanImageUrls })
+      .eq("id", bookingId)
       .select("*")
       .single()
 
     if (error) {
-      console.error(
-        "Fehler beim Speichern der Bilder:",
-        error,
-      )
-
+      console.error("Fehler beim Speichern der Bilder:", error)
       return {
         ok: false,
-        error:
-          error.message ||
-          "Die Bilder konnten nicht gespeichert werden.",
+        error: error.message || "Die Bilder konnten nicht gespeichert werden.",
       }
     }
 
-    revalidatePath(
-      "/besitzer",
-    )
-
+    revalidatePath("/besitzer")
     revalidatePath("/")
 
-    return {
-      ok: true,
-      booking:
-        data as Booking,
-    }
+    return { ok: true, booking: data as Booking }
   } catch (error) {
-    console.error(
-      "saveBookingImages Fehler:",
-      error,
-    )
-
-    return {
-      ok: false,
-      error:
-        "Ein unerwarteter Fehler ist aufgetreten.",
-    }
+    console.error("saveBookingImages Fehler:", error)
+    return { ok: false, error: "Ein unerwarteter Fehler ist aufgetreten." }
   }
 }
 
@@ -487,46 +241,22 @@ export async function saveBookingImages(
 
 export async function listBookings() {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
       .select("*")
-      .order(
-        "booking_date",
-        {
-          ascending: true,
-        },
-      )
-      .order(
-        "booking_time",
-        {
-          ascending: true,
-        },
-      )
+      .order("booking_date", { ascending: true })
+      .order("booking_time", { ascending: true })
 
     if (error) {
-      console.error(
-        "Fehler beim Laden der Buchungen:",
-        error,
-      )
-
+      console.error("Fehler beim Laden der Buchungen:", error)
       return []
     }
 
-    return (
-      data ?? []
-    ) as Booking[]
+    return (data ?? []) as Booking[]
   } catch (error) {
-    console.error(
-      "listBookings Fehler:",
-      error,
-    )
-
+    console.error("listBookings Fehler:", error)
     return []
   }
 }
@@ -536,13 +266,8 @@ export async function listBookings() {
 // ============================================================
 
 export async function getBookings() {
-  const bookings =
-    await listBookings()
-
-  return {
-    ok: true,
-    bookings,
-  }
+  const bookings = await listBookings()
+  return { ok: true, bookings }
 }
 
 // ============================================================
@@ -554,87 +279,50 @@ export async function updateBookingStatus(
   status: BookingStatus,
 ) {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
 
-    if (!bookingId) {
-      return {
-        ok: false,
-        error:
-          "Keine Buchungs-ID angegeben.",
-      }
+    if (!bookingId) return { ok: false, error: "Keine Buchungs-ID angegeben." }
+
+    const allowedStatuses: BookingStatus[] = ["pending", "confirmed", "rejected"]
+    if (!allowedStatuses.includes(status)) {
+      return { ok: false, error: "Ungültiger Buchungsstatus." }
     }
 
-    const allowedStatuses:
-      BookingStatus[] = [
-        "pending",
-        "confirmed",
-        "rejected",
-      ]
-
-    if (
-      !allowedStatuses.includes(
-        status,
-      )
-    ) {
-      return {
-        ok: false,
-        error:
-          "Ungültiger Buchungsstatus.",
-      }
-    }
-
-    const {
-      data: booking,
-      error,
-    } = await supabase
+    const { data: booking, error } = await supabase
       .from("bookings")
-      .update({
-        status,
-      })
-      .eq(
-        "id",
-        bookingId,
-      )
+      .update({ status })
+      .eq("id", bookingId)
       .select("*")
       .single()
 
     if (error) {
-      console.error(
-        "Fehler beim Aktualisieren:",
-        error,
-      )
-
+      console.error("Fehler beim Aktualisieren:", error)
       return {
         ok: false,
-        error:
-          error.message ||
-          "Die Buchung konnte nicht aktualisiert werden.",
+        error: error.message || "Die Buchung konnte nicht aktualisiert werden.",
       }
     }
 
-    revalidatePath(
-      "/besitzer",
-    )
-
+    revalidatePath("/besitzer")
     revalidatePath("/")
 
-    return {
-      ok: true,
-      booking:
-        booking as Booking,
+    // Nur bei Bestätigung/Ablehnung wird der Kunde über die Statusänderung informiert.
+    if (status === "confirmed" || status === "rejected") {
+      try {
+        const emailResult = await sendBookingEmail(status, booking as Booking)
+        if (!emailResult.ok) {
+          console.error("Status-E-Mail konnte nicht gesendet werden:", emailResult.error)
+        }
+      } catch (emailError) {
+        // Die Statusänderung bleibt erfolgreich, auch wenn Resend gerade nicht verfügbar ist.
+        console.error("Status-E-Mail Fehler:", emailError)
+      }
     }
-  } catch (error) {
-    console.error(
-      "updateBookingStatus Fehler:",
-      error,
-    )
 
-    return {
-      ok: false,
-      error:
-        "Ein unerwarteter Fehler ist aufgetreten.",
-    }
+    return { ok: true, booking: booking as Booking }
+  } catch (error) {
+    console.error("updateBookingStatus Fehler:", error)
+    return { ok: false, error: "Ein unerwarteter Fehler ist aufgetreten." }
   }
 }
 
@@ -642,65 +330,32 @@ export async function updateBookingStatus(
 // DELETE BOOKING
 // ============================================================
 
-export async function deleteBooking(
-  bookingId: string,
-) {
+export async function deleteBooking(bookingId: string) {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
 
-    if (!bookingId) {
-      return {
-        ok: false,
-        error:
-          "Keine Buchungs-ID angegeben.",
-      }
-    }
+    if (!bookingId) return { ok: false, error: "Keine Buchungs-ID angegeben." }
 
-    const {
-      error,
-    } = await supabase
+    const { error } = await supabase
       .from("bookings")
       .delete()
-      .eq(
-        "id",
-        bookingId,
-      )
+      .eq("id", bookingId)
 
     if (error) {
-      console.error(
-        "Fehler beim Löschen:",
-        error,
-      )
-
+      console.error("Fehler beim Löschen:", error)
       return {
         ok: false,
-        error:
-          error.message ||
-          "Die Buchung konnte nicht gelöscht werden.",
+        error: error.message || "Die Buchung konnte nicht gelöscht werden.",
       }
     }
 
-    revalidatePath(
-      "/besitzer",
-    )
-
+    revalidatePath("/besitzer")
     revalidatePath("/")
 
-    return {
-      ok: true,
-    }
+    return { ok: true }
   } catch (error) {
-    console.error(
-      "deleteBooking Fehler:",
-      error,
-    )
-
-    return {
-      ok: false,
-      error:
-        "Ein unerwarteter Fehler ist aufgetreten.",
-    }
+    console.error("deleteBooking Fehler:", error)
+    return { ok: false, error: "Ein unerwarteter Fehler ist aufgetreten." }
   }
 }
 
@@ -712,63 +367,28 @@ export async function getBookedSlots(
   date?: string,
 ): Promise<BookedSlot[]> {
   try {
-    const supabase =
-      await createClient()
+    const supabase = await createClient()
 
     let query = supabase
       .from("bookings")
-      .select(
-        "id, booking_date, booking_time, status",
-      )
-      .in("status", [
-        "pending",
-        "confirmed",
-      ])
+      .select("id, booking_date, booking_time, status")
+      .in("status", ["pending", "confirmed"])
 
-    if (date) {
-      query = query.eq(
-        "booking_date",
-        date,
-      )
-    }
+    if (date) query = query.eq("booking_date", date)
 
-    const {
-      data,
-      error,
-    } = await query
-      .order(
-        "booking_date",
-        {
-          ascending: true,
-        },
-      )
-      .order(
-        "booking_time",
-        {
-          ascending: true,
-        },
-      )
+    const { data, error } = await query
+      .order("booking_date", { ascending: true })
+      .order("booking_time", { ascending: true })
 
     if (error) {
-      console.error(
-        "Fehler beim Laden der belegten Termine:",
-        error,
-      )
-
+      console.error("Fehler beim Laden der belegten Termine:", error)
       return []
     }
 
-    if (!Array.isArray(data)) {
-      return []
-    }
-
+    if (!Array.isArray(data)) return []
     return data as BookedSlot[]
   } catch (error) {
-    console.error(
-      "getBookedSlots Fehler:",
-      error,
-    )
-
+    console.error("getBookedSlots Fehler:", error)
     return []
   }
 }
@@ -778,17 +398,8 @@ export async function getBookedSlots(
 // ============================================================
 
 export async function signOut() {
-  const supabase =
-    await createClient()
-
+  const supabase = await createClient()
   await supabase.auth.signOut()
-
-  revalidatePath(
-    "/",
-    "layout",
-  )
-
-  redirect(
-    "/besitzer/login",
-  )
+  revalidatePath("/", "layout")
+  redirect("/besitzer/login")
 }
