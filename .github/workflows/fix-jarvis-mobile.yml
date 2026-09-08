@@ -1,0 +1,242 @@
+name: Fix JARVIS mobile speech recognition
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Patch JARVIS microphone handling
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("components/jarvis.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          start = text.index("  async function startListening() {")
+          end_marker = "  /* =================================================\n     CLEANUP"
+          end = text.index(end_marker, start)
+
+          new_function = r'''  async function startListening() {
+    if (typeof window === "undefined") return
+
+    if (listening) {
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        recognitionRef.current?.abort()
+      }
+      setListening(false)
+      return
+    }
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition
+
+    if (!SpeechRecognition) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            "Dein Browser unterstützt diese Spracherkennung nicht. Bitte nutze auf dem Handy Chrome oder Safari und erlaube den Mikrofonzugriff.",
+        },
+      ])
+      return
+    }
+
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+
+    if (window.location.protocol !== "https:" && !isLocalhost) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            "Das Mikrofon benötigt eine sichere HTTPS-Verbindung.",
+        },
+      ])
+      return
+    }
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+      setSpeaking(false)
+    }
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Mikrofonzugriff nicht verfügbar.")
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+
+      stream.getTracks().forEach((track) => track.stop())
+    } catch (error) {
+      console.error("MICROPHONE ERROR:", error)
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            "Der Mikrofonzugriff wurde blockiert. Bitte erlaube dieser Website den Mikrofonzugriff in den Handy-Einstellungen bzw. Browser-Einstellungen.",
+        },
+      ])
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    let latestTranscript = ""
+    let submitted = false
+
+    // Schweizer Deutsch bevorzugen, Standarddeutsch als kompatibler Fallback.
+    recognition.lang = "de-CH"
+    recognition.continuous = false
+    recognition.interimResults = true
+
+    recognition.onstart = () => {
+      setListening(true)
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: "🎤 Ich höre zu. Sprich jetzt...",
+        },
+      ])
+    }
+
+    recognition.onresult = (event) => {
+      let transcript = ""
+
+      // Auf mobilen Browsern können mehrere Result-Blöcke zurückkommen.
+      // Deshalb nicht nur event.results[0] lesen.
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i]?.[0]?.transcript || ""
+      }
+
+      transcript = transcript.trim()
+
+      if (!transcript) return
+
+      latestTranscript = transcript
+      setMessage(transcript)
+
+      // Falls der Browser ein finales Ergebnis liefert, sofort merken.
+      const lastResult = event.results[event.results.length - 1]
+      if (lastResult?.isFinal) {
+        latestTranscript = transcript
+      }
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+      recognitionRef.current = null
+
+      const transcript = latestTranscript.trim()
+
+      if (!transcript || submitted) {
+        if (!transcript && !submitted) {
+          setMessages((previous) => [
+            ...previous,
+            {
+              role: "assistant",
+              content:
+                "Ich habe leider nichts verstanden. Bitte sprich etwas deutlicher und versuche es erneut.",
+            },
+          ])
+        }
+        return
+      }
+
+      submitted = true
+      setMessage(transcript)
+
+      // Erst nach onend an die API senden. Das ist auf Mobilgeräten
+      // zuverlässiger als direkt aus onresult.
+      void askJarvis(transcript)
+    }
+
+    recognition.onerror = (event) => {
+      console.error("SPEECH ERROR:", event.error)
+      setListening(false)
+      recognitionRef.current = null
+
+      if (event.error === "aborted") return
+
+      let errorMessage = "Die Spracherkennung ist fehlgeschlagen."
+
+      if (event.error === "no-speech") {
+        errorMessage =
+          "Ich habe keine Sprache erkannt. Bitte sprich direkt nach dem Mikrofonstart."
+      } else if (
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed"
+      ) {
+        errorMessage =
+          "Der Mikrofonzugriff wurde blockiert. Bitte erlaube der Website das Mikrofon."
+      } else if (event.error === "audio-capture") {
+        errorMessage =
+          "Das Mikrofon konnte nicht geöffnet werden. Prüfe bitte die Mikrofonberechtigung auf deinem Handy."
+      } else if (event.error === "network") {
+        errorMessage =
+          "Die mobile Spracherkennung hat ein Netzwerkproblem. Bitte prüfe deine Internetverbindung und versuche es erneut."
+      }
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: errorMessage,
+        },
+      ])
+    }
+
+    recognitionRef.current = recognition
+
+    try {
+      recognition.start()
+    } catch (error) {
+      console.error("RECOGNITION START ERROR:", error)
+      recognitionRef.current = null
+      setListening(false)
+    }
+  }
+
+'''
+
+          text = text[:start] + new_function + text[end:]
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit patched file
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/jarvis.tsx
+          if git diff --cached --quiet; then
+            echo "No changes needed."
+            exit 0
+          fi
+          git commit -m "fix: make JARVIS speech recognition reliable on mobile"
+          git push
