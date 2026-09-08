@@ -51,7 +51,7 @@ export function PushNotifications() {
       type="button"
       onClick={enable}
       disabled={busy || permission === "denied"}
-      className="fixed bottom-5 right-5 z-[60] rounded-full border border-white/20 bg-black px-5 py-3 text-sm font-semibold text-white shadow-2xl transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50"
+      className="fixed top-24 right-4 z-[40] max-w-[calc(100vw-32px)] rounded-2xl border border-white/20 bg-black px-4 py-3 text-center text-sm font-semibold text-white shadow-2xl transition hover:bg-white hover:text-black disabled:cursor-not-allowed disabled:opacity-50 sm:right-6 sm:max-w-none sm:px-5"
       aria-label="ALI AG Benachrichtigungen aktivieren"
     >
       {permission === "denied" ? "Benachrichtigungen blockiert" : busy ? "Wird aktiviert…" : "🔔 Benachrichtigungen aktivieren"}
