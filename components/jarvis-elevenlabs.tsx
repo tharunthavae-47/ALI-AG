@@ -30,9 +30,8 @@ export function JarvisElevenLabs() {
       const text = utterance.text?.trim()
       if (!text) return
 
-      const thisRequest = ++requestId
       stopAudio()
-      const activeRequest = requestId
+      const thisRequest = requestId
 
       fetch("/api/jarvis/tts", {
         method: "POST",
@@ -44,18 +43,20 @@ export function JarvisElevenLabs() {
           return response.blob()
         })
         .then((blob) => {
-          if (thisRequest !== activeRequest || requestId !== activeRequest) return
+          if (thisRequest !== requestId) return
 
           const url = URL.createObjectURL(blob)
           const audio = new Audio(url)
           currentAudio = audio
 
           utterance.onstart?.(new Event("start") as SpeechSynthesisEvent)
+
           audio.onended = () => {
             if (currentAudio === audio) currentAudio = null
             URL.revokeObjectURL(url)
             utterance.onend?.(new Event("end") as SpeechSynthesisEvent)
           }
+
           audio.onerror = () => {
             if (currentAudio === audio) currentAudio = null
             URL.revokeObjectURL(url)
@@ -68,7 +69,7 @@ export function JarvisElevenLabs() {
           })
         })
         .catch((error) => {
-          if (thisRequest !== activeRequest || requestId !== activeRequest) return
+          if (thisRequest !== requestId) return
           console.error("JARVIS ELEVENLABS ERROR:", error)
           utterance.onerror?.(new Event("error") as SpeechSynthesisErrorEvent)
         })
