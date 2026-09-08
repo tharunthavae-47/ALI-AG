@@ -11,6 +11,30 @@ export function JarvisElevenLabs() {
     const originalCancel = synthesis.cancel.bind(synthesis)
     let currentAudio: HTMLAudioElement | null = null
     let requestId = 0
+    let unlockedAudio: HTMLAudioElement | null = null
+
+    const unlockAudio = () => {
+      try {
+        if (!unlockedAudio) {
+          unlockedAudio = new Audio()
+          unlockedAudio.setAttribute("playsinline", "true")
+          unlockedAudio.preload = "auto"
+          unlockedAudio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="
+        }
+
+        const promise = unlockedAudio.play()
+        if (promise) {
+          void promise.catch(() => undefined)
+        }
+      } catch {
+        // Mobile browsers may still block audio until a direct user gesture.
+      }
+    }
+
+    // iPhone/iPad and some Android browsers block audio that starts after
+    // an async fetch. Unlock the media element on the user's first tap.
+    window.addEventListener("touchstart", unlockAudio, { passive: true })
+    window.addEventListener("pointerdown", unlockAudio, { passive: true })
 
     const stopAudio = () => {
       requestId += 1
@@ -38,8 +62,6 @@ export function JarvisElevenLabs() {
         stopAudio()
         const thisRequest = requestId
 
-        // Wichtig: Die TTS-Anfrage läuft komplett unabhängig vom Chat.
-        // Ein ElevenLabs-/Audio-Fehler darf niemals die JARVIS-Antwort verhindern.
         void fetch("/api/jarvis/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -54,6 +76,8 @@ export function JarvisElevenLabs() {
 
             const url = URL.createObjectURL(blob)
             const audio = new Audio(url)
+            audio.setAttribute("playsinline", "true")
+            audio.preload = "auto"
             currentAudio = audio
 
             utterance.onstart?.(new Event("start") as SpeechSynthesisEvent)
@@ -70,7 +94,17 @@ export function JarvisElevenLabs() {
               utterance.onerror?.(new Event("error") as SpeechSynthesisErrorEvent)
             }
 
-            void audio.play().catch((error) => {
+            // Reuse the already-unlocked mobile audio element when possible.
+            const playAudio = unlockedAudio && unlockedAudio !== audio
+              ? (() => {
+                  unlockedAudio.src = url
+                  unlockedAudio.currentTime = 0
+                  currentAudio = unlockedAudio
+                  return unlockedAudio.play()
+                })()
+              : audio.play()
+
+            void playAudio.catch((error) => {
               console.error("JARVIS AUDIO PLAY ERROR:", error)
               audio.onerror?.(new Event("error"))
             })
@@ -78,17 +112,17 @@ export function JarvisElevenLabs() {
           .catch((error) => {
             if (thisRequest !== requestId) return
             console.error("JARVIS ELEVENLABS ERROR:", error)
-            // Keine Exception nach außen: JARVIS muss textlich weiter funktionieren.
             utterance.onerror?.(new Event("error") as SpeechSynthesisErrorEvent)
           })
       } catch (error) {
-        // Sprachfehler niemals an askJarvis weitergeben.
         console.error("JARVIS VOICE ERROR:", error)
       }
     }
 
     return () => {
       stopAudio()
+      window.removeEventListener("touchstart", unlockAudio)
+      window.removeEventListener("pointerdown", unlockAudio)
       synthesis.speak = originalSpeak
       synthesis.cancel = originalCancel
       try {
