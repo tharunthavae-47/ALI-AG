@@ -40,9 +40,7 @@ export function JarvisElevenLabs() {
         body: JSON.stringify({ text }),
       })
         .then(async (response) => {
-          if (!response.ok) {
-            throw new Error(`TTS ${response.status}`)
-          }
+          if (!response.ok) throw new Error(`TTS ${response.status}`)
           return response.blob()
         })
         .then((blob) => {
@@ -61,7 +59,7 @@ export function JarvisElevenLabs() {
           audio.onerror = () => {
             if (currentAudio === audio) currentAudio = null
             URL.revokeObjectURL(url)
-            utterance.onerror?.(new SpeechSynthesisErrorEvent("error"))
+            utterance.onerror?.(new Event("error") as SpeechSynthesisErrorEvent)
           }
 
           void audio.play().catch((error) => {
@@ -72,7 +70,7 @@ export function JarvisElevenLabs() {
         .catch((error) => {
           if (thisRequest !== activeRequest || requestId !== activeRequest) return
           console.error("JARVIS ELEVENLABS ERROR:", error)
-          utterance.onerror?.(new SpeechSynthesisErrorEvent("error"))
+          utterance.onerror?.(new Event("error") as SpeechSynthesisErrorEvent)
         })
     }
 
