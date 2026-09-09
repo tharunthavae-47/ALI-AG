@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
+import type { PointerEvent as ReactPointerEvent } from "react"
 import { Mic, MicOff, Send, Volume2, VolumeX, X, Trash2, CalendarDays } from "lucide-react"
 
 type Message = { role: "user" | "assistant"; content: string }
@@ -35,6 +36,7 @@ declare global {
 
 const INITIAL_MESSAGE: Message = { role: "assistant", content: "Hallo. Ich bin JARVIS. Wie kann ich dir helfen?" }
 const EMPTY_BOOKING: BookingData = { booking_date: null, booking_time: null, name: null, phone: null, email: null, car: null, problem: null }
+const JARVIS_POSITION_KEY = "jarvis-launcher-position"
 
 export function Jarvis() {
   const [open, setOpen] = useState(false)
@@ -47,11 +49,15 @@ export function Jarvis() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [bookingData, setBookingData] = useState<BookingData>(EMPTY_BOOKING)
   const [bookingInProgress, setBookingInProgress] = useState(false)
+  const [launcherPosition, setLauncherPosition] = useState<{ left: number; top: number } | null>(null)
+  const [launcherDragging, setLauncherDragging] = useState(false)
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   const speechPrimedRef = useRef(false)
   const speechRunRef = useRef(0)
+  const launcherDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
+  const suppressLauncherClickRef = useRef(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -72,6 +78,13 @@ export function Jarvis() {
       }
       const savedBooking = localStorage.getItem("jarvis-booking")
       if (savedBooking) setBookingData({ ...EMPTY_BOOKING, ...JSON.parse(savedBooking) })
+      const savedPosition = localStorage.getItem(JARVIS_POSITION_KEY)
+      if (savedPosition) {
+        const parsedPosition = JSON.parse(savedPosition)
+        if (typeof parsedPosition?.left === "number" && typeof parsedPosition?.top === "number") {
+          setLauncherPosition({ left: parsedPosition.left, top: parsedPosition.top })
+        }
+      }
     } catch (error) { console.error("JARVIS LOAD ERROR:", error) }
   }, [])
 
@@ -160,6 +173,72 @@ export function Jarvis() {
     if (synthesis.paused) synthesis.resume()
     window.setTimeout(() => speakChunk(0), speechPrimedRef.current ? 120 : 250)
   }
+
+  function clampLauncherPosition(left: number, top: number) {
+    if (typeof window === "undefined") return { left, top }
+    const size = 64
+    const margin = 8
+    return {
+      left: Math.min(Math.max(left, margin), Math.max(margin, window.innerWidth - size - margin)),
+      top: Math.min(Math.max(top, margin), Math.max(margin, window.innerHeight - size - margin)),
+    }
+  }
+
+  function handleLauncherPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (typeof window === "undefined" || window.innerWidth > 767) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    launcherDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false,
+    }
+    suppressLauncherClickRef.current = false
+    setLauncherDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handleLauncherPointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = launcherDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId || typeof window === "undefined" || window.innerWidth > 767) return
+
+    const nextPosition = clampLauncherPosition(event.clientX - drag.offsetX, event.clientY - drag.offsetY)
+    const movedEnough = Math.abs(event.clientX - (nextPosition.left + drag.offsetX)) >= 0 || Math.abs(event.clientY - (nextPosition.top + drag.offsetY)) >= 0
+    if (Math.abs(event.movementX) > 1 || Math.abs(event.movementY) > 1) drag.moved = true
+    if (movedEnough) setLauncherPosition(nextPosition)
+    if (drag.moved) suppressLauncherClickRef.current = true
+  }
+
+  function finishLauncherDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = launcherDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag.moved) suppressLauncherClickRef.current = true
+    launcherDragRef.current = null
+    setLauncherDragging(false)
+    try { event.currentTarget.releasePointerCapture(event.pointerId) } catch {}
+  }
+
+  function handleLauncherClick() {
+    if (suppressLauncherClickRef.current) {
+      suppressLauncherClickRef.current = false
+      return
+    }
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!launcherPosition) return
+    try { localStorage.setItem(JARVIS_POSITION_KEY, JSON.stringify(launcherPosition)) } catch {}
+  }, [launcherPosition])
+
+  useEffect(() => {
+    const keepLauncherInBounds = () => {
+      if (typeof window === "undefined" || window.innerWidth > 767 || !launcherPosition) return
+      setLauncherPosition(clampLauncherPosition(launcherPosition.left, launcherPosition.top))
+    }
+    window.addEventListener("resize", keepLauncherInBounds)
+    return () => window.removeEventListener("resize", keepLauncherInBounds)
+  }, [launcherPosition])
 
   async function askJarvis(text?: string) {
     const userMessage = (text ?? message).trim()
@@ -320,8 +399,18 @@ export function Jarvis() {
   }, [open])
 
   if (!open) return (
-    <button type="button" onClick={() => setOpen(true)} aria-label="JARVIS öffnen" className="fixed bottom-5 right-5 z-50 h-16 w-16 overflow-hidden rounded-full border border-white/20 bg-black shadow-2xl">
-      <Image src="/tharun.jpg" alt="JARVIS" fill className="object-cover" />
+    <button
+      type="button"
+      onClick={handleLauncherClick}
+      onPointerDown={handleLauncherPointerDown}
+      onPointerMove={handleLauncherPointerMove}
+      onPointerUp={finishLauncherDrag}
+      onPointerCancel={finishLauncherDrag}
+      aria-label="JARVIS öffnen"
+      style={launcherPosition && typeof window !== "undefined" && window.innerWidth <= 767 ? { left: launcherPosition.left, top: launcherPosition.top } : undefined}
+      className={`fixed z-50 h-16 w-16 overflow-hidden rounded-full border border-white/20 bg-black shadow-2xl ${launcherDragging ? "scale-105 cursor-grabbing" : "cursor-grab"} ${launcherPosition ? "max-[767px]:!bottom-auto max-[767px]:!right-auto" : "bottom-5 right-5"}`}
+    >
+      <Image src="/tharun.jpg" alt="JARVIS" fill className="pointer-events-none object-cover" draggable={false} />
     </button>
   )
 
