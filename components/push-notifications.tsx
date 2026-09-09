@@ -38,7 +38,7 @@ export function PushNotifications() {
       })
       if (!response.ok) throw new Error("Push-Subscription konnte nicht gespeichert werden")
     } catch (error) {
-      console.error("ALI AG Push-Setup fehlgeschlagen:", error)
+      console.error("MB-Performance Push-Setup fehlgeschlagen:", error)
     } finally {
       setBusy(false)
     }
