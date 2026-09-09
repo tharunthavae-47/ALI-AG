@@ -29,10 +29,11 @@ export function OccasionMarketplaceManager() {
   }
 
   async function loadChats() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("occasion_chats")
       .select("*, occasion_listings(*, occasion_requests(*))")
       .order("updated_at", { ascending: false })
+    if (error) console.error("Fehler beim Laden der Kunden-Chats:", error)
     setChats(data || [])
   }
 
@@ -61,7 +62,8 @@ export function OccasionMarketplaceManager() {
 
   async function openChat(chatId: string) {
     setSelectedChat(chatId)
-    const { data } = await supabase.from("occasion_messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true })
+    const { data, error } = await supabase.from("occasion_messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true })
+    if (error) console.error("Fehler beim Öffnen des Chats:", error)
     setMessages(data || [])
   }
 
@@ -84,12 +86,13 @@ export function OccasionMarketplaceManager() {
     if (!error) {
       setDraft("")
       await supabase.from("occasion_chats").update({ updated_at: new Date().toISOString() }).eq("id", selectedChat)
-    }
+    } else console.error("Fehler beim Senden:", error)
   }
 
   const publishedIds = new Set(listings.filter((l) => l.published).map((l) => l.occasion_request_id))
   const unpublished = requests.filter((r) => !publishedIds.has(r.id))
   const published = listings.filter((l) => l.published)
+  const activeChat = chats.find((chat) => chat.id === selectedChat)
 
   if (loading) return <div className="rounded-3xl border border-border bg-card p-8 text-sm text-muted-foreground">Occasion-Marktplatz wird geladen...</div>
 
@@ -132,12 +135,27 @@ export function OccasionMarketplaceManager() {
         <div className="flex items-end justify-between gap-4"><div><h3 className="font-display text-2xl font-bold uppercase tracking-wide">Kunden-Chats</h3><p className="mt-2 text-sm text-muted-foreground">Live-Nachrichten zu deinen veröffentlichten Fahrzeugen.</p></div><span className="rounded-full border border-border px-3 py-1 text-xs">{chats.length} Chats</span></div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[320px_1fr]">
           <div className="space-y-2">
-            {chats.map((chat) => { const r = chat.occasion_listings?.occasion_requests; return <button key={chat.id} onClick={() => openChat(chat.id)} className={`w-full rounded-2xl border p-4 text-left transition ${selectedChat === chat.id ? "border-primary bg-secondary" : "border-border bg-card hover:bg-secondary"}`}><p className="text-xs text-muted-foreground">{r?.marke} {r?.modell}</p><p className="mt-1 font-semibold">Kunde</p><p className="mt-1 text-xs text-muted-foreground">{new Date(chat.updated_at).toLocaleString("de-CH")}</p></button> })}
+            {chats.map((chat) => {
+              const r = chat.occasion_listings?.occasion_requests
+              const buyerName = chat.customer_name?.trim() || "Kunde"
+              const buyerPhone = chat.customer_phone?.trim()
+              return <button key={chat.id} onClick={() => openChat(chat.id)} className={`w-full rounded-2xl border p-4 text-left transition ${selectedChat === chat.id ? "border-primary bg-secondary" : "border-border bg-card hover:bg-secondary"}`}>
+                <p className="text-xs text-muted-foreground">{r?.marke} {r?.modell}</p>
+                <p className="mt-1 font-semibold">{buyerName}</p>
+                {buyerPhone && <p className="mt-1 text-xs text-muted-foreground">📞 {buyerPhone}</p>}
+                <p className="mt-1 text-xs text-muted-foreground">{new Date(chat.updated_at).toLocaleString("de-CH")}</p>
+              </button>
+            })}
             {chats.length === 0 && <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">Noch keine Kunden-Chats.</div>}
           </div>
           <div className="min-h-[420px] rounded-3xl border border-border bg-card p-5">
             {!selectedChat ? <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">Wähle einen Chat aus.</div> : <>
-              <div className="h-[320px] space-y-3 overflow-y-auto pr-2">{messages.map((m) => <div key={m.id} className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${m.sender_id === chats.find((c) => c.id === selectedChat)?.owner_id ? "ml-auto bg-primary text-primary-foreground" : "bg-secondary"}`}>{m.message}<p className="mt-1 text-[10px] opacity-60">{new Date(m.created_at).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}</p></div>)}</div>
+              <div className="mb-4 rounded-2xl border border-border bg-background p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Käufer</p>
+                <p className="mt-1 font-semibold">{activeChat?.customer_name?.trim() || "Name nicht angegeben"}</p>
+                {activeChat?.customer_phone?.trim() ? <a href={`tel:${activeChat.customer_phone}`} className="mt-1 inline-block text-sm text-primary hover:underline">📞 {activeChat.customer_phone}</a> : <p className="mt-1 text-xs text-muted-foreground">Keine Telefonnummer angegeben</p>}
+              </div>
+              <div className="h-[280px] space-y-3 overflow-y-auto pr-2">{messages.map((m) => <div key={m.id} className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${m.sender_id === activeChat?.owner_id ? "ml-auto bg-primary text-primary-foreground" : "bg-secondary"}`}>{m.message}<p className="mt-1 text-[10px] opacity-60">{new Date(m.created_at).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}</p></div>)}</div>
               <form onSubmit={(e) => { e.preventDefault(); sendMessage() }} className="mt-4 flex gap-2"><input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Nachricht schreiben..." className="min-w-0 flex-1 rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary"/><button className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">Senden</button></form>
             </>}
           </div>
