@@ -51,6 +51,7 @@
   --color-card: var(--card);
 
   --color-background: var(--background);
+  --color-foreground: var(--foreground);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
