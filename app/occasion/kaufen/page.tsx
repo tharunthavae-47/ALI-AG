@@ -12,13 +12,15 @@ type Listing = {
 }
 type ImageRow = { id: string; occasion_request_id: string; image_url: string; image_name: string | null; image_position: number }
 
+type ChatMessage = { id: string; chat_id: string; sender_id: string; message: string; created_at: string }
+
 export default function KaufenPage() {
   const supabase = createClient()
   const [listings, setListings] = useState<Listing[]>([])
   const [images, setImages] = useState<ImageRow[]>([])
   const [selected, setSelected] = useState<Listing | null>(null)
   const [chatId, setChatId] = useState<string | null>(null)
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState("")
   const [userId, setUserId] = useState<string | null>(null)
   const [error, setError] = useState("")
@@ -39,15 +41,7 @@ export default function KaufenPage() {
     } else setImages([])
   }
 
-  useEffect(() => {
-    load()
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id || null)
-      const metadata = data.user?.user_metadata || {}
-      setContactName(metadata.customer_name || "")
-      setContactPhone(metadata.customer_phone || "")
-    })
-  }, [])
+  useEffect(() => { load() }, [])
 
   const selectedImages = useMemo(() => selected ? images.filter((x) => x.occasion_request_id === selected.occasion_request_id).sort((a, b) => a.image_position - b.image_position) : [], [selected, images])
   function imageUrl(path: string) { return supabase.storage.from("occasion-images").getPublicUrl(path).data.publicUrl }
@@ -56,49 +50,17 @@ export default function KaufenPage() {
     setError("")
     setChatLoading(true)
     try {
-      let currentUser = (await supabase.auth.getUser()).data.user
-      if (!currentUser) {
-        const { data: anonymousData, error: anonymousError } = await supabase.auth.signInAnonymously({
-          options: { data: { customer_name: contactName.trim(), customer_phone: contactPhone.trim() } },
-        })
-        if (anonymousError) throw new Error(`Gast-Chat konnte nicht gestartet werden: ${anonymousError.message}`)
-        currentUser = anonymousData.user
-      } else if (currentUser.is_anonymous) {
-        const { error: metadataError } = await supabase.auth.updateUser({
-          data: { customer_name: contactName.trim(), customer_phone: contactPhone.trim() },
-        })
-        if (metadataError) throw new Error(metadataError.message)
-      }
-
-      if (!currentUser) throw new Error("Gast-Chat konnte nicht gestartet werden.")
-      setUserId(currentUser.id)
-
-      const { data: existing, error: findError } = await supabase.from("occasion_chats").select("id, customer_name, customer_phone").eq("occasion_listing_id", listing.id).eq("customer_id", currentUser.id).maybeSingle()
-      if (findError) throw new Error(findError.message)
-
-      let id = existing?.id || null
-      if (!id) {
-        const { data: created, error: createError } = await supabase.from("occasion_chats").insert({
-          occasion_listing_id: listing.id,
-          customer_id: currentUser.id,
-          owner_id: listing.owner_id,
-          customer_name: contactName.trim() || null,
-          customer_phone: contactPhone.trim() || null,
-        }).select("id").single()
-        if (createError) throw new Error(createError.message)
-        id = created.id
-      } else if (contactName.trim() !== (existing.customer_name || "") || contactPhone.trim() !== (existing.customer_phone || "")) {
-        const { error: updateError } = await supabase.from("occasion_chats").update({
-          customer_name: contactName.trim() || null,
-          customer_phone: contactPhone.trim() || null,
-        }).eq("id", id)
-        if (updateError) throw new Error(updateError.message)
-      }
-
-      setChatId(id)
-      const { data: msgs, error: messageError } = await supabase.from("occasion_messages").select("*").eq("chat_id", id).order("created_at", { ascending: true })
-      if (messageError) throw new Error(messageError.message)
-      setMessages(msgs || [])
+      const response = await fetch("/api/occasion/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ listingId: listing.id, name: contactName, phone: contactPhone }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Der Live-Chat konnte nicht geöffnet werden.")
+      setChatId(data.chatId)
+      setUserId(data.userId)
+      setMessages(data.messages || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Der Live-Chat konnte nicht geöffnet werden.")
     } finally {
@@ -108,22 +70,40 @@ export default function KaufenPage() {
 
   useEffect(() => {
     if (!chatId) return
-    const channel = supabase.channel(`occasion-customer-chat-${chatId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "occasion_messages", filter: `chat_id=eq.${chatId}` }, (payload) => {
-        setMessages((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new])
-      })
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setError("Live-Chat-Verbindung konnte nicht hergestellt werden.")
-      })
-    return () => { supabase.removeChannel(channel) }
+    let active = true
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/occasion/chat?chatId=${encodeURIComponent(chatId)}`, { credentials: "include", cache: "no-store" })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || "Chat konnte nicht geladen werden.")
+        if (active) { setMessages(data.messages || []); setUserId(data.userId || null) }
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Chat konnte nicht geladen werden.")
+      }
+    }
+    poll()
+    const timer = window.setInterval(poll, 2000)
+    return () => { active = false; window.clearInterval(timer) }
   }, [chatId])
 
   async function sendMessage() {
     const text = draft.trim()
-    if (!text || !chatId || !userId) return
-    const { error: sendError } = await supabase.from("occasion_messages").insert({ chat_id: chatId, sender_id: userId, message: text })
-    if (sendError) setError(sendError.message)
-    else { setDraft(""); await supabase.from("occasion_chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId) }
+    if (!text || !chatId) return
+    setError("")
+    try {
+      const response = await fetch("/api/occasion/chat", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ chatId, message: text }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || "Nachricht konnte nicht gesendet werden.")
+      setUserId(data.userId || userId)
+      setDraft("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nachricht konnte nicht gesendet werden.")
+    }
   }
 
   function closeVehicle() { setSelected(null); setChatId(null); setMessages([]); setError("") }
