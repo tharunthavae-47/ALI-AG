@@ -50,7 +50,6 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  --color-foreground: var(--foreground);
   --color-background: var(--background);
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -186,7 +185,6 @@
    MB PERFORMANCE ANIMATIONEN
    ========================================= */
 
-/* Überschrift erscheint von unten */
 @keyframes fadeUp {
   from {
     opacity: 0;
@@ -199,7 +197,6 @@
   }
 }
 
-/* Leistungskarten erscheinen von unten */
 @keyframes serviceCard {
   from {
     opacity: 0;
@@ -212,12 +209,10 @@
   }
 }
 
-/* Überschrift */
 .animate-fade-up {
   animation: fadeUp 0.7s ease-out forwards;
 }
 
-/* Leistungskarten */
 .animate-service-card {
   animation: serviceCard 0.7s ease-out forwards;
 }
@@ -228,6 +223,20 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+/* =========================================
+   MOBILE JARVIS LAUNCHER
+   ========================================= */
+
+@media (max-width: 767px) {
+  button[aria-label="JARVIS öffnen"] {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    overscroll-behavior: contain;
+  }
 }
 
 /* =========================================
