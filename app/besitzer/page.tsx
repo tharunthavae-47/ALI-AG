@@ -56,7 +56,6 @@ export default async function OwnerPage() {
                   <Link href="/occasion/kaufen" className="flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary">🚗 Occasion kaufen</Link>
                   <Link href="/" className="flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary">↗ Webseite</Link>
                   <Link href="/lieferant" className="flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary">▣ Lieferanten</Link>
-                  <Link href="#aufgaben" className="flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors hover:bg-secondary">✓ Aufgaben</Link>
                   <form action={signOut} className="mt-1 border-t border-border pt-1"><button type="submit" className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm font-medium transition-colors hover:bg-secondary">↪ Abmelden</button></form>
                 </nav>
               </div>
