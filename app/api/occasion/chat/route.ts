@@ -47,11 +47,14 @@ export async function POST(request: NextRequest) {
     if (listingError) throw listingError
     if (!listing) return NextResponse.json({ error: "Fahrzeug ist nicht mehr veröffentlicht." }, { status: 404 })
 
+    // Guests are identified by a secure HTTP-only cookie, not by auth.users.
+    // customer_id remains available for authenticated customers, while guest_id
+    // is used for visitors who are not logged in.
     const { data: existing, error: findError } = await supabase
       .from("occasion_chats")
       .select("id, customer_name, customer_phone")
       .eq("occasion_listing_id", listingId)
-      .eq("customer_id", guestId)
+      .eq("guest_id", guestId)
       .maybeSingle()
     if (findError) throw findError
 
@@ -61,7 +64,8 @@ export async function POST(request: NextRequest) {
         .from("occasion_chats")
         .insert({
           occasion_listing_id: listingId,
-          customer_id: guestId,
+          customer_id: null,
+          guest_id: guestId,
           owner_id: listing.owner_id,
           customer_name: name || null,
           customer_phone: phone || null,
@@ -75,14 +79,14 @@ export async function POST(request: NextRequest) {
         .from("occasion_chats")
         .update({ customer_name: name || null, customer_phone: phone || null, updated_at: new Date().toISOString() })
         .eq("id", chat.id)
-        .eq("customer_id", guestId)
+        .eq("guest_id", guestId)
       if (updateError) throw updateError
     }
 
     if (message) {
       const { error: messageError } = await supabase.from("occasion_messages").insert({
         chat_id: chat.id,
-        sender_id: guestId,
+        sender_id: null,
         message,
       })
       if (messageError) throw messageError
@@ -113,9 +117,9 @@ export async function GET(request: NextRequest) {
 
     const { data: chat, error: chatError } = await supabase
       .from("occasion_chats")
-      .select("id, customer_id")
+      .select("id, customer_id, guest_id")
       .eq("id", chatId)
-      .eq("customer_id", guestId)
+      .eq("guest_id", guestId)
       .maybeSingle()
     if (chatError) throw chatError
     if (!chat) return NextResponse.json({ error: "Chat nicht gefunden." }, { status: 404 })
@@ -146,14 +150,14 @@ export async function PUT(request: NextRequest) {
     const supabase = adminClient()
     const { data: chat, error: chatError } = await supabase
       .from("occasion_chats")
-      .select("id, customer_id")
+      .select("id, customer_id, guest_id")
       .eq("id", chatId)
-      .eq("customer_id", guestId)
+      .eq("guest_id", guestId)
       .maybeSingle()
     if (chatError) throw chatError
     if (!chat) return NextResponse.json({ error: "Chat nicht gefunden." }, { status: 404 })
 
-    const { error: messageError } = await supabase.from("occasion_messages").insert({ chat_id: chatId, sender_id: guestId, message })
+    const { error: messageError } = await supabase.from("occasion_messages").insert({ chat_id: chatId, sender_id: null, message })
     if (messageError) throw messageError
     await supabase.from("occasion_chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId)
 
