@@ -6,7 +6,7 @@ import "./globals.css"
 import { Jarvis } from "@/components/jarvis"
 import { JarvisElevenLabs } from "@/components/jarvis-elevenlabs"
 import { PushNotifications } from "@/components/push-notifications"
-import { SupplierReturnsV2 } from "@/components/supplier-returns-v2"
+import { SupplierReturnsRouteGuard } from "@/components/supplier-returns-route-guard"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -42,7 +42,7 @@ export default function RootLayout({
     <html lang="de" className={`${inter.variable} ${oswald.variable} bg-background`}>
       <body className="font-sans antialiased">
         {children}
-        <SupplierReturnsV2 />
+        <SupplierReturnsRouteGuard />
         <JarvisElevenLabs />
         <Jarvis />
         <PushNotifications />
