@@ -389,7 +389,7 @@ export function BookingsManager({
   const [filter, setFilter] =
     useState<
       BookingStatus | "all"
-    >("all")
+    >("pending")
 
   // ===================================================
   // NEU: SUCHFELD
