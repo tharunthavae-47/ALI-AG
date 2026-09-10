@@ -19,25 +19,25 @@ export function SiteFooter() {
         <div className="flex items-start gap-3">
           <MapPin className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           <div className="text-sm text-muted-foreground">
-            Ihgend wo i Blatte
+            Weiherhus 10
             <br />
-            6102 Blatten
+            6102 Malters
           </div>
         </div>
         <div className="flex items-start gap-3">
           <Phone className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           <div className="text-sm text-muted-foreground">
-            079 hät sie gseiht
+            079 178 36 93
             <br />
-            Kenn dini Mail nit
+            mb-performance1@outlook.com
           </div>
         </div>
         <div className="flex items-start gap-3">
           <Clock className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           <div className="text-sm text-muted-foreground">
-            Mo – Fr: 15:00 – 22:00
+            Mo – Fr: 19:00 – 21:00
             <br />
-            Sa: nach Vereinbarung
+            Sa/So: nach Vereinbarung
           </div>
         </div>
       </div>
