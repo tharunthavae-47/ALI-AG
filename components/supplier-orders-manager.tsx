@@ -12,6 +12,9 @@ type Order = {
   total_amount: number
   paid_amount: number
   notes: string | null
+  return_amount?: number | null
+  adjusted_total_amount?: number | null
+  refund_amount?: number | null
 }
 
 type Item = { order_id: string; item_name: string; quantity: number; unit_price: number }
@@ -21,6 +24,7 @@ type SupplierSummary = {
   supplierName: string
   totalAmount: number
   paidAmount: number
+  creditAmount: number
   openAmount: number
 }
 
@@ -38,7 +42,7 @@ export function SupplierOrdersManager() {
   async function load() {
     setLoading(true)
     const [ordersResult, itemsResult, imagesResult] = await Promise.all([
-      supabase.from("supplier_orders").select("id,supplier_name,delivery_date,total_amount,paid_amount,notes").order("delivery_date", { ascending: false }),
+      supabase.from("supplier_orders").select("id,supplier_name,delivery_date,total_amount,paid_amount,notes,return_amount,adjusted_total_amount,refund_amount").order("delivery_date", { ascending: false }),
       supabase.from("supplier_order_items").select("order_id,item_name,quantity,unit_price"),
       supabase.from("supplier_order_images").select("order_id,image_path,image_position").order("image_position"),
     ])
@@ -72,9 +76,23 @@ export function SupplierOrdersManager() {
     setLoading(false)
   }
 
+  const orderAdjustedTotal = (order: Order) => {
+    const original = Number(order.total_amount) || 0
+    if (order.adjusted_total_amount != null) return Math.max(0, Number(order.adjusted_total_amount) || 0)
+    return Math.max(0, original - (Number(order.return_amount) || 0))
+  }
+
+  const orderCredit = (order: Order) => {
+    const original = Number(order.total_amount) || 0
+    return Math.max(0, original - orderAdjustedTotal(order))
+  }
+
   const orderTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.total_amount), 0), [orders])
   const paidTotal = useMemo(() => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0), [orders])
-  const openTotal = useMemo(() => orders.reduce((sum, order) => sum + Math.max(0, Number(order.total_amount) - Number(order.paid_amount)), 0), [orders])
+  const creditTotal = useMemo(() => orders.reduce((sum, order) => sum + orderCredit(order), 0), [orders])
+  const openTotal = useMemo(() => orders.reduce((sum, order) => {
+    return sum + Math.max(0, orderAdjustedTotal(order) - (Number(order.paid_amount) || 0))
+  }, 0), [orders])
 
   const supplierSummaries = useMemo<SupplierSummary[]>(() => {
     const grouped = new Map<string, SupplierSummary>()
@@ -83,16 +101,20 @@ export function SupplierOrdersManager() {
       const supplierName = order.supplier_name?.trim() || "Unbekannter Lieferant"
       const totalAmount = Number(order.total_amount) || 0
       const paidAmount = Number(order.paid_amount) || 0
+      const creditAmount = orderCredit(order)
+      const openAmount = Math.max(0, orderAdjustedTotal(order) - paidAmount)
       const current = grouped.get(supplierName) ?? {
         supplierName,
         totalAmount: 0,
         paidAmount: 0,
+        creditAmount: 0,
         openAmount: 0,
       }
 
       current.totalAmount += totalAmount
       current.paidAmount += paidAmount
-      current.openAmount += Math.max(0, totalAmount - paidAmount)
+      current.creditAmount += creditAmount
+      current.openAmount += openAmount
       grouped.set(supplierName, current)
     }
 
@@ -113,7 +135,7 @@ export function SupplierOrdersManager() {
 
   return (
     <div>
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+      <div className="mb-8 grid gap-4 sm:grid-cols-4">
         <div className="border border-border bg-card p-5">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt Aufträge</p>
           <p className="mt-2 text-2xl font-bold">CHF {orderTotal.toFixed(2)}</p>
@@ -121,6 +143,10 @@ export function SupplierOrdersManager() {
         <div className="border border-border bg-card p-5">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Bereits bar bezahlt</p>
           <p className="mt-2 text-2xl font-bold">CHF {paidTotal.toFixed(2)}</p>
+        </div>
+        <div className="border border-border bg-card p-5">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Gutschriften</p>
+          <p className="mt-2 text-2xl font-bold">CHF {creditTotal.toFixed(2)}</p>
         </div>
         <div className="border border-border bg-card p-5">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Noch offen gesamt</p>
@@ -145,12 +171,13 @@ export function SupplierOrdersManager() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[650px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-widest text-muted-foreground">
                   <th className="px-5 py-4 font-medium sm:px-6">Lieferant</th>
                   <th className="px-5 py-4 text-right font-medium sm:px-6">Gesamt</th>
                   <th className="px-5 py-4 text-right font-medium sm:px-6">Bezahlt</th>
+                  <th className="px-5 py-4 text-right font-medium sm:px-6">Gutschrift</th>
                   <th className="px-5 py-4 text-right font-medium sm:px-6">Noch offen</th>
                 </tr>
               </thead>
@@ -160,6 +187,7 @@ export function SupplierOrdersManager() {
                     <td className="px-5 py-4 font-semibold sm:px-6">{supplier.supplierName}</td>
                     <td className="px-5 py-4 text-right sm:px-6">CHF {supplier.totalAmount.toFixed(2)}</td>
                     <td className="px-5 py-4 text-right sm:px-6">CHF {supplier.paidAmount.toFixed(2)}</td>
+                    <td className="px-5 py-4 text-right sm:px-6">CHF {supplier.creditAmount.toFixed(2)}</td>
                     <td className="px-5 py-4 text-right font-bold sm:px-6">CHF {supplier.openAmount.toFixed(2)}</td>
                   </tr>
                 ))}
@@ -169,6 +197,7 @@ export function SupplierOrdersManager() {
                   <td className="px-5 py-4 sm:px-6">Total</td>
                   <td className="px-5 py-4 text-right sm:px-6">CHF {orderTotal.toFixed(2)}</td>
                   <td className="px-5 py-4 text-right sm:px-6">CHF {paidTotal.toFixed(2)}</td>
+                  <td className="px-5 py-4 text-right sm:px-6">CHF {creditTotal.toFixed(2)}</td>
                   <td className="px-5 py-4 text-right sm:px-6">CHF {openTotal.toFixed(2)}</td>
                 </tr>
               </tfoot>
@@ -182,7 +211,8 @@ export function SupplierOrdersManager() {
       ) : (
         <div className="space-y-3">
           {orders.map((order) => {
-            const open = Math.max(0, Number(order.total_amount) - Number(order.paid_amount))
+            const open = Math.max(0, orderAdjustedTotal(order) - (Number(order.paid_amount) || 0))
+            const credit = orderCredit(order)
             const orderItems = items.filter((item) => item.order_id === order.id)
             const orderImages = images.filter((image) => image.order_id === order.id)
             const thumbnails = imageUrls[order.id] ?? []
@@ -206,6 +236,7 @@ export function SupplierOrdersManager() {
                     <div className="shrink-0 text-right">
                       <p className="font-bold">CHF {Number(order.total_amount).toFixed(2)}</p>
                       <p className="text-xs text-muted-foreground">Bezahlt: CHF {Number(order.paid_amount).toFixed(2)}</p>
+                      {credit > 0 && <p className="text-xs text-muted-foreground">Gutschrift: CHF {credit.toFixed(2)}</p>}
                       <p className="mt-1 font-semibold">Offen: CHF {open.toFixed(2)}</p>
                     </div>
                   </div>
@@ -237,10 +268,11 @@ export function SupplierOrdersManager() {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <div className="mt-6 grid gap-3 sm:grid-cols-4">
               <div><p className="text-xs text-muted-foreground">Gesamt</p><p className="font-bold">CHF {Number(selected.total_amount).toFixed(2)}</p></div>
               <div><p className="text-xs text-muted-foreground">Bar bezahlt</p><p className="font-bold">CHF {Number(selected.paid_amount).toFixed(2)}</p></div>
-              <div><p className="text-xs text-muted-foreground">Offen</p><p className="font-bold">CHF {Math.max(0, Number(selected.total_amount) - Number(selected.paid_amount)).toFixed(2)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Gutschrift</p><p className="font-bold">CHF {orderCredit(selected).toFixed(2)}</p></div>
+              <div><p className="text-xs text-muted-foreground">Offen</p><p className="font-bold">CHF {Math.max(0, orderAdjustedTotal(selected) - (Number(selected.paid_amount) || 0)).toFixed(2)}</p></div>
             </div>
 
             {selected.notes && <p className="mt-6 border border-border p-4 text-sm">{selected.notes}</p>}
