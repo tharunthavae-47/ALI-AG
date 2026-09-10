@@ -16,6 +16,9 @@ type Order = {
   paid_amount: number
   notes: string | null
   created_at: string
+  return_amount?: number
+  adjusted_total_amount?: number | null
+  refund_amount?: number | null
 }
 
 type Credit = {
@@ -63,7 +66,7 @@ export default function LieferantPage() {
     const [{ data: orderData }, { data: creditData }] = await Promise.all([
       supabase
         .from("supplier_orders")
-        .select("id,supplier_name,delivery_date,total_amount,paid_amount,notes,created_at")
+        .select("id,supplier_name,delivery_date,total_amount,paid_amount,notes,created_at,return_amount,adjusted_total_amount,refund_amount")
         .eq("supplier_id", user.id)
         .order("delivery_date", { ascending: false }),
       supabase
@@ -106,8 +109,21 @@ export default function LieferantPage() {
     () => orders.reduce((sum, order) => sum + Number(order.paid_amount), 0),
     [orders]
   )
+  const supplierCreditTotal = useMemo(
+    () => orders.reduce((sum, order) => {
+      const original = Number(order.total_amount) || 0
+      const adjusted = order.adjusted_total_amount == null ? original : Math.max(0, Number(order.adjusted_total_amount) || 0)
+      return sum + Math.max(0, original - adjusted)
+    }, 0),
+    [orders]
+  )
   const supplierOpenTotal = useMemo(
-    () => orders.reduce((sum, order) => sum + Math.max(0, Number(order.total_amount) - Number(order.paid_amount)), 0),
+    () => orders.reduce((sum, order) => {
+      const original = Number(order.total_amount) || 0
+      const adjusted = order.adjusted_total_amount == null ? original : Math.max(0, Number(order.adjusted_total_amount) || 0)
+      const paidAmount = Number(order.paid_amount) || 0
+      return sum + Math.max(0, adjusted - paidAmount)
+    }, 0),
     [orders]
   )
 
@@ -202,8 +218,11 @@ export default function LieferantPage() {
       setMessage("Bitte einen gültigen Zahlungsbetrag eingeben.")
       return
     }
-    if (value > Number(order.total_amount)) {
-      setMessage("Die Zahlung darf nicht höher als der Gesamtbetrag des Auftrags sein.")
+    const effectiveTotal = order.adjusted_total_amount == null
+      ? Number(order.total_amount)
+      : Math.max(0, Number(order.adjusted_total_amount) || 0)
+    if (value > effectiveTotal) {
+      setMessage("Die Zahlung darf nicht höher als der angepasste Gesamtbetrag des Auftrags sein.")
       return
     }
 
@@ -221,7 +240,7 @@ export default function LieferantPage() {
     }
 
     await load()
-    setMessage("Zahlung wurde aktualisiert. Eine vorhandene Gutschrift wurde automatisch verrechnet.")
+    setMessage("Zahlung wurde aktualisiert.")
     setSavingPayment(null)
   }
 
@@ -333,7 +352,7 @@ export default function LieferantPage() {
             </div>
             <div className="border border-border bg-card p-5">
               <p className="text-xs uppercase tracking-widest text-muted-foreground">Gutschrift</p>
-              <p className="mt-2 text-2xl font-bold">CHF {availableCredit.toFixed(2)}</p>
+              <p className="mt-2 text-2xl font-bold">CHF {(supplierCreditTotal + availableCredit).toFixed(2)}</p>
               <p className="mt-1 text-xs text-muted-foreground">Noch verfügbar</p>
             </div>
             <div className="border border-border bg-card p-5">
@@ -371,38 +390,29 @@ export default function LieferantPage() {
             <div className="space-y-4">
               {orders.map((order) => {
                 const orderTotal = Number(order.total_amount) || 0
+                const adjustedTotal = order.adjusted_total_amount == null ? orderTotal : Math.max(0, Number(order.adjusted_total_amount) || 0)
                 const orderPaid = Number(order.paid_amount) || 0
-                const orderOpen = Math.max(0, orderTotal - orderPaid)
+                const orderOpen = Math.max(0, adjustedTotal - orderPaid)
                 return (
                   <div key={order.id} className="border border-border bg-card p-5 sm:p-7">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="font-display text-xs uppercase tracking-[0.25em] text-muted-foreground">{new Date(order.delivery_date).toLocaleDateString("de-CH")}</p>
-                        <h3 className="mt-1 text-lg font-bold">{order.supplier_name}</h3>
-                        {order.notes && <p className="mt-2 text-sm text-muted-foreground">{order.notes}</p>}
+                        <h3 className="mt-1 font-display text-xl font-bold uppercase tracking-wide">{order.supplier_name}</h3>
                       </div>
                       <div className="text-left sm:text-right">
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Auftrag</p>
-                        <p className="mt-1 text-xl font-bold">CHF {orderTotal.toFixed(2)}</p>
+                        <p className="text-xl font-bold">CHF {orderTotal.toFixed(2)}</p>
                       </div>
                     </div>
-
-                    <div className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Bezahlt</p>
-                        <p className="mt-1 font-bold">CHF {orderPaid.toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Offen</p>
-                        <p className="mt-1 font-bold">CHF {orderOpen.toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <label className="text-xs uppercase tracking-widest text-muted-foreground">Zahlung aktualisieren</label>
-                        <div className="mt-2 flex gap-2">
-                          <input type="number" min="0" step="0.01" value={paymentInputs[order.id] ?? "0"} onChange={(e) => setPaymentInputs((current) => ({ ...current, [order.id]: e.target.value }))} className="min-w-0 flex-1 border border-border bg-background px-3 py-2 text-sm" />
-                          <button type="button" disabled={savingPayment === order.id} onClick={() => savePayment(order)} className="border border-border px-3 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50">{savingPayment === order.id ? "..." : "Speichern"}</button>
-                        </div>
-                      </div>
+                    <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                      <div className="border border-border p-4"><p className="text-xs uppercase tracking-widest text-muted-foreground">Bezahlt</p><p className="mt-1 font-bold">CHF {orderPaid.toFixed(2)}</p></div>
+                      <div className="border border-border p-4"><p className="text-xs uppercase tracking-widest text-muted-foreground">Gutschrift</p><p className="mt-1 font-bold">CHF {Math.max(0, orderTotal - adjustedTotal).toFixed(2)}</p></div>
+                      <div className="border border-border p-4"><p className="text-xs uppercase tracking-widest text-muted-foreground">Offen</p><p className="mt-1 font-bold">CHF {orderOpen.toFixed(2)}</p></div>
+                    </div>
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <label className="flex-1 text-sm">Zahlung aktualisieren<input type="number" min="0" step="0.01" value={paymentInputs[order.id] ?? "0"} onChange={(e) => setPaymentInputs((current) => ({ ...current, [order.id]: e.target.value }))} className="mt-2 w-full border border-border bg-background px-4 py-3" /></label>
+                      <button type="button" onClick={() => savePayment(order)} disabled={savingPayment === order.id} className="border border-border px-5 py-3 text-sm font-bold uppercase tracking-wider disabled:opacity-50">{savingPayment === order.id ? "Speichern..." : "Speichern"}</button>
                     </div>
                   </div>
                 )
