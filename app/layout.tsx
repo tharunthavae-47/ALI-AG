@@ -7,6 +7,7 @@ import { Jarvis } from "@/components/jarvis"
 import { JarvisElevenLabs } from "@/components/jarvis-elevenlabs"
 import { PushNotifications } from "@/components/push-notifications"
 import { SupplierReturnsRouteGuard } from "@/components/supplier-returns-route-guard"
+import { MbPerformanceStructuredData } from "./seo-schema"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,11 +22,36 @@ const oswald = Oswald({
   display: "swap",
 })
 
+const siteUrl = "https://www.mb-performance.ch"
+
 export const metadata: Metadata = {
-  title: "MB Performance – Auto Reparatur & Service",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "MB Performance – Auto Reparatur & Service",
+    template: "%s | MB Performance",
+  },
   description:
-    "Persönlicher, zuverlässiger und professioneller Service rund um Ihr Fahrzeug. Vereinbaren Sie online einen Termin bei MB Performance.",
-  generator: "v0.app",
+    "MB Performance – persönliche und zuverlässige Autoreparatur, Fahrzeugdiagnose, Inspektion, Wartung, MFK, Ölwechsel und Reifenservice in der Schweiz.",
+  alternates: {
+    canonical: "/",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: "de_CH",
+    url: siteUrl,
+    siteName: "MB Performance",
+    title: "MB Performance – Auto Reparatur & Service",
+    description:
+      "Persönlicher, zuverlässiger und professioneller Service rund um Ihr Fahrzeug.",
+  },
 }
 
 export const viewport: Viewport = {
@@ -39,8 +65,9 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="de" className={`${inter.variable} ${oswald.variable} bg-background`}>
+    <html lang="de-CH" className={`${inter.variable} ${oswald.variable} bg-background`}>
       <body className="font-sans antialiased">
+        <MbPerformanceStructuredData />
         {children}
         <SupplierReturnsRouteGuard />
         <JarvisElevenLabs />
