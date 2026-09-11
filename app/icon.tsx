@@ -7,7 +7,7 @@ export const size = {
   height: 64,
 }
 
-export const contentType = "image/png"
+export const contentType = "MB.icon.png"
 
 export default function Icon() {
   return new ImageResponse(
