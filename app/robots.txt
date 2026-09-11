@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /besitzer
+Disallow: /api/
+
+Sitemap: https://www.mb-performance.ch/sitemap.xml
