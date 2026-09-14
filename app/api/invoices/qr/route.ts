@@ -17,19 +17,26 @@ const getIbanDiagnostic = (value: string) => {
   const iban = normalizeIban(value)
   if (!iban) return "SWISS_QR_IBAN fehlt."
   if (!/^[A-Z0-9]+$/.test(iban)) return "SWISS_QR_IBAN darf nur Buchstaben und Zahlen enthalten."
-  if (!/^(CH|LI)/.test(iban)) return "SWISS_QR_IBAN muss mit CH oder LI beginnen."
+  if (!iban.startsWith("CH")) return "SWISS_QR_IBAN muss mit CH beginnen."
   if (iban.length !== 21) {
-    return "SWISS_QR_IBAN muss exakt 21 Zeichen haben: CH/LI + 2 Prüfziffern + 17 weitere Zeichen."
+    return "SWISS_QR_IBAN muss exakt 21 Zeichen haben: CH + 2 Prüfziffern + 17 weitere Zeichen."
   }
-  if (!/^(CH|LI)\d{19}$/.test(iban)) {
-    return "SWISS_QR_IBAN hat ein ungültiges Format. Erwartet wird CH/LI + 2 Prüfziffern + 17 Ziffern."
+  if (!/^CH\d{19}$/.test(iban)) {
+    return "SWISS_QR_IBAN hat ein ungültiges Format. Erwartet wird CH + 2 Prüfziffern + 17 Ziffern."
   }
 
+  // Standard IBAN MOD-97-10 Prüfung.
+  // Die ersten vier Zeichen werden ans Ende verschoben und
+  // Buchstaben werden nach A=10, B=11, ... Z=35 umgewandelt.
   const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`
   let remainder = 0
-  for (const char of `${rearranged}131400`) {
-    remainder = (remainder * 10 + Number(char)) % 97
+  for (const char of rearranged) {
+    const value = /[A-Z]/.test(char) ? String(char.charCodeAt(0) - 55) : char
+    for (const digit of value) {
+      remainder = (remainder * 10 + Number(digit)) % 97
+    }
   }
+
   if (remainder !== 1) return "SWISS_QR_IBAN hat ungültige IBAN-Prüfziffern."
 
   return ""
