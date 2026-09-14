@@ -7,7 +7,10 @@ const env = (name: string) => process.env[name]?.trim() || ""
 
 const normalizeIban = (value: string) =>
   value
-    .replace(/[^A-Za-z0-9]/g, "")
+    .trim()
+    .replace(/^IBAN\s*:\s*/i, "")
+    .replace(/["'“”„]/g, "")
+    .replace(/\s+/g, "")
     .toUpperCase()
 
 const isValidIban = (value: string) => {
@@ -18,8 +21,8 @@ const isValidIban = (value: string) => {
   const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`
   let remainder = 0
   for (const char of rearranged) {
-    const value = char >= "A" && char <= "Z" ? String(char.charCodeAt(0) - 55) : char
-    for (const digit of value) {
+    const numeric = char >= "A" && char <= "Z" ? String(char.charCodeAt(0) - 55) : char
+    for (const digit of numeric) {
       remainder = (remainder * 10 + Number(digit)) % 97
     }
   }
@@ -90,7 +93,9 @@ export async function POST(request: Request) {
     const iban = normalizeIban(rawIban)
     if (!isValidIban(rawIban)) {
       return NextResponse.json(
-        { error: "Die SWISS_QR_IBAN ist nicht gültig. Bitte die vollständige CH/LI-IBAN ohne 'IBAN:' und ohne Anführungszeichen in Vercel eintragen. Leerzeichen sind erlaubt." },
+        {
+          error: `Die SWISS_QR_IBAN ist nicht gültig. Erwartet wird eine vollständige CH/LI-IBAN mit 21 Zeichen nach der Normalisierung. Erlaubt sind Leerzeichen sowie ein optionales "IBAN:"-Präfix. Prüfe insbesondere die Prüfziffer der IBAN.`,
+        },
         { status: 400 },
       )
     }
