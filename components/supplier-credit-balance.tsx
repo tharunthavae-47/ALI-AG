@@ -31,7 +31,20 @@ export function SupplierCreditBalance() {
     }
 
     void load()
-    return () => { active = false }
+
+    const channel = supabase
+      .channel("owner-supplier-credit-balance")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "supplier_credits" },
+        () => { void load() },
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      void supabase.removeChannel(channel)
+    }
   }, [])
 
   const balances = useMemo(() => {
@@ -49,9 +62,9 @@ export function SupplierCreditBalance() {
     <section className="mb-10 border border-border bg-card p-5 sm:p-6">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Lieferanten-Guthaben</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Unternehmens-Guthaben</p>
           <h3 className="mt-2 font-display text-2xl font-bold uppercase tracking-wide">Aktuelles verfügbares Guthaben</h3>
-          <p className="mt-2 text-sm text-muted-foreground">Dieser Wert entspricht direkt den noch verfügbaren Guthaben aus der Lieferantenansicht.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Synchronisiert direkt mit den noch verfügbaren Guthaben aus der Lieferantenansicht.</p>
         </div>
         <div className="text-left sm:text-right">
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Gesamt verfügbar</p>
