@@ -13,12 +13,37 @@ const normalizeIban = (value: string) =>
     .replace(/\s+/g, "")
     .toUpperCase()
 
-const isValidIban = (value: string) => {
-  const iban = normalizeIban(value)
-  if (!/^(CH|LI)\d{19}$/.test(iban)) return false
+function getIbanDiagnostic(value: string) {
+  const normalized = normalizeIban(value)
 
-  // ISO 13616 IBAN checksum validation.
-  const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`
+  if (!normalized) {
+    return { valid: false, error: "SWISS_QR_IBAN ist leer. Bitte deine vollständige IBAN in Vercel eintragen." }
+  }
+
+  if (!/^[A-Z0-9]+$/.test(normalized)) {
+    return { valid: false, error: "SWISS_QR_IBAN enthält ungültige Zeichen. Erlaubt sind nur Buchstaben und Zahlen." }
+  }
+
+  if (!(normalized.startsWith("CH") || normalized.startsWith("LI"))) {
+    return { valid: false, error: "SWISS_QR_IBAN muss mit CH oder LI beginnen." }
+  }
+
+  if (normalized.length !== 21) {
+    return {
+      valid: false,
+      error: `SWISS_QR_IBAN hat nach der Normalisierung ${normalized.length} Zeichen. Eine CH/LI-IBAN muss genau 21 Zeichen haben.`,
+    }
+  }
+
+  if (!/^(CH|LI)\d{19}$/.test(normalized)) {
+    return {
+      valid: false,
+      error: "SWISS_QR_IBAN hat das falsche CH/LI-Format. Nach CH/LI müssen zwei Prüfziffern und danach 17 weitere Zeichen folgen.",
+    }
+  }
+
+  // ISO 13616 / MOD-97-10 checksum validation.
+  const rearranged = `${normalized.slice(4)}${normalized.slice(0, 4)}`
   let remainder = 0
   for (const char of rearranged) {
     const numeric = char >= "A" && char <= "Z" ? String(char.charCodeAt(0) - 55) : char
@@ -26,7 +51,15 @@ const isValidIban = (value: string) => {
       remainder = (remainder * 10 + Number(digit)) % 97
     }
   }
-  return remainder === 1
+
+  if (remainder !== 1) {
+    return {
+      valid: false,
+      error: "Die Länge und das CH/LI-Format der SWISS_QR_IBAN stimmen, aber die Prüfziffer ist ungültig. Bitte die IBAN direkt aus deinem E-Banking kopieren und erneut in Vercel eintragen.",
+    }
+  }
+
+  return { valid: true as const, iban: normalized }
 }
 
 const required = [
@@ -89,15 +122,9 @@ export async function POST(request: Request) {
     if (!invoiceNumber) return NextResponse.json({ error: "Rechnungsnummer fehlt." }, { status: 400 })
     if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: "Rechnungsbetrag ist ungültig." }, { status: 400 })
 
-    const rawIban = env("SWISS_QR_IBAN")
-    const iban = normalizeIban(rawIban)
-    if (!isValidIban(rawIban)) {
-      return NextResponse.json(
-        {
-          error: `Die SWISS_QR_IBAN ist nicht gültig. Erwartet wird eine vollständige CH/LI-IBAN mit 21 Zeichen nach der Normalisierung. Erlaubt sind Leerzeichen sowie ein optionales "IBAN:"-Präfix. Prüfe insbesondere die Prüfziffer der IBAN.`,
-        },
-        { status: 400 },
-      )
+    const ibanDiagnostic = getIbanDiagnostic(env("SWISS_QR_IBAN"))
+    if (!ibanDiagnostic.valid) {
+      return NextResponse.json({ error: ibanDiagnostic.error }, { status: 400 })
     }
 
     const payload = buildSwissQrPayload(invoiceNumber, amount)
