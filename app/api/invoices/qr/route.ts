@@ -5,6 +5,27 @@ export const runtime = "nodejs"
 
 const env = (name: string) => process.env[name]?.trim() || ""
 
+const normalizeIban = (value: string) =>
+  value
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase()
+
+const isValidIban = (value: string) => {
+  const iban = normalizeIban(value)
+  if (!/^(CH|LI)\d{19}$/.test(iban)) return false
+
+  // ISO 13616 IBAN checksum validation.
+  const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`
+  let remainder = 0
+  for (const char of rearranged) {
+    const value = char >= "A" && char <= "Z" ? String(char.charCodeAt(0) - 55) : char
+    for (const digit of value) {
+      remainder = (remainder * 10 + Number(digit)) % 97
+    }
+  }
+  return remainder === 1
+}
+
 const required = [
   "SWISS_QR_IBAN",
   "SWISS_QR_CREDITOR_NAME",
@@ -15,7 +36,7 @@ const required = [
 ]
 
 function buildSwissQrPayload(invoiceNumber: string, amount: number) {
-  const iban = env("SWISS_QR_IBAN").replace(/\s/g, "").toUpperCase()
+  const iban = normalizeIban(env("SWISS_QR_IBAN"))
   const name = env("SWISS_QR_CREDITOR_NAME")
   const street = env("SWISS_QR_CREDITOR_STREET")
   const building = env("SWISS_QR_CREDITOR_BUILDING")
@@ -23,8 +44,6 @@ function buildSwissQrPayload(invoiceNumber: string, amount: number) {
   const city = env("SWISS_QR_CREDITOR_CITY")
   const country = env("SWISS_QR_CREDITOR_COUNTRY") || "CH"
 
-  // Current Swiss QR-bill structure: structured creditor address,
-  // optional debtor omitted, standard IBAN with NON reference.
   const lines = [
     "SPC",
     "0200",
@@ -67,9 +86,13 @@ export async function POST(request: Request) {
     if (!invoiceNumber) return NextResponse.json({ error: "Rechnungsnummer fehlt." }, { status: 400 })
     if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: "Rechnungsbetrag ist ungültig." }, { status: 400 })
 
-    const iban = env("SWISS_QR_IBAN").replace(/\s/g, "").toUpperCase()
-    if (!/^(CH|LI)\d{19}$/.test(iban)) {
-      return NextResponse.json({ error: "SWISS_QR_IBAN ist keine gültige CH/LI-IBAN im erwarteten Format." }, { status: 400 })
+    const rawIban = env("SWISS_QR_IBAN")
+    const iban = normalizeIban(rawIban)
+    if (!isValidIban(rawIban)) {
+      return NextResponse.json(
+        { error: "Die SWISS_QR_IBAN ist nicht gültig. Bitte die vollständige CH/LI-IBAN ohne 'IBAN:' und ohne Anführungszeichen in Vercel eintragen. Leerzeichen sind erlaubt." },
+        { status: 400 },
+      )
     }
 
     const payload = buildSwissQrPayload(invoiceNumber, amount)
