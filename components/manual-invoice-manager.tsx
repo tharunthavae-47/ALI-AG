@@ -12,7 +12,7 @@ const toDbDate=(value:string)=>{const v=value.trim();if(!v)return null;if(/^\d{4
 const displayDate=(value:string|null)=>{if(!value)return "";const m=value.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}.${m[2]}.${m[1]}`:value}
 const escapeHtml=(value:unknown)=>String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/'/g,"&#039;")
 const today=new Date().toISOString().slice(0,10)
-const qrImagePath="QR code.png"
+const qrImagePath="https://raw.githubusercontent.com/tharunthavae-47/ALI-AG/main/QR%20code.png""
 
 export function ManualInvoiceManager(){
  const [invoices,setInvoices]=useState<Invoice[]>([]),[open,setOpen]=useState(false),[saving,setSaving]=useState(false),[selected,setSelected]=useState<Invoice|null>(null),[selectedItems,setSelectedItems]=useState<InvoiceItem[]>([]),[error,setError]=useState(""),[success,setSuccess]=useState("")
