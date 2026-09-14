@@ -19,10 +19,10 @@ const getIbanDiagnostic = (value: string) => {
   if (!/^[A-Z0-9]+$/.test(iban)) return "SWISS_QR_IBAN darf nur Buchstaben und Zahlen enthalten."
   if (!iban.startsWith("CH")) return "SWISS_QR_IBAN muss mit CH beginnen."
   if (iban.length !== 21) {
-    return "SWISS_QR_IBAN muss exakt 21 Zeichen haben: CH + 2 Prüfziffern + 17 weitere Zeichen."
+    return "SWISS_QR_IBAN muss exakt 21 Zeichen haben: CH + 19 weitere Zeichen."
   }
-  if (!/^CH\d{19}$/.test(iban)) {
-    return "SWISS_QR_IBAN hat ein ungültiges Format. Erwartet wird CH + 2 Prüfziffern + 17 Ziffern."
+  if (!/^CH\d{2}[A-Z0-9]{17}$/.test(iban)) {
+    return "SWISS_QR_IBAN hat ein ungültiges Format. Erwartet wird CH + 2 Prüfziffern + 17 alphanumerische Zeichen."
   }
 
   // Standard IBAN MOD-97-10 Prüfung.
