@@ -8,134 +8,122 @@ const env = (name: string) => process.env[name]?.trim() || ""
 const normalizeIban = (value: string) =>
   value
     .trim()
-    .replace(/^IBAN\s*:\s*/i, "")
-    .replace(/["'“”„]/g, "")
+    .replace(/^IBAN:\s*/i, "")
+    .replace(/^['"]|['"]$/g, "")
     .replace(/\s+/g, "")
     .toUpperCase()
 
-function getIbanDiagnostic(value: string) {
-  const normalized = normalizeIban(value)
-
-  if (!normalized) {
-    return { valid: false, error: "SWISS_QR_IBAN ist leer. Bitte deine vollständige IBAN in Vercel eintragen." }
+const getIbanDiagnostic = (value: string) => {
+  const iban = normalizeIban(value)
+  if (!iban) return "SWISS_QR_IBAN fehlt."
+  if (!/^[A-Z0-9]+$/.test(iban)) return "SWISS_QR_IBAN darf nur Buchstaben und Zahlen enthalten."
+  if (!/^(CH|LI)/.test(iban)) return "SWISS_QR_IBAN muss mit CH oder LI beginnen."
+  if (iban.length !== 21) {
+    return "SWISS_QR_IBAN muss exakt 21 Zeichen haben: CH/LI + 2 Prüfziffern + 17 weitere Zeichen."
+  }
+  if (!/^(CH|LI)\d{19}$/.test(iban)) {
+    return "SWISS_QR_IBAN hat ein ungültiges Format. Erwartet wird CH/LI + 2 Prüfziffern + 17 Ziffern."
   }
 
-  if (!/^[A-Z0-9]+$/.test(normalized)) {
-    return { valid: false, error: "SWISS_QR_IBAN enthält ungültige Zeichen. Erlaubt sind nur Buchstaben und Zahlen." }
-  }
-
-  if (!(normalized.startsWith("CH") || normalized.startsWith("LI"))) {
-    return { valid: false, error: "SWISS_QR_IBAN muss mit CH oder LI beginnen." }
-  }
-
-  if (normalized.length !== 21) {
-    return {
-      valid: false,
-      error: `SWISS_QR_IBAN hat nach der Normalisierung ${normalized.length} Zeichen. Eine CH/LI-IBAN muss genau 21 Zeichen haben.`,
-    }
-  }
-
-  if (!/^(CH|LI)\d{19}$/.test(normalized)) {
-    return {
-      valid: false,
-      error: "SWISS_QR_IBAN hat das falsche CH/LI-Format. Nach CH/LI müssen zwei Prüfziffern und danach 17 weitere Zeichen folgen.",
-    }
-  }
-
-  // ISO 13616 / MOD-97-10 checksum validation.
-  const rearranged = `${normalized.slice(4)}${normalized.slice(0, 4)}`
+  const rearranged = `${iban.slice(4)}${iban.slice(0, 4)}`
   let remainder = 0
-  for (const char of rearranged) {
-    const numeric = char >= "A" && char <= "Z" ? String(char.charCodeAt(0) - 55) : char
-    for (const digit of numeric) {
-      remainder = (remainder * 10 + Number(digit)) % 97
-    }
+  for (const char of `${rearranged}131400`) {
+    remainder = (remainder * 10 + Number(char)) % 97
   }
+  if (remainder !== 1) return "SWISS_QR_IBAN hat ungültige IBAN-Prüfziffern."
 
-  if (remainder !== 1) {
-    return {
-      valid: false,
-      error: "Die Länge und das CH/LI-Format der SWISS_QR_IBAN stimmen, aber die Prüfziffer ist ungültig. Bitte die IBAN direkt aus deinem E-Banking kopieren und erneut in Vercel eintragen.",
-    }
-  }
-
-  return { valid: true as const, iban: normalized }
+  return ""
 }
 
-const required = [
-  "SWISS_QR_IBAN",
-  "SWISS_QR_CREDITOR_NAME",
-  "SWISS_QR_CREDITOR_STREET",
-  "SWISS_QR_CREDITOR_BUILDING",
-  "SWISS_QR_CREDITOR_ZIP",
-  "SWISS_QR_CREDITOR_CITY",
-]
-
-function buildSwissQrPayload(invoiceNumber: string, amount: number) {
+const buildSwissQrPayload = (invoiceNumber: string, amount: number) => {
   const iban = normalizeIban(env("SWISS_QR_IBAN"))
-  const name = env("SWISS_QR_CREDITOR_NAME")
-  const street = env("SWISS_QR_CREDITOR_STREET")
-  const building = env("SWISS_QR_CREDITOR_BUILDING")
-  const zip = env("SWISS_QR_CREDITOR_ZIP")
-  const city = env("SWISS_QR_CREDITOR_CITY")
-  const country = env("SWISS_QR_CREDITOR_COUNTRY") || "CH"
+  const creditorName = env("SWISS_QR_CREDITOR_NAME")
+  const creditorStreet = env("SWISS_QR_CREDITOR_STREET")
+  const creditorBuilding = env("SWISS_QR_CREDITOR_BUILDING")
+  const creditorZip = env("SWISS_QR_CREDITOR_ZIP")
+  const creditorCity = env("SWISS_QR_CREDITOR_CITY")
+  const creditorCountry = env("SWISS_QR_CREDITOR_COUNTRY") || "CH"
 
-  const lines = [
+  return [
     "SPC",
     "0200",
     "1",
     iban,
     "S",
-    name,
-    street,
-    building,
-    zip,
-    city,
-    country,
-    "", "", "", "", "", "", "",
+    creditorName,
+    creditorStreet,
+    creditorBuilding,
+    creditorZip,
+    creditorCity,
+    creditorCountry,
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
     amount.toFixed(2),
     "CHF",
-    "", "", "", "", "", "", "",
+    "",
+    "",
+    "",
+    "",
+    "",
     "NON",
     "",
     `Rechnung ${invoiceNumber}`.slice(0, 140),
     "EPD",
-  ]
-
-  return lines.join("\n")
+  ].join("\n")
 }
 
 export async function POST(request: Request) {
   try {
-    const missing = required.filter((key) => !env(key))
+    const body = (await request.json().catch(() => ({}))) as {
+      invoiceNumber?: string
+      amount?: number
+    }
+
+    const invoiceNumber = String(body.invoiceNumber || "").trim()
+    const amount = Number(body.amount)
+
+    if (!invoiceNumber) {
+      return NextResponse.json({ error: "Rechnungsnummer fehlt." }, { status: 400 })
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Rechnungsbetrag muss grösser als 0 sein." }, { status: 400 })
+    }
+
+    const required = [
+      "SWISS_QR_IBAN",
+      "SWISS_QR_CREDITOR_NAME",
+      "SWISS_QR_CREDITOR_STREET",
+      "SWISS_QR_CREDITOR_BUILDING",
+      "SWISS_QR_CREDITOR_ZIP",
+      "SWISS_QR_CREDITOR_CITY",
+    ]
+    const missing = required.filter((name) => !env(name))
     if (missing.length) {
       return NextResponse.json(
-        { error: `Swiss QR-Rechnung ist noch nicht konfiguriert. Fehlende Vercel-Variablen: ${missing.join(", ")}` },
+        { error: `Swiss QR-Code Konfiguration fehlt: ${missing.join(", ")}.` },
         { status: 503 },
       )
     }
 
-    const body = (await request.json()) as { invoiceNumber?: string; amount?: number }
-    const invoiceNumber = String(body.invoiceNumber || "").trim()
-    const amount = Number(body.amount)
-
-    if (!invoiceNumber) return NextResponse.json({ error: "Rechnungsnummer fehlt." }, { status: 400 })
-    if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: "Rechnungsbetrag ist ungültig." }, { status: 400 })
-
-    const ibanDiagnostic = getIbanDiagnostic(env("SWISS_QR_IBAN"))
-    if (!ibanDiagnostic.valid) {
-      return NextResponse.json({ error: ibanDiagnostic.error }, { status: 400 })
+    const ibanError = getIbanDiagnostic(env("SWISS_QR_IBAN"))
+    if (ibanError) {
+      return NextResponse.json({ error: ibanError }, { status: 400 })
     }
 
     const payload = buildSwissQrPayload(invoiceNumber, amount)
-    const svg = bwipjs.toSVG({
+    const svg = await bwipjs.toSVG({
       bcid: "swissqrcode",
       text: payload,
       scale: 4,
       padding: 8,
     })
 
-    return new Response(svg, {
+    return new NextResponse(svg, {
       status: 200,
       headers: {
         "Content-Type": "image/svg+xml; charset=utf-8",
@@ -143,7 +131,10 @@ export async function POST(request: Request) {
       },
     })
   } catch (error) {
-    console.error("Swiss QR generation failed", error)
-    return NextResponse.json({ error: "Swiss QR-Code konnte nicht erzeugt werden." }, { status: 500 })
+    console.error("Swiss QR-Code generation failed", error)
+    return NextResponse.json(
+      { error: "Swiss QR-Code konnte nicht erzeugt werden." },
+      { status: 500 },
+    )
   }
 }
