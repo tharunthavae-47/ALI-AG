@@ -5,6 +5,7 @@ import { BookingsManager } from "@/components/bookings-manager"
 import { OccasionManager } from "@/components/occasion-manager"
 import { OccasionMarketplaceManager } from "@/components/occasion-marketplace-manager"
 import { SupplierOrdersManager } from "@/components/supplier-orders-manager"
+import { SupplierCreditBalance } from "@/components/supplier-credit-balance"
 import { OwnerTodo } from "@/components/owner-todo"
 
 export const dynamic = "force-dynamic"
@@ -72,7 +73,11 @@ export default async function OwnerPage() {
         {bookings.length === 0 ? <div className="border border-border bg-card px-6 py-16 text-center"><p className="font-display text-lg font-bold uppercase tracking-wide">Keine Buchungen</p><p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">Aktuell sind keine Terminanfragen vorhanden.</p><Link href="/" className="mt-6 inline-flex border border-border px-5 py-3 text-xs font-medium uppercase tracking-widest transition-colors hover:bg-secondary">Zur Website</Link></div> : <BookingsManager initialBookings={bookings} />}
         <div className="mt-16 border-t border-border pt-12"><OccasionManager /></div>
         <div className="mt-16 border-t border-border pt-12"><OccasionMarketplaceManager /></div>
-        <div id="konto" className="mt-16 scroll-mt-24 border-t border-border pt-12"><div className="mb-7"><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Lieferanten</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Lieferaufträge</h2><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Hier sehen Sie alle Lieferaufträge, Zahlungen und den gesamten offenen Betrag.</p></div><SupplierOrdersManager /></div>
+        <div id="konto" className="mt-16 scroll-mt-24 border-t border-border pt-12">
+          <div className="mb-7"><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Lieferanten</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Lieferaufträge</h2><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Hier sehen Sie alle Lieferaufträge, Zahlungen und den gesamten offenen Betrag.</p></div>
+          <SupplierCreditBalance />
+          <SupplierOrdersManager />
+        </div>
       </section>
     </main>
   )
