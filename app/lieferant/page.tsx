@@ -88,8 +88,10 @@ export default function LieferantPage() {
     if (paidNumber > total) return setMessage("Die Barzahlung darf nicht höher als der Gesamtbetrag sein.")
 
     setSaving(true)
+
+    // "Bar erhalten" ist die bereits bezahlte Summe. Genau dieser Betrag
+    // wird zusätzlich vom vorhandenen Guthaben abgezogen.
     const amountFromCredit = Math.min(availableCredit, paidNumber)
-    const newPaidAmount = paidNumber + amountFromCredit
     const deductions: Array<{ id: string; oldRemaining: number; newRemaining: number; amount: number }> = []
     let left = amountFromCredit
 
@@ -103,12 +105,14 @@ export default function LieferantPage() {
       }
     }
 
+    // paid_amount bleibt die echte Barzahlung. Das Guthaben wird separat
+    // reduziert, damit die DB-Prüfung paid_amount <= total_amount erfüllt bleibt.
     const { data: order, error } = await supabase.from("supplier_orders").insert({
       supplier_id: userId,
       supplier_name: supplierName.trim(),
       delivery_date: date,
       total_amount: total,
-      paid_amount: newPaidAmount,
+      paid_amount: paidNumber,
       notes: notes.trim() || null
     }).select("id").single()
 
@@ -155,7 +159,7 @@ export default function LieferantPage() {
     setPaid("")
     setNotes("")
     setMessage(amountFromCredit > 0
-      ? `Auftrag gespeichert. CHF ${amountFromCredit.toFixed(2)} vom Guthaben verwendet. Offen: CHF ${Math.max(0, total - paidNumber - amountFromCredit).toFixed(2)}.`
+      ? `Auftrag gespeichert. CHF ${amountFromCredit.toFixed(2)} vom Guthaben abgezogen. Bar erhalten: CHF ${paidNumber.toFixed(2)}. Offen: CHF ${Math.max(0, total - paidNumber - amountFromCredit).toFixed(2)}.`
       : "Auftrag wurde gespeichert.")
     await load()
     setSaving(false)
@@ -193,7 +197,7 @@ export default function LieferantPage() {
         <div className="h-fit border border-border bg-card p-5 sm:p-7">
           <p className="font-display text-xs uppercase tracking-[0.3em] text-muted-foreground">Abrechnung</p>
           <div className="mt-6 flex items-center justify-between"><span>Gesamtauftrag</span><strong>CHF {total.toFixed(2)}</strong></div>
-          <div className="mt-5 border border-border p-4"><div className="flex items-center justify-between text-sm"><span>Verfügbares Guthaben</span><strong>CHF {availableCredit.toFixed(2)}</strong></div><p className="mt-2 text-xs text-muted-foreground">Das vorhandene Guthaben wird beim Speichern automatisch um den bei „Bar erhalten“ eingegebenen Betrag reduziert.</p></div>
+          <div className="mt-5 border border-border p-4"><div className="flex items-center justify-between text-sm"><span>Verfügbares Guthaben</span><strong>CHF {availableCredit.toFixed(2)}</strong></div><p className="mt-2 text-xs text-muted-foreground">Der Betrag bei „Bar erhalten“ wird beim Speichern in gleicher Höhe vom Guthaben abgezogen.</p></div>
           <label className="mt-5 block text-sm">Bar erhalten<input type="number" min="0" max={total} step="0.01" value={paid} onChange={e => setPaid(e.target.value)} placeholder="z. B. 50.00" className="mt-2 w-full border border-border bg-background px-4 py-3 outline-none" /></label>
           <div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span>Offen</span><strong>CHF {openAmount.toFixed(2)}</strong></div>
           <button type="button" onClick={saveOrder} disabled={saving} className="mt-7 w-full bg-primary px-5 py-4 text-sm font-bold uppercase tracking-widest text-primary-foreground disabled:opacity-50">{saving ? "Wird gespeichert..." : "Auftrag speichern"}</button>
