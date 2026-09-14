@@ -76,7 +76,9 @@ export default async function OwnerPage() {
         <div id="konto" className="mt-16 scroll-mt-24 border-t border-border pt-12">
           <div className="mb-7"><p className="font-display text-xs uppercase tracking-[0.35em] text-muted-foreground">Lieferanten</p><h2 className="mt-2 font-display text-3xl font-bold uppercase tracking-wide sm:text-4xl">Lieferaufträge</h2><p className="mt-3 max-w-2xl text-sm text-muted-foreground">Hier sehen Sie alle Lieferaufträge, Zahlungen und den gesamten offenen Betrag.</p></div>
           <SupplierCreditBalance />
-          <SupplierOrdersManager />
+          <div className="[&>div>div:first-child>div:nth-child(3)]:hidden [&_th:nth-child(4)]:hidden [&_td:nth-child(4)]:hidden">
+            <SupplierOrdersManager />
+          </div>
         </div>
       </section>
     </main>
