@@ -46,14 +46,14 @@ function customerBody(data: BookingEmailData, type: BookingEmailType) {
   const name = escapeHtml(data.name)
 
   if (type === "new-customer") {
-    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><p style="font-size:15px;line-height:1.7;margin:0">Ihre Terminanfrage ist erfolgreich bei uns eingegangen.</p>${details(data)}<div style="padding:15px 16px;background:#fff8e1;border-radius:10px;font-size:14px;line-height:1.6"><strong>⏳ Noch nicht bestätigt</strong><br>Der Termin wird zuerst von uns geprüft. Sie erhalten automatisch eine weitere E-Mail, sobald die Anfrage bestätigt oder abgelehnt wurde.</div>`
+    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><p style="font-size:15px;line-height:1.7;margin:0">Ihre Terminanfrage ist erfolgreich bei uns eingegangen.</p>${details(data)}<div style="padding:15px 16px;background:#fff8e1;border-radius:10px;font-size:14px;line-height:1.6"><strong>⏳ Noch nicht bestätigt</strong><br>Der Termin wird zuerst von uns geprüft. Sie erhalten automatisch eine weitere E-Mail, sobald die Anfrage bestätigt oder abgelehnt wurde.  PS: Bitte nicht zurück antwortet danke</div>`
   }
 
   if (type === "confirmed") {
-    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei MB-Performance begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.</p>`
+    return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#ecfdf3;border:1px solid #b7ebc6;border-radius:10px;color:#176b3a;font-size:15px"><strong>✓ Ihr Termin wurde bestätigt.</strong></div><p style="font-size:15px;line-height:1.7;margin:0">Wir freuen uns, Sie bei MB-Performance begrüssen zu dürfen.</p>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Falls sich bei Ihnen etwas ändert, kontaktieren Sie uns bitte möglichst frühzeitig.  PS: Bitte nicht zurück antwortet danke</p>`
   }
 
-  return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;color:#9f1239;font-size:15px"><strong>Ihre Terminanfrage konnte leider nicht bestätigt werden.</strong></div>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Bei Fragen können Sie sich gerne direkt bei uns melden.</p>`
+  return `<p style="font-size:16px;line-height:1.7;margin:0 0 12px">Guten Tag ${name},</p><div style="margin:18px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;color:#9f1239;font-size:15px"><strong>Ihre Terminanfrage konnte leider nicht bestätigt werden.</strong></div>${details(data)}<p style="font-size:14px;line-height:1.7;color:#555;margin:0">Bei Fragen können Sie sich gerne direkt bei uns melden. PS: Bitte nicht zurück antwortet danke</p>`
 }
 
 function ownerBody(data: BookingEmailData) {
