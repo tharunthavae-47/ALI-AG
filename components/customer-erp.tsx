@@ -125,7 +125,7 @@ export function CustomerErp({ initialCustomers, initialVehicles, initialJobs }: 
   return <div className="min-h-screen bg-[#071321] text-slate-100">
     <div className="mx-auto max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div><div className="flex items-center gap-3 text-sky-300"><UsersRound className="h-7 w-7"/><h1 className="text-2xl font-bold sm:text-3xl">Kunden ERP</h1></div><p className="mt-2 text-sm text-slate-400">Kunden, Fahrzeuge und komplette Werkstatt-Historie zentral verwalten.</p></div>
+        <div><div className="flex items-center gap-3 text-sky-300"><UsersRound className="h-7 w-7"/><h1 className="text-2xl font-bold sm:text-3xl">MB-Performance</h1></div><p className="mt-2 text-sm text-slate-400">Kunden, Fahrzeuge und komplette Werkstatt-Historie zentral verwalten.</p></div>
         <button type="button" onClick={newCustomer} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-sky-500 px-5 text-sm font-semibold text-slate-950 hover:bg-sky-400"><Plus className="h-4 w-4"/> Neuer Kunde</button>
       </div>
       {error && <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
