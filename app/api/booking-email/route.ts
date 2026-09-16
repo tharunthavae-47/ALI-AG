@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { Resend } from "resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.RESEND_FROM_EMAIL
 const OWNER = process.env.BOOKING_OWNER_EMAIL
 
@@ -52,6 +51,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Resend ist nicht konfiguriert." }, { status: 500 })
     }
 
+    const resend = new Resend(process.env.RESEND_API_KEY)
     const data = (await request.json()) as BookingEmailPayload
 
     if (!data.name || !data.email || !data.booking_date || !data.booking_time) {
