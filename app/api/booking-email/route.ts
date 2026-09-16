@@ -47,11 +47,18 @@ function ownerHtml(data: BookingEmailPayload) {
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.RESEND_API_KEY || !FROM) {
+    const apiKey = process.env.RESEND_API_KEY
+
+    // Resend erst zur Laufzeit initialisieren. Dadurch kann Next.js die Route
+    // auch ohne gesetzten API-Key beim Build analysieren.
+    if (!apiKey || !FROM) {
       return NextResponse.json({ ok: false, error: "Resend ist nicht konfiguriert." }, { status: 500 })
     }
 
+    v0/kundenseite-ui-design-7040d11d
     const resend = new Resend(process.env.RESEND_API_KEY)
+    const resend = new Resend(apiKey)
+ main
     const data = (await request.json()) as BookingEmailPayload
 
     if (!data.name || !data.email || !data.booking_date || !data.booking_time) {
