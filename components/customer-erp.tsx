@@ -334,7 +334,7 @@ export function CustomerErp({
     if (!selected) return
     if (
       !confirm(
-        `Kunde „${fullName(selected!)}“ wirklich löschen? Dieser Schritt kann Fahrzeuge und Verknüpfungen betreffen.`,
+        `Kunde „${fullName(selected)}“ wirklich löschen? Dieser Schritt kann Fahrzeuge und Verknüpfungen betreffen.`,
       )
     ) {
       return
@@ -508,38 +508,6 @@ export function CustomerErp({
 
   return (
     <div className="min-h-screen bg-[#071321] text-slate-100">
-      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
-        <header className="mb-7 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3 text-sky-300"><UsersRound className="size-7" /><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Kunden</h1></div>
-            <p className="mt-2 text-sm text-slate-400">Kunden verwalten, neue erfassen und bestehende Kunden schnell wiederfinden.</p>
-          </div>
-          <button onClick={newCustomer} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-sky-500 px-4 text-sm font-semibold text-slate-950 transition hover:bg-sky-400"><Plus className="size-4" /> Neuer Kunde</button>
-        </header>
-
-        {error && <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_332px]">
-          <section className="min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-[#0b1b2c] shadow-2xl">
-            <div className="flex flex-col gap-3 border-b border-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nach Name, Telefon, E-Mail oder Kennzeichen suchen..." className="h-10 w-full rounded-lg border border-slate-700 bg-[#13263b] pl-9 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-500" /></div>
-              <div className="flex gap-2"><span className="rounded-lg border border-slate-700 bg-[#13263b] px-3 py-2 text-xs text-slate-300">Alle Kunden</span><span className="rounded-lg border border-slate-700 bg-[#13263b] px-3 py-2 text-xs text-slate-300">Alle Fahrzeuge</span></div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-[#102238] text-[10px] uppercase tracking-[0.14em] text-slate-400"><tr><th className="px-4 py-3">Nr.</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Telefon</th><th className="px-4 py-3">E-Mail</th><th className="px-4 py-3">Ort</th><th className="px-4 py-3">Fahrzeuge</th><th className="px-4 py-3">Aktionen</th></tr></thead><tbody className="divide-y divide-slate-800/80">{filtered.map((customer, index) => { const count = vehicles.filter((vehicle) => vehicle.customer_id === customer.id).length; const isSelected = selected?.id === customer.id; return <tr key={customer.id} onClick={() => openCustomer(customer)} className={`cursor-pointer transition hover:bg-sky-400/5 ${isSelected ? "bg-sky-400/10" : ""}`}><td className="px-4 py-4 text-slate-500">{index + 1}</td><td className="px-4 py-4"><div className="flex items-center gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-full bg-sky-500/80 text-[10px] font-bold text-white">{initials(customer) || "K"}</span><span className="font-semibold text-white">{fullName(customer)}</span></div></td><td className="px-4 py-4 text-slate-300">{customer.phone || "—"}</td><td className="px-4 py-4 text-slate-300">{customer.email || "—"}</td><td className="px-4 py-4 text-slate-300">{customer.city || "—"}</td><td className="px-4 py-4 text-slate-300">{count}</td><td className="px-4 py-4"><div className="flex gap-3 text-sky-400"><button aria-label="Kunde ansehen" onClick={(event) => { event.stopPropagation(); openCustomer(customer) }}><Eye className="size-4" /></button><button aria-label="Kunde bearbeiten" onClick={(event) => { event.stopPropagation(); editCustomer(customer) }}><Edit3 className="size-4" /></button></div></td></tr> })}</tbody></table>
-            </div>
-            {filtered.length === 0 && <p className="p-10 text-center text-sm text-slate-500">Keine passenden Kunden gefunden.</p>}
-          </section>
-
-          <aside className="space-y-4"><section className="rounded-xl border border-slate-800 bg-[#0b1b2c] p-4"><h2 className="mb-4 text-sm font-semibold text-sky-300">Kunden auf einen Blick</h2><div className="grid grid-cols-2 gap-2"><div className="rounded-lg bg-[#12253a] p-3"><UsersRound className="size-5 text-sky-400" /><p className="mt-2 text-[10px] text-slate-400">Gesamt Kunden</p><p className="text-xl font-bold">{customers.length}</p></div><div className="rounded-lg bg-[#12253a] p-3"><UsersRound className="size-5 text-sky-400" /><p className="mt-2 text-[10px] text-slate-400">Aktive Kunden</p><p className="text-xl font-bold">{activeCustomers}</p></div><div className="rounded-lg bg-[#12253a] p-3"><Plus className="size-5 text-sky-400" /><p className="mt-2 text-[10px] text-slate-400">Fahrzeuge</p><p className="text-xl font-bold">{totalVehicles}</p></div><div className="rounded-lg bg-[#12253a] p-3"><Clock3 className="size-5 text-sky-400" /><p className="mt-2 text-[10px] text-slate-400">Aufträge</p><p className="text-xl font-bold">{initialJobs.length}</p></div></div></section><section className="rounded-xl border border-slate-800 bg-[#0b1b2c] p-4"><h2 className="mb-3 text-sm font-semibold text-sky-300">Schnellzugriff</h2><div className="grid gap-2"><button onClick={newCustomer} className="rounded-lg bg-sky-500 px-3 py-3 text-left text-xs font-semibold text-slate-950 hover:bg-sky-400">＋ Neuer Kunde erfassen</button><button onClick={() => setSearch("")} className="rounded-lg bg-[#13263b] px-3 py-3 text-left text-xs text-slate-200">Alle Kunden anzeigen</button><button onClick={() => document.querySelector<HTMLInputElement>('input[placeholder*="Nach Name"]')?.focus()} className="rounded-lg bg-[#13263b] px-3 py-3 text-left text-xs text-slate-200">⌕ Kunden suchen</button></div></section>{selected && <section className="rounded-xl border border-sky-500/20 bg-[#0b1b2c] p-4"><p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Ausgewählt</p><h2 className="mt-2 font-semibold text-white">{fullName(selected!)}</h2><p className="mt-1 text-xs text-slate-400">{detailVehicles.length} Fahrzeuge · {jobs.length} Aufträge</p><button onClick={() => editCustomer(selected!)} className="mt-4 w-full rounded-lg border border-slate-700 py-2 text-xs text-slate-200 hover:border-sky-500">Kundendetails öffnen</button></section>}</aside>
-        </div>
-      </div>
-    </div>
-  )
-
-  /* Legacy detail surface retained below for the existing edit flows. */
-  return (
-    <div className="min-h-screen bg-[#071321] text-slate-100">
       <div className="mx-auto max-w-[1680px] px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div>
@@ -602,7 +570,7 @@ export function CustomerErp({
               Aktiver Kunde
             </p>
             <p className="mt-2 truncate text-base font-bold">
-              {selected ? fullName(selected!) : "Noch keiner"}
+              {selected ? fullName(selected) : "Noch keiner"}
             </p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-[#0b1a2b] p-4">
@@ -724,7 +692,7 @@ export function CustomerErp({
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Kundenprofil
                         </p>
-                        <h2 className="truncate text-xl font-bold text-white">{fullName(selected!)}</h2>
+                        <h2 className="truncate text-xl font-bold text-white">{fullName(selected)}</h2>
                         {selected.company && (
                           <p className="mt-1 truncate text-xs text-slate-400">{selected.company}</p>
                         )}
@@ -732,7 +700,7 @@ export function CustomerErp({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
-                        onClick={() => editCustomer(selected!)}
+                        onClick={() => editCustomer(selected)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200 transition hover:border-sky-500 hover:text-white"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
