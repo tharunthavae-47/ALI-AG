@@ -119,6 +119,38 @@ export async function updateCustomer(id: string, data: Partial<Omit<Customer, "i
   }
 }
 
+export async function deleteCustomer(id: string) {
+  try {
+    const supabase = await requireOwner()
+    if (!id) return { ok: false, error: "Kunden-ID fehlt." }
+
+    // Historische Aufträge bleiben erhalten, werden aber vom gelöschten Kunden entkoppelt.
+    const { error: bookingError } = await supabase
+      .from("bookings")
+      .update({ customer_id: null })
+      .eq("customer_id", id)
+    if (bookingError) return { ok: false, error: bookingError.message }
+
+    const { error: vehicleError } = await supabase
+      .from("customer_vehicles")
+      .delete()
+      .eq("customer_id", id)
+    if (vehicleError) return { ok: false, error: vehicleError.message }
+
+    const { error: customerError } = await supabase
+      .from("customers")
+      .delete()
+      .eq("id", id)
+    if (customerError) return { ok: false, error: customerError.message }
+
+    revalidatePath("/besitzer/kunden")
+    return { ok: true }
+  } catch (error) {
+    console.error("deleteCustomer:", error)
+    return { ok: false, error: error instanceof Error ? error.message : "Kunde konnte nicht gelöscht werden." }
+  }
+}
+
 export async function createCustomerVehicle(data: Omit<CustomerVehicle, "id" | "created_at" | "updated_at">) {
   try {
     const supabase = await requireOwner()
@@ -177,6 +209,7 @@ export async function updateCustomerVehicle(id: string, data: Partial<Omit<Custo
 export async function deleteCustomerVehicle(id: string) {
   try {
     const supabase = await requireOwner()
+    if (!id) return { ok: false, error: "Fahrzeug-ID fehlt." }
     const { error } = await supabase.from("customer_vehicles").delete().eq("id", id)
     if (error) return { ok: false, error: error.message }
     revalidatePath("/besitzer/kunden")
