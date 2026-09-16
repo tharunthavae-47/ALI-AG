@@ -6,7 +6,8 @@ import { SupplierReturnsV2 } from "@/components/supplier-returns-v2"
 export function SupplierReturnsRouteGuard() {
   const pathname = usePathname()
 
-  if (pathname === "/besitzer/to-do") return null
+  // Die Lieferanten-Retouren sollen nicht im Kunden-ERP erscheinen.
+  if (pathname === "/besitzer/to-do" || pathname === "/besitzer/kunden") return null
 
   return <SupplierReturnsV2 />
 }
