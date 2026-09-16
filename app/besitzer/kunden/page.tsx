@@ -19,8 +19,36 @@ export default async function CustomersPage() {
   const [{ data: customers }, { data: vehicles }, { data: jobs }] = await Promise.all([
     supabase.from("customers").select("*").order("last_name", { ascending: true }).order("first_name", { ascending: true }),
     supabase.from("customer_vehicles").select("*").order("created_at", { ascending: false }),
-    supabase.from("bookings").select("id, booking_date, booking_time, car, problem, status").not("customer_id", "is", null).order("booking_date", { ascending: false }).limit(500),
+    supabase
+      .from("bookings")
+      .select("id, booking_date, booking_time, car, problem, status, customer_id")
+      .not("customer_id", "is", null)
+      .order("booking_date", { ascending: false })
+      .order("booking_time", { ascending: false })
+      .limit(500),
   ])
+
+  const customerList = (customers ?? []) as Customer[]
+  const customerNameById = new Map(
+    customerList.map((customer) => [
+      customer.id,
+      `${customer.last_name} ${customer.first_name}`.trim().toLocaleLowerCase("de-CH"),
+    ])
+  )
+
+  const sortedJobs = ((jobs ?? []) as CustomerJob[]).sort((a, b) => {
+    const customerCompare = (customerNameById.get(a.customer_id ?? "") ?? "").localeCompare(
+      customerNameById.get(b.customer_id ?? "") ?? "",
+      "de-CH"
+    )
+
+    if (customerCompare !== 0) return customerCompare
+
+    const dateCompare = String(b.booking_date ?? "").localeCompare(String(a.booking_date ?? ""))
+    if (dateCompare !== 0) return dateCompare
+
+    return String(b.booking_time ?? "").localeCompare(String(a.booking_time ?? ""))
+  })
 
   return (
     <main className="min-h-screen bg-[#071321]">
@@ -33,9 +61,9 @@ export default async function CustomersPage() {
         </div>
       </div>
       <CustomerErp
-        initialCustomers={(customers ?? []) as Customer[]}
+        initialCustomers={customerList}
         initialVehicles={(vehicles ?? []) as CustomerVehicle[]}
-        initialJobs={(jobs ?? []) as CustomerJob[]}
+        initialJobs={sortedJobs}
       />
     </main>
   )
