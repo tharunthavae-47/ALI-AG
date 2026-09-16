@@ -26,22 +26,38 @@ export type BookedSlot = { id?: string; booking_date: string; booking_time: stri
 export type PublicSlot = { time: string; available: boolean }
 export type CreateBookingData = { booking_date: string; booking_time: string; name: string; phone: string; email: string; car: string; problem: string; image_urls?: string[] }
 
-// Sucht einen bestehenden Kunden über E-Mail oder Telefonnummer. Wenn keiner existiert,
-// wird automatisch ein neuer ERP-Kunde angelegt. So landet jeder neue Auftrag im Kundenkonto.
+// Verknüpft eine Buchung zuerst über den eingegebenen Namen mit einem bestehenden ERP-Kunden.
+// E-Mail und Telefon dienen erst danach als Fallback, damit eine abweichende E-Mail-Adresse
+// nicht dazu führt, dass der Auftrag unter einem anderen Kunden landet.
 async function resolveCustomerId(supabase: Awaited<ReturnType<typeof createClient>>, name: string, phone: string, email: string) {
+  const cleanName = name.trim().replace(/\s+/g, " ")
   const cleanEmail = email.trim().toLowerCase()
   const cleanPhone = phone.trim()
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  const first_name = parts.shift() || name.trim()
+  const parts = cleanName.split(" ").filter(Boolean)
+  const first_name = parts.shift() || cleanName
   const last_name = parts.join(" ") || "-"
 
   let customer: { id: string } | null = null
 
-  if (cleanEmail) {
+  // 1. Name hat Priorität: Sanusjan bleibt Sanusjan, auch wenn eine andere Mail
+  //    (z. B. die eines anderen Kunden) im Terminformular eingetragen wurde.
+  if (first_name && last_name !== "-") {
+    const { data } = await supabase
+      .from("customers")
+      .select("id")
+      .ilike("first_name", first_name)
+      .ilike("last_name", last_name)
+      .maybeSingle()
+    customer = data
+  }
+
+  // 2. E-Mail ist nur noch Fallback, falls über den Namen kein Kunde gefunden wurde.
+  if (!customer && cleanEmail) {
     const { data } = await supabase.from("customers").select("id").eq("email", cleanEmail).maybeSingle()
     customer = data
   }
 
+  // 3. Telefonnummer ist letzter Fallback.
   if (!customer && cleanPhone) {
     const { data } = await supabase.from("customers").select("id").eq("phone", cleanPhone).maybeSingle()
     customer = data
