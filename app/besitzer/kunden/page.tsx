@@ -3,7 +3,8 @@ import { redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { CustomerErp } from "@/components/customer-erp"
-import type { Customer, CustomerHistoryEntry, CustomerJob, CustomerVehicle } from "./actions"
+import { CustomerHistoryManual } from "@/components/customer-history-manual"
+import type { Customer, CustomerJob, CustomerVehicle } from "./actions"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -16,22 +17,16 @@ export default async function CustomersPage() {
   const { data: owner } = await supabase.from("owner_access").select("user_id").eq("user_id", user.id).maybeSingle()
   if (!owner) redirect("/besitzer/login")
 
-  const [{ data: customers }, { data: vehicles }, { data: jobs }, { data: manualHistory }] = await Promise.all([
+  const [{ data: customers }, { data: vehicles }, { data: jobs }] = await Promise.all([
     supabase.from("customers").select("*").order("last_name", { ascending: true }).order("first_name", { ascending: true }),
     supabase.from("customer_vehicles").select("*").order("created_at", { ascending: false }),
     supabase
       .from("bookings")
-      .select("id, booking_date, booking_time, car, problem, status, customer_id, created_at, image_urls, work_done, mileage, labor_hours, parts, mechanic")
+      .select("id, booking_date, booking_time, car, problem, status, customer_id")
       .not("customer_id", "is", null)
       .order("booking_date", { ascending: false })
       .order("booking_time", { ascending: false })
       .limit(500),
-    supabase
-      .from("customer_history")
-      .select("*")
-      .order("entry_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1000),
   ])
 
   const customerList = (customers ?? []) as Customer[]
@@ -43,30 +38,7 @@ export default async function CustomersPage() {
     ])
   )
 
-  const manualJobs: CustomerJob[] = ((manualHistory ?? []) as CustomerHistoryEntry[]).map((entry) => {
-    const vehicle = vehicleList.find((item) => item.id === entry.vehicle_id)
-    return {
-      id: `manual:${entry.id}`,
-      booking_date: entry.entry_date,
-      booking_time: "",
-      car: vehicle ? `${vehicle.make} ${vehicle.model}` : "Manueller Historie-Eintrag",
-      problem: `${entry.title}\n${entry.description}`,
-      status: "confirmed",
-      customer_id: entry.customer_id,
-      created_at: entry.created_at,
-      image_urls: null,
-      work_done: entry.description,
-      mileage: entry.mileage,
-      labor_hours: null,
-      parts: entry.parts,
-      mechanic: entry.mechanic,
-      is_manual: true,
-    }
-  })
-
-  const allJobs = [...((jobs ?? []) as CustomerJob[]), ...manualJobs]
-
-  const sortedJobs = allJobs.sort((a, b) => {
+  const sortedJobs = ((jobs ?? []) as CustomerJob[]).sort((a, b) => {
     const customerCompare = (customerNameById.get(a.customer_id ?? "") ?? "").localeCompare(
       customerNameById.get(b.customer_id ?? "") ?? "",
       "de-CH"
@@ -95,6 +67,9 @@ export default async function CustomersPage() {
         initialVehicles={vehicleList}
         initialJobs={sortedJobs}
       />
+      <div className="mx-auto max-w-[1680px] px-4 pb-8 sm:px-6 lg:px-8">
+        <CustomerHistoryManual customers={customerList} vehicles={vehicleList} />
+      </div>
     </main>
   )
 }
