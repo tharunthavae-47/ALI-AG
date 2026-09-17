@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { CustomerErp } from "@/components/customer-erp"
+import { CustomerHistoryManual } from "@/components/customer-history-manual"
 import type { Customer, CustomerJob, CustomerVehicle } from "./actions"
 
 export const dynamic = "force-dynamic"
@@ -29,6 +30,7 @@ export default async function CustomersPage() {
   ])
 
   const customerList = (customers ?? []) as Customer[]
+  const vehicleList = (vehicles ?? []) as CustomerVehicle[]
   const customerNameById = new Map(
     customerList.map((customer) => [
       customer.id,
@@ -62,9 +64,12 @@ export default async function CustomersPage() {
       </div>
       <CustomerErp
         initialCustomers={customerList}
-        initialVehicles={(vehicles ?? []) as CustomerVehicle[]}
+        initialVehicles={vehicleList}
         initialJobs={sortedJobs}
       />
+      <div className="mx-auto max-w-[1680px] px-4 pb-8 sm:px-6 lg:px-8">
+        <CustomerHistoryManual customers={customerList} vehicles={vehicleList} />
+      </div>
     </main>
   )
 }
