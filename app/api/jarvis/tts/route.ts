@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 
-const VOICE_ID = "Gvx1qZk9R4BUiBfsNPBU"
+const DEFAULT_VOICE_ID = "Gvx1qZk9R4BUiBfsNPBU"
 const MODEL_ID = "eleven_multilingual_v2"
 
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.ELEVENLABS_API_KEY
+    const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID
 
     if (!apiKey) {
       return NextResponse.json(
@@ -24,8 +25,15 @@ export async function POST(request: Request) {
       )
     }
 
+    if (text.length > 5000) {
+      return NextResponse.json(
+        { error: "Der Text ist zu lang für die JARVIS-Sprachausgabe." },
+        { status: 400 },
+      )
+    }
+
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_128`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
       {
         method: "POST",
         headers: {
@@ -42,6 +50,7 @@ export async function POST(request: Request) {
             use_speaker_boost: true,
           },
         }),
+        cache: "no-store",
       },
     )
 
