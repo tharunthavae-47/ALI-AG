@@ -384,8 +384,13 @@ export function Jarvis() {
     const recognition = new SpeechRecognition()
     let latestTranscript = ""
     let submitted = false
-    recognition.lang = "de-CH"
-    recognition.continuous = false
+    let silenceTimer: number | null = null
+    let recognitionHadError = false
+
+    // Deutsch bleibt erhalten, aber de-DE ist in Chrome/Edge deutlich
+    // zuverlässiger als de-CH bei der Browser-Spracherkennung.
+    recognition.lang = "de-DE"
+    recognition.continuous = true
     recognition.interimResults = true
 
     recognition.onstart = () => {
@@ -395,21 +400,56 @@ export function Jarvis() {
 
     recognition.onresult = (event) => {
       let transcript = ""
-      for (let i = 0; i < event.results.length; i++) transcript += event.results[i]?.[0]?.transcript || ""
+      let hasFinalResult = false
+
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i]
+        transcript += result?.[0]?.transcript || ""
+        if (result?.isFinal) hasFinalResult = true
+      }
+
       transcript = transcript.trim()
       if (!transcript) return
+
       latestTranscript = transcript
       setMessage(transcript)
+
+      // Nicht beim ersten kurzen Ergebnis absenden. JARVIS wartet kurz,
+      // damit auch ein vollständiger Satz erkannt werden kann.
+      if (silenceTimer !== null) {
+        window.clearTimeout(silenceTimer)
+        silenceTimer = null
+      }
+
+      if (hasFinalResult) {
+        silenceTimer = window.setTimeout(() => {
+          if (submitted || !latestTranscript.trim()) return
+          try { recognition.stop() } catch {}
+        }, 1200)
+      }
     }
 
     recognition.onend = () => {
+      if (silenceTimer !== null) {
+        window.clearTimeout(silenceTimer)
+        silenceTimer = null
+      }
+
       setListening(false)
-      recognitionRef.current = null
+      if (recognitionRef.current === recognition) recognitionRef.current = null
+
       const transcript = latestTranscript.trim()
-      if (!transcript || submitted) {
-        if (!transcript && !submitted) setMessages((previous) => [...previous, { role: "assistant", content: "Ich habe leider nichts verstanden. Bitte sprich direkt nach dem Mikrofonstart und versuche es erneut." }])
+
+      if (submitted || recognitionHadError) return
+
+      if (!transcript) {
+        setMessages((previous) => [...previous, {
+          role: "assistant",
+          content: "Ich habe leider nichts verstanden. Bitte sprich direkt nach dem Mikrofonstart und versuche es erneut."
+        }])
         return
       }
+
       submitted = true
       setMessage(transcript)
       void askJarvis(transcript)
@@ -417,13 +457,28 @@ export function Jarvis() {
 
     recognition.onerror = (event) => {
       console.error("SPEECH ERROR:", event.error)
-      setListening(false); recognitionRef.current = null
+      if (silenceTimer !== null) {
+        window.clearTimeout(silenceTimer)
+        silenceTimer = null
+      }
+
+      recognitionHadError = true
+      setListening(false)
+      if (recognitionRef.current === recognition) recognitionRef.current = null
+
       if (event.error === "aborted") return
+
       let errorMessage = "Die Spracherkennung ist fehlgeschlagen."
-      if (event.error === "no-speech") errorMessage = "Ich habe keine Sprache erkannt. Bitte sprich direkt nach dem Mikrofonstart."
-      else if (event.error === "not-allowed" || event.error === "service-not-allowed") errorMessage = "Der Mikrofonzugriff wurde blockiert. Bitte erlaube der Website das Mikrofon."
-      else if (event.error === "audio-capture") errorMessage = "Das Mikrofon konnte nicht geöffnet werden. Prüfe bitte die Mikrofonberechtigung auf deinem Handy."
-      else if (event.error === "network") errorMessage = "Die mobile Spracherkennung hat ein Netzwerkproblem. Bitte prüfe deine Internetverbindung und versuche es erneut."
+      if (event.error === "no-speech") {
+        errorMessage = "Ich habe keine Sprache erkannt. Bitte sprich direkt nach dem Mikrofonstart."
+      } else if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        errorMessage = "Der Mikrofonzugriff wurde blockiert. Bitte erlaube der Website das Mikrofon."
+      } else if (event.error === "audio-capture") {
+        errorMessage = "Das Mikrofon konnte nicht geöffnet werden. Prüfe bitte die Mikrofonberechtigung auf deinem Gerät."
+      } else if (event.error === "network") {
+        errorMessage = "Die Spracherkennung hat ein Netzwerkproblem. Bitte prüfe deine Internetverbindung und versuche es erneut."
+      }
+
       setMessages((previous) => [...previous, { role: "assistant", content: errorMessage }])
     }
 
