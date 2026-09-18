@@ -3,13 +3,16 @@ import Image from "next/image"
 export function Hero() {
   return (
     <section id="home" className="relative flex min-h-screen items-center overflow-hidden">
-      <Image
-        src="AliAuto.jpg"
-        alt="Mechaniker bei der Arbeit an einem Motor in der Werkstatt"
-        fill
-        priority
-        className="object-cover"
-      />
+      <video
+  autoPlay
+  muted
+  loop
+  playsInline
+  preload="auto"
+  className="absolute inset-0 h-full w-full object-cover"
+>
+  <source src="/vinora_6aabf9bc4f8a8fc99c56b0ba.mp4" type="video/mp4" />
+</video>
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/30" />
       <div className="relative z-10 w-full px-[6%]">
         <div className="max-w-2xl">
