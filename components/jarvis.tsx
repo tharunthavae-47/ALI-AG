@@ -56,6 +56,7 @@ export function Jarvis() {
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   const speechPrimedRef = useRef(false)
   const speechRunRef = useRef(0)
+  const elevenAudioRef = useRef<HTMLAudioElement | null>(null)
   const launcherDragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
   const suppressLauncherClickRef = useRef(false)
 
@@ -120,13 +121,57 @@ export function Jarvis() {
     } catch (error) { console.error("SPEECH PRIME ERROR:", error) }
   }
 
-  function speak(text: string) {
-    if (!voiceEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) return
+  async function speak(text: string) {
+    if (!voiceEnabled || typeof window === "undefined") return
     const cleanText = cleanTextForSpeech(text)
     if (!cleanText) return
 
     const synthesis = window.speechSynthesis
     const run = ++speechRunRef.current
+
+    // Primär JARVIS-Stimme über unseren Server + ElevenLabs.
+    // Der API-Key bleibt ausschließlich serverseitig.
+    try {
+      const response = await fetch("/api/jarvis/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: cleanText }),
+      })
+
+      if (response.ok) {
+        const audioBlob = await response.blob()
+        if (run !== speechRunRef.current || !voiceEnabled) return
+
+        if (elevenAudioRef.current) {
+          elevenAudioRef.current.pause()
+          elevenAudioRef.current.src = ""
+        }
+
+        const audioUrl = URL.createObjectURL(audioBlob)
+        const audio = new Audio(audioUrl)
+        elevenAudioRef.current = audio
+        audio.onplay = () => setSpeaking(true)
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl)
+          if (elevenAudioRef.current === audio) elevenAudioRef.current = null
+          setSpeaking(false)
+        }
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl)
+          if (elevenAudioRef.current === audio) elevenAudioRef.current = null
+          setSpeaking(false)
+        }
+        await audio.play()
+        return
+      }
+
+      const errorData = await response.json().catch(() => null)
+      console.error("ELEVENLABS TTS ERROR:", response.status, errorData)
+    } catch (error) {
+      console.error("ELEVENLABS TTS REQUEST ERROR:", error)
+    }
+
+    // Fallback: Browser-Sprachausgabe, falls ElevenLabs nicht verfügbar ist.
     const selectedVoice = getFemaleVoice()
     const chunks = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText]
 
@@ -291,6 +336,8 @@ export function Jarvis() {
     if (typeof window !== "undefined") {
       speechRunRef.current++
       window.speechSynthesis.cancel()
+      elevenAudioRef.current?.pause()
+      elevenAudioRef.current = null
     }
     try { recognitionRef.current?.abort() } catch {}
     recognitionRef.current = null
@@ -386,14 +433,14 @@ export function Jarvis() {
 
   useEffect(() => () => {
     try { recognitionRef.current?.abort() } catch {}
-    if (typeof window !== "undefined") { speechRunRef.current++; window.speechSynthesis.cancel() }
+    if (typeof window !== "undefined") { speechRunRef.current++; window.speechSynthesis.cancel(); elevenAudioRef.current?.pause(); elevenAudioRef.current = null }
   }, [])
 
   useEffect(() => {
     if (!open) {
       try { recognitionRef.current?.abort() } catch {}
       recognitionRef.current = null
-      if (typeof window !== "undefined") { speechRunRef.current++; window.speechSynthesis.cancel() }
+      if (typeof window !== "undefined") { speechRunRef.current++; window.speechSynthesis.cancel(); elevenAudioRef.current?.pause(); elevenAudioRef.current = null }
       setListening(false); setSpeaking(false)
     }
   }, [open])
