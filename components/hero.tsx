@@ -9,7 +9,7 @@ export function Hero() {
   loop
   playsInline
   preload="auto"
-  className="absolute inset-0 m-auto h-[80%] w-[90%] object-cover object-[center_30%]"
+  className="absolute inset-0 m-auto h-[80%] w-[90%] object-cover object-[center_30%] scale-[1.2] md:scale-100"
 >
   <source src="/vinora_6aabf9bc4f8a8fc99c56b0ba.mp4" type="video/mp4" />
 </video>
