@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { sendBookingEmail } from "@/lib/booking-email"
 
 export type BookingStatus = "pending" | "confirmed" | "rejected"
@@ -29,7 +30,12 @@ export type CreateBookingData = { booking_date: string; booking_time: string; na
 // Verknüpft eine Buchung zuerst über den eingegebenen Namen mit einem bestehenden ERP-Kunden.
 // E-Mail und Telefon dienen erst danach als Fallback, damit eine abweichende E-Mail-Adresse
 // nicht dazu führt, dass der Auftrag unter einem anderen Kunden landet.
-async function resolveCustomerId(supabase: Awaited<ReturnType<typeof createClient>>, name: string, phone: string, email: string) {
+async function resolveCustomerId(name: string, phone: string, email: string) {
+  // Kunden/ERP-Daten unterliegen bewusst weiterhin RLS. Die öffentliche Buchung
+  // darf diese Tabelle nicht mit dem anon/authenticated Client beschreiben.
+  // Dieser Server-Action läuft ausschließlich auf dem Backend und verwendet
+  // deshalb den separaten, server-only Service-Role-Client.
+  const supabase = createAdminClient()
   const cleanName = name.trim().replace(/\s+/g, " ")
   const cleanEmail = email.trim().toLowerCase()
   const cleanPhone = phone.trim()
@@ -118,7 +124,7 @@ export async function createBooking(data: CreateBookingData) {
     if (existingBooking) return { ok: false, error: "Dieser Termin ist bereits vergeben." }
 
     // Vor dem Auftrag den ERP-Kunden bestimmen bzw. automatisch anlegen.
-    const customerId = await resolveCustomerId(supabase, name, phone, email)
+    const customerId = await resolveCustomerId(name, phone, email)
 
     const { data: booking, error: insertError } = await supabase.from("bookings").insert({
       booking_date, booking_time, name, phone, email, car, problem,
