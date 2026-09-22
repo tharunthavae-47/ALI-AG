@@ -31,53 +31,144 @@ export type CreateBookingData = { booking_date: string; booking_time: string; na
 // E-Mail und Telefon dienen erst danach als Fallback, damit eine abweichende E-Mail-Adresse
 // nicht dazu führt, dass der Auftrag unter einem anderen Kunden landet.
 async function resolveCustomerId(name: string, phone: string, email: string) {
-  // Kunden/ERP-Daten unterliegen bewusst weiterhin RLS. Die öffentliche Buchung
-  // darf diese Tabelle nicht mit dem anon/authenticated Client beschreiben.
-  // Dieser Server-Action läuft ausschließlich auf dem Backend und verwendet
-  // deshalb den separaten, server-only Service-Role-Client.
+  // Läuft nur serverseitig mit Service-Role, damit die öffentliche Buchung
+  // weiterhin nicht direkt auf die geschützte customers-Tabelle schreiben muss.
   const supabase = createAdminClient()
-  const cleanName = name.trim().replace(/\s+/g, " ")
+
+  const normalize = (value: string) =>
+    value
+      .toLocaleLowerCase("de-CH")
+      .normalize("NFD")
+      .replace(/[\\u0300-\\u036f]/g, "")
+      .replace(/[^a-z0-9\\s]/g, " ")
+      .replace(/\\s+/g, " ")
+      .trim()
+
+  const cleanName = name.trim().replace(/\\s+/g, " ")
   const cleanEmail = email.trim().toLowerCase()
   const cleanPhone = phone.trim()
-  const parts = cleanName.split(" ").filter(Boolean)
-  const first_name = parts.shift() || cleanName
-  const last_name = parts.join(" ") || "-"
 
-  let customer: { id: string } | null = null
+  const normalizedName = normalize(cleanName)
+  const nameParts = normalizedName.split(" ").filter(Boolean)
+  const first_name = cleanName.split(" ").filter(Boolean)[0] || cleanName
+  const last_name = cleanName.split(" ").filter(Boolean).slice(1).join(" ") || "-"
 
-  // 1. Name hat Priorität: Sanusjan bleibt Sanusjan, auch wenn eine andere Mail
-  //    (z. B. die eines anderen Kunden) im Terminformular eingetragen wurde.
-  if (first_name && last_name !== "-") {
+  let customer: { id: string; first_name: string; last_name: string; email: string | null; phone: string | null } | null = null
+
+  // 1. E-Mail und Telefonnummer sind eindeutige Treffer und haben höchste Priorität.
+  if (cleanEmail) {
     const { data } = await supabase
       .from("customers")
-      .select("id")
-      .ilike("first_name", first_name)
-      .ilike("last_name", last_name)
+      .select("id, first_name, last_name, email, phone")
+      .eq("email", cleanEmail)
       .maybeSingle()
     customer = data
   }
 
-  // 2. E-Mail ist nur noch Fallback, falls über den Namen kein Kunde gefunden wurde.
-  if (!customer && cleanEmail) {
-    const { data } = await supabase.from("customers").select("id").eq("email", cleanEmail).maybeSingle()
-    customer = data
-  }
-
-  // 3. Telefonnummer ist letzter Fallback.
   if (!customer && cleanPhone) {
-    const { data } = await supabase.from("customers").select("id").eq("phone", cleanPhone).maybeSingle()
+    const { data } = await supabase
+      .from("customers")
+      .select("id, first_name, last_name, email, phone")
+      .eq("phone", cleanPhone)
+      .maybeSingle()
     customer = data
   }
 
-  if (customer) return customer.id
+  // 2. Danach exakter normalisierter Name.
+  if (!customer) {
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, first_name, last_name, email, phone")
 
-  const { data, error } = await supabase.from("customers").insert({
-    first_name,
-    last_name,
-    phone: cleanPhone,
-    email: cleanEmail || null,
-    active: true,
-  }).select("id").single()
+    const exact = (customers ?? []).find((candidate) =>
+      normalize(`${candidate.first_name} ${candidate.last_name}`) === normalizedName
+    )
+    customer = exact ?? null
+  }
+
+  // 3. Danach vorsichtige Namensähnlichkeit:
+  //    gleicher Vorname + mindestens ein gemeinsames Nachnamen-Token oder
+  //    ein sehr ähnlicher Nachname. So wird z. B. "Tharun Thava" dem
+  //    bestehenden "Tharun Thava Easwaran" zugeordnet.
+  if (!customer) {
+    const { data: customers } = await supabase
+      .from("customers")
+      .select("id, first_name, last_name, email, phone")
+
+    const first = normalize(first_name)
+    const incomingLastTokens = normalize(last_name).split(" ").filter(Boolean)
+
+    const similarity = (a: string, b: string) => {
+      if (!a || !b) return 0
+      if (a === b) return 1
+      if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length)
+
+      const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+      for (let i = 1; i <= a.length; i++) {
+        const current = [i]
+        for (let j = 1; j <= b.length; j++) {
+          current[j] = Math.min(
+            current[j - 1] + 1,
+            prev[j] + 1,
+            prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+          )
+        }
+        for (let j = 0; j <= b.length; j++) prev[j] = current[j]
+      }
+      return 1 - prev[b.length] / Math.max(a.length, b.length)
+    }
+
+    const candidates = (customers ?? [])
+      .filter((candidate) => normalize(candidate.first_name) === first)
+      .map((candidate) => {
+        const candidateLast = normalize(candidate.last_name)
+        const candidateTokens = candidateLast.split(" ").filter(Boolean)
+        const sharedToken = incomingLastTokens.some((token) =>
+          candidateTokens.some((candidateToken) => token === candidateToken || similarity(token, candidateToken) >= 0.78)
+        )
+        const lastSimilarity = similarity(normalize(last_name), candidateLast)
+        const score = sharedToken ? Math.max(0.9, lastSimilarity) : lastSimilarity
+        return { candidate, score }
+      })
+      .filter(({ score }) => score >= 0.78)
+      .sort((a, b) => b.score - a.score)
+
+    // Nur einen klaren besten Treffer übernehmen.
+    if (candidates.length === 1 || (candidates.length > 1 && candidates[0].score > candidates[1].score + 0.08)) {
+      customer = candidates[0]?.candidate ?? null
+    }
+  }
+
+  if (customer) {
+    // Fehlende Kontaktdaten des bestehenden Kunden aus dem neuen Termin ergänzen,
+    // aber niemals vorhandene Daten überschreiben.
+    const updates: Record<string, string> = {}
+    if (!customer.email && cleanEmail) updates.email = cleanEmail
+    if (!customer.phone && cleanPhone) updates.phone = cleanPhone
+
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("customers").update(updates).eq("id", customer.id)
+    }
+
+    return customer.id
+  }
+
+  // 4. Kein passender Kunde gefunden: neuen ERP-Kunden anlegen.
+  const parts = cleanName.split(" ").filter(Boolean)
+  const newFirstName = parts.shift() || cleanName
+  const newLastName = parts.join(" ") || "-"
+
+  const { data, error } = await supabase
+    .from("customers")
+    .insert({
+      first_name: newFirstName,
+      last_name: newLastName,
+      phone: cleanPhone,
+      email: cleanEmail || null,
+      active: true,
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("ERP-Kunde konnte nicht automatisch erstellt werden:", error)
