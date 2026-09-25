@@ -56,6 +56,20 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const details = await response.text()
+
+      // Free ElevenLabs accounts cannot use some Voice Library voices via
+      // the API. Let the client switch cleanly to the browser's free TTS
+      // instead of treating this as a fatal JARVIS error.
+      if (response.status === 402) {
+        return NextResponse.json(
+          {
+            fallback: true,
+            reason: "ElevenLabs voice requires a paid plan.",
+          },
+          { status: 402 },
+        )
+      }
+
       console.error("ELEVENLABS TTS ERROR:", response.status, details)
       return NextResponse.json(
         { error: "ElevenLabs konnte die Stimme nicht erzeugen." },
