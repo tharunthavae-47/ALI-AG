@@ -4,7 +4,6 @@ import type { Metadata, Viewport } from "next"
 import { Inter, Oswald } from "next/font/google"
 import "./globals.css"
 import { Jarvis } from "@/components/jarvis"
-import { JarvisElevenLabs } from "@/components/jarvis-elevenlabs"
 import { PushNotifications } from "@/components/push-notifications"
 import { SupplierReturnsRouteGuard } from "@/components/supplier-returns-route-guard"
 import { MbPerformanceStructuredData } from "./seo-schema"
@@ -70,7 +69,6 @@ export default function RootLayout({
         <MbPerformanceStructuredData />
         {children}
         <SupplierReturnsRouteGuard />
-        <JarvisElevenLabs />
         <Jarvis />
         <PushNotifications />
         {process.env.NODE_ENV === "production" && <Analytics />}
